@@ -1,4 +1,4 @@
-/** @type {import("prettier").Config} */
+/** @type {import("prettier").Config & import("prettier-plugin-tailwindcss").PluginOptions} */
 export default {
   semi: false,
   singleQuote: false,
@@ -6,5 +6,8 @@ export default {
   printWidth: 100,
   tabWidth: 2,
   endOfLine: "lf",
-  plugins: [],
+  // Must stay last in the list.
+  plugins: ["prettier-plugin-tailwindcss"],
+  tailwindStylesheet: "./src/client/styles.css",
+  tailwindFunctions: ["cn", "cva"],
 }

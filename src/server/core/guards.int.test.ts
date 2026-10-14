@@ -82,3 +82,28 @@ test("health answers 503 when the database does not answer", async () => {
   expect(response.status).toBe(503)
   await pool.end()
 })
+
+describe("GET /api/access", () => {
+  test("lists the Apps the Account may open", async () => {
+    const { headers } = await server.signedInAccount({ apps: ["skeleton"] })
+    const response = await server.app.request("/api/access", { headers })
+    expect(response.status).toBe(200)
+    expect(await response.json()).toEqual({ apps: ["skeleton"] })
+  })
+
+  test("is empty for a Guest without Apps", async () => {
+    const { headers } = await server.signedInAccount({ apps: [] })
+    expect(await (await server.app.request("/api/access", { headers })).json()).toEqual({
+      apps: [],
+    })
+  })
+
+  test("needs a session and a changed password", async () => {
+    expect((await server.app.request("/api/access")).status).toBe(401)
+    const { headers } = await server.signedInAccount({
+      mustChangePassword: true,
+      apps: ["skeleton"],
+    })
+    expect((await server.app.request("/api/access", { headers })).status).toBe(403)
+  })
+})

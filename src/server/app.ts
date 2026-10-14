@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm"
 import { Hono } from "hono"
 import { skeletonRoutes } from "#server/apps/skeleton/routes.ts"
+import { accessRoutes } from "#server/core/access-routes.ts"
 import { appVersionHeader, noStore } from "#server/core/cache-headers.ts"
 import type { AppEnv, AuthServer, Deps } from "#server/core/context.ts"
 import { errorResponse, handleError } from "#server/core/errors.ts"
@@ -11,7 +12,10 @@ import { serveSpa } from "#server/static.ts"
 
 /** Every App's router under `/api`. Its type is what the client's `api.ts` imports. */
 function apiRoutes(deps: Deps) {
-  return new Hono<AppEnv>().basePath("/api").route("/skeleton", skeletonRoutes(deps))
+  return new Hono<AppEnv>()
+    .basePath("/api")
+    .route("/access", accessRoutes(deps))
+    .route("/skeleton", skeletonRoutes(deps))
 }
 
 export type AppType = ReturnType<typeof apiRoutes>

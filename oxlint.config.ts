@@ -134,6 +134,8 @@ export default defineConfig({
       rules: {
         "react/only-export-components": "off",
         "react/no-array-index-key": "off",
+        "no-shadow": "off",
+        "typescript/no-unsafe-type-assertion": "off",
       },
     },
   ],
