@@ -20,6 +20,14 @@ _Avoid_: User, profile, member
 The owner who creates Accounts, grants access, and issues the temporary password an Account must change at first sign-in.
 _Avoid_: Superuser, owner
 
+**Guest**:
+An Account granted access to specific Apps only, such as a friend who is shared one App but not Finances.
+_Avoid_: Friend, external user, collaborator
+
 **Walking skeleton**:
 The thinnest deployed end-to-end slice: sign in, read one record through the client cache from Postgres, installable on the Railway URL.
 _Avoid_: Boilerplate, starter, MVP
+
+**Amount**:
+A signed money value in US cents: money out is negative, money in is positive, so a balance is a plain sum.
+_Avoid_: Debit/credit pairs, unsigned amount plus type
