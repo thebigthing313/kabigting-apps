@@ -28,11 +28,10 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - uses: changesets/action@ae32849d5ba541f9ae29e40e22a623bc13562f51 # v2.1.2
         with:
-          version: pnpm version-packages
-          commit: "Version Packages"
-          title: "Version Packages"
-        env:
+          version-script: pnpm version-packages
+          commit-message: "Version Packages"
+          pr-title: "Version Packages"
           # Pull requests opened with the default token do not trigger CI. A fine-grained token
           # (contents and pull requests: write, this repository only) lets the release PR run
           # CI; without it the default token is used.
-          GITHUB_TOKEN: ${{ secrets.CHANGESETS_TOKEN || secrets.GITHUB_TOKEN }}
+          github-token: ${{ secrets.CHANGESETS_TOKEN || secrets.GITHUB_TOKEN }}

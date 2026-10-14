@@ -9,7 +9,7 @@ export default defineConfig({
         test: {
           name: "unit",
           include: ["src/**/*.test.ts", "scripts/**/*.test.ts"],
-          exclude: ["src/**/*.int.test.ts"],
+          exclude: ["**/*.int.test.ts"],
           // A zone far from both UTC and the household zone catches accidental local-time math.
           env: { TZ: "Pacific/Auckland" },
         },
