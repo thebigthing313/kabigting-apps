@@ -21,8 +21,8 @@ Where to see them: Railway project, **Postgres** service, **Backups** tab.
 
 ### Check once, after the first deploy
 
-- [ ] Daily, weekly and monthly schedules are enabled on the Postgres volume (they are not
-      assumed to be on by default).
+- [x] Daily, weekly and monthly schedules are enabled on the Postgres volume (they are not
+      assumed to be on by default). Enabled 2026-10-14.
 - [ ] A first backup appears in the Backups tab the next day.
 
 ## Before a risky deploy
