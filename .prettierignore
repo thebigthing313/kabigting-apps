@@ -1,0 +1,10 @@
+dist
+coverage
+test-results
+playwright-report
+pnpm-lock.yaml
+.scratch
+.claude
+src/client/routeTree.gen.ts
+src/server/db/schema/auth.ts
+src/server/db/migrations

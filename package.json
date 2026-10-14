@@ -1,0 +1,43 @@
+{
+  "name": "kabigting-apps",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.22.0",
+  "engines": {
+    "node": ">=24"
+  },
+  "imports": {
+    "#server/*": "./src/server/*",
+    "#shared/*": "./src/shared/*"
+  },
+  "scripts": {
+    "check": "pnpm lint && pnpm format:check && pnpm typecheck && node scripts/check-no-date-string.mjs",
+    "lint": "oxlint --deny-warnings",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "typecheck": "tsc --noEmit -p tsconfig.client.json && tsc --noEmit -p tsconfig.server.json",
+    "prepare": "husky",
+    "changeset": "changeset",
+    "version-packages": "changeset version"
+  },
+  "devDependencies": {
+    "@changesets/cli": "3.0.3",
+    "@types/node": "24.19.2",
+    "husky": "9.1.7",
+    "lint-staged": "17.6.0",
+    "oxlint": "1.88.0",
+    "oxlint-tsgolint": "7.0.2004",
+    "prettier": "3.9.10",
+    "prettier-plugin-tailwindcss": "0.8.1",
+    "typescript": "7.0.2",
+    "vite": "8.3.4"
+  },
+  "lint-staged": {
+    "*.{ts,tsx,js,mjs}": [
+      "prettier --write",
+      "oxlint --fix --deny-warnings"
+    ],
+    "*.{json,md,css,html,yaml,yml}": "prettier --write"
+  }
+}

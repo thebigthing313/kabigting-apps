@@ -1,3 +1,28 @@
-.env
+# dependencies
 node_modules
+
+# build and test output
+dist
+coverage
+test-results
+playwright-report
+blob-report
+.vite
+*.tsbuildinfo
+
+# environment (only .env.example is committed)
+.env
+.env.*
+!.env.example
+
+# never commit the Access database or exports
+*.accdb
+*.mdb
+*.laccdb
+exports/
+
+# editor and agent scratch
 .claude/worktrees/
+.claude/settings.local.json
+.DS_Store
+Thumbs.db
