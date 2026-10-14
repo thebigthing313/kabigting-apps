@@ -26,3 +26,6 @@ exports/
 .claude/settings.local.json
 .DS_Store
 Thumbs.db
+
+# end-to-end test state
+e2e/.auth/

@@ -1,4 +1,5 @@
 import "./styles.css"
+import "@/shell/install-prompt"
 import { QueryClientProvider } from "@tanstack/react-query"
 import { createRouter, RouterProvider } from "@tanstack/react-router"
 import { StrictMode } from "react"
@@ -7,6 +8,7 @@ import { Toaster } from "@/components/ui/sonner"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { queryClient } from "@/data/query-client"
 import { routeTree } from "@/routeTree.gen"
+import { UpdatePrompt } from "@/shell/update-prompt"
 import { ThemeProvider } from "@/theme/theme-provider"
 
 const router = createRouter({ routeTree, defaultPreload: "intent" })
@@ -27,6 +29,7 @@ createRoot(root).render(
         <TooltipProvider>
           <RouterProvider router={router} />
           <Toaster />
+          <UpdatePrompt />
         </TooltipProvider>
       </ThemeProvider>
     </QueryClientProvider>

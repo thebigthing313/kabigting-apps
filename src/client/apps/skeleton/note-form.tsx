@@ -1,6 +1,6 @@
 import { useForm } from "@tanstack/react-form"
 import { CalendarIcon } from "lucide-react"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { z } from "zod"
 import { AmountInput } from "@/components/amount-input"
 import { Button } from "@/components/ui/button"
@@ -9,6 +9,7 @@ import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/c
 import { Input } from "@/components/ui/input"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import type { NoteInput } from "@/data/skeleton-notes"
+import { clearDraft, readDraft, registerDraftSaver, writeDraft } from "@/shell/drafts"
 import { formatDisplayDate, fromPickerDate, toPickerDate, today } from "@shared/dates"
 import { isoDate } from "@shared/schemas/primitives"
 
@@ -21,7 +22,19 @@ const noteFormSchema = z.object({
   onDate: isoDate,
 })
 
-type NoteFormValues = { text: string; amountCents: number | null; onDate: string }
+const noteFormValues = z.object({
+  text: z.string(),
+  amountCents: z.int().nullable(),
+  onDate: isoDate,
+})
+type NoteFormValues = z.infer<typeof noteFormValues>
+
+/** A new note being typed is kept across an update reload. */
+export const NEW_NOTE_DRAFT = "skeleton-note"
+
+export function hasNewNoteDraft(): boolean {
+  return noteFormValues.safeParse(readDraft(NEW_NOTE_DRAFT)).success
+}
 
 /** Create or edit a note. Validation runs on submit with the shared Zod 4 schema. */
 export function NoteForm({
@@ -34,7 +47,15 @@ export function NoteForm({
   onSave: (note: NoteInput) => void
 }) {
   const [pickerOpen, setPickerOpen] = useState(false)
-  const defaultValues: NoteFormValues = initial ?? { text: "", amountCents: null, onDate: today() }
+  const [defaultValues] = useState<NoteFormValues>(
+    () =>
+      initial ??
+      noteFormValues.safeParse(readDraft(NEW_NOTE_DRAFT)).data ?? {
+        text: "",
+        amountCents: null,
+        onDate: today(),
+      },
+  )
 
   const form = useForm({
     defaultValues,
@@ -44,6 +65,13 @@ export function NoteForm({
       onSave({ text: value.text.trim(), amountCents: value.amountCents, onDate: value.onDate })
     },
   })
+
+  // Only a new note keeps a draft; edits are short and reloaded from the server.
+  useEffect(() => {
+    if (initial) return undefined
+    clearDraft(NEW_NOTE_DRAFT)
+    return registerDraftSaver(() => writeDraft(NEW_NOTE_DRAFT, form.state.values))
+  }, [form, initial])
 
   return (
     <form

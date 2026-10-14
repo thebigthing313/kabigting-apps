@@ -27,6 +27,7 @@ import {
 } from "@/components/ui/sidebar"
 import { signOut } from "@/data/session"
 import { APPS } from "@/shell/apps"
+import { InstallMenuItem } from "@/shell/install-menu"
 import { ThemeMenu } from "@/shell/theme-menu"
 
 const appRoute = getRouteApi("/_app")
@@ -115,6 +116,7 @@ function ShellSidebar() {
                 <DropdownMenuGroup>
                   <DropdownMenuLabel>Account</DropdownMenuLabel>
                   <ThemeMenu />
+                  <InstallMenuItem />
                   <DropdownMenuItem className="min-h-11" render={<Link to="/change-password" />}>
                     <KeyRoundIcon />
                     Change password

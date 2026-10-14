@@ -1,6 +1,7 @@
 // One place that decides what an API failure means for the user: a lost session goes to sign-in,
 // a temporary password goes to change-password, anything else is a toast.
 import { toast } from "sonner"
+import { noticeServerVersion } from "@/shell/update-check"
 import type { ApiErrorCode } from "@shared/api-error"
 
 export class ApiRequestError extends Error {
@@ -48,6 +49,7 @@ export async function apiFetch(input: RequestInfo | URL, init?: RequestInit): Pr
   } catch {
     throw new ApiRequestError(0, "network", "You appear to be offline")
   }
+  noticeServerVersion(response.headers.get("X-App-Version"))
   if (response.status === 401) {
     const here = window.location.pathname + window.location.search
     leaveTo(`/sign-in?redirect=${encodeURIComponent(here)}`)
@@ -62,6 +64,11 @@ export async function apiFetch(input: RequestInfo | URL, init?: RequestInit): Pr
 export async function readJson<T>(response: Response & { json(): Promise<T> }): Promise<T> {
   if (!response.ok) throw await toApiError(response)
   return response.json()
+}
+
+/** True for a failure caused by having no network. */
+export function isNetworkError(error: unknown): boolean {
+  return (error instanceof ApiRequestError && error.code === "network") || !navigator.onLine
 }
 
 /** Tells the user a write failed (its optimistic change has been undone). */

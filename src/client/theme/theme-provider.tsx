@@ -1,4 +1,5 @@
 import { createContext, use, useLayoutEffect, useState, useSyncExternalStore } from "react"
+import { THEME_COLORS } from "@/theme/colors"
 import { THEME_STORAGE_KEY } from "@/theme/storage-key"
 
 export type Theme = "light" | "dark" | "system"
@@ -45,6 +46,10 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     root.classList.remove("light", "dark")
     root.classList.add(resolved)
     root.style.colorScheme = resolved
+    // Both theme-color tags follow the chosen theme, not only the system's.
+    for (const meta of document.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]')) {
+      meta.content = THEME_COLORS[resolved]
+    }
   }, [resolved])
 
   function setTheme(next: Theme) {

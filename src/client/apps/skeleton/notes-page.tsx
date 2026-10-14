@@ -10,7 +10,7 @@ import {
 } from "@/components/ui/dialog"
 import { Skeleton } from "@/components/ui/skeleton"
 import { addNote, deleteNote, editNote, type Note, useNotes } from "@/data/skeleton-notes"
-import { NoteForm } from "@/apps/skeleton/note-form"
+import { hasNewNoteDraft, NoteForm } from "@/apps/skeleton/note-form"
 import { NotesTable, SignedAmount } from "@/apps/skeleton/notes-table"
 
 type Editing = { mode: "closed" } | { mode: "create" } | { mode: "edit"; note: Note }
@@ -18,7 +18,10 @@ type Editing = { mode: "closed" } | { mode: "create" } | { mode: "edit"; note: N
 /** The skeleton App: notes read through the client cache, written optimistically. */
 export function NotesPage() {
   const { data: notes, isLoading } = useNotes()
-  const [editing, setEditing] = useState<Editing>({ mode: "closed" })
+  // After an update reload, reopen the new-note form that was being typed.
+  const [editing, setEditing] = useState<Editing>(() =>
+    hasNewNoteDraft() ? { mode: "create" } : { mode: "closed" },
+  )
   const total = notes.reduce((sum, note) => sum + note.amountCents, 0)
 
   return (
