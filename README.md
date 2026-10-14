@@ -30,3 +30,17 @@ pnpm dev                    # Vite on :5173, API on :3000, /api proxied
 | `pnpm test:all`         | unit, integration, component and e2e tests                 |
 | `pnpm changeset`        | record a change for the changelog                          |
 | `pnpm version-packages` | apply pending changesets to the version and `CHANGELOG.md` |
+
+## Deploy
+
+One Railway service runs `node src/server/index.ts`, serving `/api/*` and the built SPA, beside a
+Postgres 18 service. Configuration is `.railway/railway.ts`, applied by hand:
+
+```sh
+pnpm exec railway login
+pnpm exec railway link          # choose the project and the production environment
+pnpm exec railway config plan   # check: no database created or deleted
+pnpm exec railway config apply
+```
+
+Migrations run as the pre-deploy step. Backups and restore: `docs/restore.md`.

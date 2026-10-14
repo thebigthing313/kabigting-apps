@@ -5,14 +5,52 @@ pin was resolved or the check was run.
 
 ## Pins resolved at scaffold
 
-| Package                 | Version                                            | Resolved   |
-| ----------------------- | -------------------------------------------------- | ---------- |
-| prettier                | 3.9.10                                             | 2026-10-14 |
-| husky                   | 9.1.7                                              | 2026-10-14 |
-| lint-staged             | 17.6.0                                             | 2026-10-14 |
-| @types/node             | 24.19.2 (matches the Node 24 runtime)              | 2026-10-14 |
-| @changesets/cli         | 3.0.3 (added at the user's request during phase 1) | 2026-10-14 |
-| postgres (Docker image) | 18.6                                               | 2026-10-14 |
+Resolved on 2026-10-14 (versions the spec fixed are installed exactly as listed there).
+
+| Package                                 | Version                                                                                                                      | Note                                                                                                     |
+| --------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| @tanstack/react-query                   | 5.104.2                                                                                                                      | peer of query-db-collection 1.4.4 (query-core ^5.90.15)                                                  |
+| @tanstack/react-form                    | 1.33.5                                                                                                                       |                                                                                                          |
+| @tanstack/react-table                   | 9.3.1                                                                                                                        | v9, the stable major since 2026-08-04 (`useTable` API)                                                   |
+| @hono/node-server                       | 2.1.5                                                                                                                        |                                                                                                          |
+| @hono/zod-validator                     | 0.9.1                                                                                                                        |                                                                                                          |
+| @better-auth/drizzle-adapter            | 1.7.7                                                                                                                        | 1.7.8 needs @better-auth/core ^1.7.8, which better-auth 1.7.7 does not provide                           |
+| drizzle-kit                             | 0.31.11                                                                                                                      | the release line paired with drizzle-orm 0.45.x                                                          |
+| pg                                      | 8.23.1                                                                                                                       |                                                                                                          |
+| @types/pg                               | 8.23.1                                                                                                                       |                                                                                                          |
+| zod                                     | 4.6.7                                                                                                                        |                                                                                                          |
+| uuid                                    | 14.0.3                                                                                                                       |                                                                                                          |
+| sonner                                  | 2.0.8                                                                                                                        |                                                                                                          |
+| lucide-react                            | 1.57.0                                                                                                                       |                                                                                                          |
+| @fontsource-variable/inter              | 5.3.0                                                                                                                        |                                                                                                          |
+| prettier                                | 3.9.10                                                                                                                       |                                                                                                          |
+| husky                                   | 9.1.7                                                                                                                        |                                                                                                          |
+| lint-staged                             | 17.6.0                                                                                                                       |                                                                                                          |
+| @vitest/browser-playwright              | 5.0.4                                                                                                                        |                                                                                                          |
+| vitest-browser-react                    | 2.3.0                                                                                                                        |                                                                                                          |
+| happy-dom                               | 21.0.1                                                                                                                       |                                                                                                          |
+| @playwright/test                        | 1.64.1                                                                                                                       |                                                                                                          |
+| fast-check                              | 4.10.2                                                                                                                       |                                                                                                          |
+| concurrently                            | 10.0.6                                                                                                                       |                                                                                                          |
+| @railway/cli                            | 5.68.0                                                                                                                       |                                                                                                          |
+| react                                   | 19.3.1                                                                                                                       | not in the spec table; current 19.x                                                                      |
+| react-dom                               | 19.3.1                                                                                                                       |                                                                                                          |
+| @types/react                            | 19.3.0                                                                                                                       |                                                                                                          |
+| @types/react-dom                        | 19.3.0                                                                                                                       |                                                                                                          |
+| @types/node                             | 24.19.2                                                                                                                      | matches the Node 24 runtime                                                                              |
+| @babel/core                             | 7.29.7                                                                                                                       | peer of @rolldown/plugin-babel; 7.x because babel-plugin-react-compiler 1.0.0 depends on @babel/types ^7 |
+| @base-ui/react                          | 1.9.0                                                                                                                        | added by `shadcn init` (Base UI primitives)                                                              |
+| class-variance-authority                | 0.7.1                                                                                                                        | added by `shadcn init`                                                                                   |
+| cn                                      | 0.4.0                                                                                                                        | added by `shadcn init`                                                                                   |
+| tw-animate-css                          | 1.4.0                                                                                                                        | added by `shadcn init`                                                                                   |
+| react-day-picker                        | 10.0.2                                                                                                                       | added by `shadcn add calendar`; shares date-fns 4.4.0 and @date-fns/tz 1.5.0                             |
+| workbox-window                          | 7.4.1                                                                                                                        | peer of vite-plugin-pwa 2.0.0                                                                            |
+| workbox-build                           | 7.4.1                                                                                                                        | peer of vite-plugin-pwa 2.0.0                                                                            |
+| auth                                    | 1.7.7                                                                                                                        | Better Auth CLI, a pinned dev dependency matching better-auth instead of `npx auth@latest`               |
+| railway                                 | 3.16.0                                                                                                                       | IaC SDK providing `railway/iac`                                                                          |
+| @changesets/cli                         | 3.0.3                                                                                                                        | added at the user's request (versioning and changelog)                                                   |
+| postgres (Docker image, compose and CI) | 18.6                                                                                                                         |                                                                                                          |
+| GitHub Actions (pinned by commit SHA)   | checkout v7.0.1, setup-node v7.1.0, pnpm/action-setup v6.1.0, cache v6.1.0, upload-artifact v7.0.2, changesets/action v2.1.2 |                                                                                                          |
 
 ## Verification results
 
@@ -99,3 +137,9 @@ pin was resolved or the check was run.
   secret exists, else the default token; pull requests opened by the default token do not trigger
   CI, so with required checks that pull request could not merge without the token or an admin
   bypass.
+- `.railway/railway.ts` was written against the `railway` 3.16.0 typings. `postgres()` takes only
+  a region, so the Postgres major version is chosen when the service is created in the dashboard
+  (18) and the file adopts that service by name ("Postgres"). The GitHub source, generated domain,
+  backup schedules and the sealed `BETTER_AUTH_SECRET` and `BASE_URL` values stay dashboard
+  settings (`preserve()` in the file). Run `railway config plan` first and check that it neither
+  creates nor deletes a database.
