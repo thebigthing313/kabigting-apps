@@ -1,10 +1,8 @@
 import { defineConfig } from "oxlint"
+import { APP_KEYS } from "./src/server/core/apps.ts"
 
-/**
- * Apps living in the Shell. Each gets an override that forbids importing any other App's folder.
- * Add a key here when a new App folder is created.
- */
-const APPS = ["skeleton"]
+/** Each App gets an override that forbids importing any other App's folder. */
+const APPS: readonly string[] = APP_KEYS
 
 type Pattern = { regex: string; message: string; allowTypeImports?: boolean }
 

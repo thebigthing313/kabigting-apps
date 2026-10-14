@@ -1,0 +1,100 @@
+// Account provisioning for the admin scripts. There is no sign-up and no email: the Admin
+// creates Accounts, shares the one-time temporary password out of band, and resets it on request.
+import { randomInt } from "node:crypto"
+import { eq } from "drizzle-orm"
+import type { Auth } from "#server/auth/auth.ts"
+import type { Db } from "#server/db/client.ts"
+import { appAccess, auth_user } from "#server/db/schema/index.ts"
+
+// createUser works server-side without a session. The admin plugin's setUserPassword, banUser and
+// revokeUserSessions demand an admin session even server-side, so reset and ban go through Better
+// Auth's internal adapter instead.
+type AuthContext = Awaited<Auth["$context"]>
+export type AccountDeps = {
+  db: Db
+  auth: {
+    api: Pick<Auth["api"], "createUser">
+    $context: Promise<{
+      internalAdapter: Pick<
+        AuthContext["internalAdapter"],
+        "updatePassword" | "updateUser" | "deleteUserSessions"
+      >
+      password: Pick<AuthContext["password"], "hash">
+    }>
+  }
+}
+
+// No look-alike characters, so a password read aloud or copied by hand survives.
+const ALPHABET = "abcdefghjkmnpqrstuvwxyz23456789"
+
+function passwordGroup(): string {
+  return Array.from({ length: 5 }, () => ALPHABET[randomInt(ALPHABET.length)]).join("")
+}
+
+/** Four groups of five characters: about 99 bits of entropy. */
+export function generateTemporaryPassword(): string {
+  return [passwordGroup(), passwordGroup(), passwordGroup(), passwordGroup()].join("-")
+}
+
+async function findUserId(db: Db, email: string): Promise<string> {
+  const [user] = await db
+    .select({ id: auth_user.id })
+    .from(auth_user)
+    .where(eq(auth_user.email, email.toLowerCase()))
+  if (!user) throw new Error(`No Account with email ${email}`)
+  return user.id
+}
+
+export async function grantApps(db: Db, userId: string, apps: readonly string[]): Promise<void> {
+  if (apps.length === 0) return
+  await db
+    .insert(appAccess)
+    .values(apps.map((appKey) => ({ userId, appKey })))
+    .onConflictDoNothing()
+}
+
+export async function createAccount(
+  { db, auth }: AccountDeps,
+  input: { email: string; name: string; apps: readonly string[]; role?: "admin" | "user" },
+): Promise<{ userId: string; temporaryPassword: string }> {
+  const temporaryPassword = generateTemporaryPassword()
+  const { user } = await auth.api.createUser({
+    body: {
+      email: input.email,
+      name: input.name,
+      password: temporaryPassword,
+      role: input.role ?? "user",
+      data: { mustChangePassword: true },
+    },
+  })
+  await grantApps(db, user.id, input.apps)
+  return { userId: user.id, temporaryPassword }
+}
+
+/** New temporary password, forced change again, and every session signed out. */
+export async function resetAccount(
+  { db, auth }: AccountDeps,
+  { email }: { email: string },
+): Promise<{ temporaryPassword: string }> {
+  const userId = await findUserId(db, email)
+  const temporaryPassword = generateTemporaryPassword()
+  const context = await auth.$context
+  await context.internalAdapter.updatePassword(
+    userId,
+    await context.password.hash(temporaryPassword),
+  )
+  await context.internalAdapter.updateUser(userId, { mustChangePassword: true })
+  await context.internalAdapter.deleteUserSessions(userId)
+  return { temporaryPassword }
+}
+
+/** Removal: ban (blocks sign-in) and revoke every session. Data is kept. */
+export async function banAccount({ db, auth }: AccountDeps, { email }: { email: string }) {
+  const userId = await findUserId(db, email)
+  const context = await auth.$context
+  await context.internalAdapter.updateUser(userId, {
+    banned: true,
+    banReason: "Removed by the Admin",
+  })
+  await context.internalAdapter.deleteUserSessions(userId)
+}
