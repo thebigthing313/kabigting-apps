@@ -1,5 +1,7 @@
 import { createAuthClient } from "better-auth/react"
 import { inferAdditionalFields } from "better-auth/client/plugins"
+import { cleanupCollections } from "@/data/collection-factory"
+import { queryClient } from "@/data/query-client"
 
 export const authClient = createAuthClient({
   basePath: "/api/auth",
@@ -14,8 +16,18 @@ export async function fetchSession(): Promise<Session | null> {
   return data ?? null
 }
 
-/** Signs out and reloads the app from scratch so no signed-in state survives in memory. */
-export async function signOut(): Promise<void> {
-  await authClient.signOut()
-  window.location.assign("/sign-in")
+/**
+ * Signs out, drops every cached row and collection, and reloads the app from scratch so no
+ * signed-in state survives in memory. `leavePage` first moves off any page reading a collection
+ * (e.g. a router navigation to sign-in), so nothing reads a collection being cleaned up.
+ */
+export async function signOut(leavePage?: () => Promise<unknown>): Promise<void> {
+  try {
+    await authClient.signOut()
+    await leavePage?.()
+  } finally {
+    queryClient.clear()
+    await cleanupCollections()
+    window.location.assign("/sign-in")
+  }
 }

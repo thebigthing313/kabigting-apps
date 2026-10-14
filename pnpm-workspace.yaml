@@ -12,3 +12,7 @@ minimumReleaseAgeExclude:
   - '@playwright/test@1.64.1'
   - playwright-core@1.64.1
   - playwright@1.64.1
+  - '@tanstack/db-ivm@0.2.0'
+  - '@tanstack/db@0.14.0'
+  - '@tanstack/query-db-collection@1.4.4'
+  - '@tanstack/react-db@0.5.9'

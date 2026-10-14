@@ -135,6 +135,7 @@ export default defineConfig({
         "react/only-export-components": "off",
         "react/no-array-index-key": "off",
         "no-shadow": "off",
+        "react/no-unstable-nested-components": "off",
         "typescript/no-unsafe-type-assertion": "off",
       },
     },

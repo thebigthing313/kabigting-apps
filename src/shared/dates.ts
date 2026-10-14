@@ -32,3 +32,32 @@ export function monthInstantRange(month: string): { start: string; end: string }
 export function monthOf(instant: string): string {
   return format(new TZDate(Date.parse(instant), HOUSEHOLD_ZONE), "yyyy-MM")
 }
+
+/** The current moment as an ISO-8601 UTC string. */
+export function nowInstant(): string {
+  return new Date().toISOString()
+}
+
+function parts(date: string): [number, number, number] {
+  const [year, month, day] = date.split("-").map(Number)
+  return [year ?? Number.NaN, month ?? Number.NaN, day ?? Number.NaN]
+}
+
+/**
+ * A calendar date as a local-midnight `Date` for date pickers, which work in the device's zone.
+ * Only for UI widgets; store and send the `YYYY-MM-DD` string.
+ */
+export function toPickerDate(date: string): Date {
+  const [year, month, day] = parts(date)
+  return new Date(year, month - 1, day)
+}
+
+/** The calendar date a picker's `Date` stands for (its local year, month and day). */
+export function fromPickerDate(picked: Date): string {
+  return format(picked, "yyyy-MM-dd")
+}
+
+/** A calendar date for display, e.g. "Nov 1, 2026". */
+export function formatDisplayDate(date: string): string {
+  return format(toPickerDate(date), "MMM d, yyyy")
+}

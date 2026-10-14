@@ -1,9 +1,11 @@
 import "./styles.css"
+import { QueryClientProvider } from "@tanstack/react-query"
 import { createRouter, RouterProvider } from "@tanstack/react-router"
 import { StrictMode } from "react"
 import { createRoot } from "react-dom/client"
 import { Toaster } from "@/components/ui/sonner"
 import { TooltipProvider } from "@/components/ui/tooltip"
+import { queryClient } from "@/data/query-client"
 import { routeTree } from "@/routeTree.gen"
 import { ThemeProvider } from "@/theme/theme-provider"
 
@@ -20,11 +22,13 @@ if (!root) throw new Error("index.html has no #root element")
 
 createRoot(root).render(
   <StrictMode>
-    <ThemeProvider>
-      <TooltipProvider>
-        <RouterProvider router={router} />
-        <Toaster />
-      </TooltipProvider>
-    </ThemeProvider>
+    <QueryClientProvider client={queryClient}>
+      <ThemeProvider>
+        <TooltipProvider>
+          <RouterProvider router={router} />
+          <Toaster />
+        </TooltipProvider>
+      </ThemeProvider>
+    </QueryClientProvider>
   </StrictMode>,
 )

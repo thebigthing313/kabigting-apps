@@ -1,8 +1,9 @@
-import { getRouteApi, Link, Outlet } from "@tanstack/react-router"
+import { getRouteApi, Link, Outlet, useNavigate } from "@tanstack/react-router"
 import { ChevronsUpDownIcon, HouseIcon, KeyRoundIcon, LogOutIcon } from "lucide-react"
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
@@ -50,6 +51,7 @@ export function AppShell() {
 
 function ShellSidebar() {
   const { session, apps } = appRoute.useRouteContext()
+  const navigate = useNavigate()
   const available = APPS.filter((app) => apps.includes(app.key))
 
   return (
@@ -110,14 +112,19 @@ function ShellSidebar() {
                 <ChevronsUpDownIcon className="ml-auto" />
               </DropdownMenuTrigger>
               <DropdownMenuContent side="top" align="start" className="min-w-56">
-                <DropdownMenuLabel>Account</DropdownMenuLabel>
-                <ThemeMenu />
-                <DropdownMenuItem className="min-h-11" render={<Link to="/change-password" />}>
-                  <KeyRoundIcon />
-                  Change password
-                </DropdownMenuItem>
+                <DropdownMenuGroup>
+                  <DropdownMenuLabel>Account</DropdownMenuLabel>
+                  <ThemeMenu />
+                  <DropdownMenuItem className="min-h-11" render={<Link to="/change-password" />}>
+                    <KeyRoundIcon />
+                    Change password
+                  </DropdownMenuItem>
+                </DropdownMenuGroup>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem className="min-h-11" onClick={() => void signOut()}>
+                <DropdownMenuItem
+                  className="min-h-11"
+                  onClick={() => void signOut(() => navigate({ to: "/sign-in" }))}
+                >
                   <LogOutIcon />
                   Sign out
                 </DropdownMenuItem>

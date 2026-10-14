@@ -43,6 +43,11 @@ pin was resolved or the check was run.
 | TanStack Router `Register` augmentation in plain SPA mode                                            | Pass without `@tanstack/router-core`: a `Link` to an unknown path is a type error                                                                                                                                                                | 2026-10-14 |
 | `tsc --noEmit` on client + server with TS 7.0.2, including the Hono typed client importing `AppType` | Pass                                                                                                                                                                                                                                             | 2026-10-14 |
 | Sign-in in `pnpm dev` (one origin, `/api` proxied)                                                   | Pass: temporary-password sign-in, 403 until changed, change, Shell and App launcher, deep-link redirect after sign-in; light phone and dark desktop screenshots with no console errors                                                           | 2026-10-14 |
+| A `useLiveQuery` component under React Compiler and TS 7                                             | Pass: `NotesPage` is compiled (component test) and the TanStack DB types check under `tsc`                                                                                                                                                       | 2026-10-14 |
+| React Compiler check can fail                                                                        | Pass: a `"use no memo"` control is reported as not compiled                                                                                                                                                                                      | 2026-10-14 |
+| TanStack Form with Zod 4 (Standard Schema)                                                           | Pass in Chromium and WebKit; no Zod 3 fallback needed                                                                                                                                                                                            | 2026-10-14 |
+| shadcn calendar                                                                                      | Pass: renders and selects a day in Chromium and WebKit. `calendar.tsx` needs `react/no-unstable-nested-components` relaxed (generated code)                                                                                                      | 2026-10-14 |
+| Optimistic writes and rollback in `pnpm dev`                                                         | Pass: create, edit, delete; a forced 500 on create rolls the row back with a "Saving failed" toast; sign-out returns to sign-in with no console errors                                                                                           | 2026-10-14 |
 
 ## Notes
 
@@ -66,3 +71,9 @@ pin was resolved or the check was run.
   `no-unsafe-type-assertion` (generated CSS-variable style objects).
 - pnpm 11 recorded `minimumReleaseAgeExclude` entries in `pnpm-workspace.yaml` for pinned versions
   published within its minimum release age; they are the exact pins above.
+- TanStack DB 0.14 deprecates `transaction.isPersisted.promise` (removed at 1.0 RC); the data
+  module uses `transaction.when("settled")`. Mutation handlers still return `{ refetch: false }`
+  after `writeUpsert`/`writeDelete` to opt out of the pre-1.0 automatic refetch.
+- Sign-out first navigates off the current page, then clears the query cache and cleans up every
+  collection, then does a full navigation. Cleaning up while a live query is mounted logs a
+  TanStack DB error.

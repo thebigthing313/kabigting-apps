@@ -1,5 +1,14 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest"
-import { HOUSEHOLD_ZONE, monthInstantRange, monthOf, today } from "./dates.ts"
+import {
+  formatDisplayDate,
+  fromPickerDate,
+  HOUSEHOLD_ZONE,
+  monthInstantRange,
+  monthOf,
+  nowInstant,
+  toPickerDate,
+  today,
+} from "./dates.ts"
 
 test("unit tests run far from the household zone", () => {
   expect(Intl.DateTimeFormat().resolvedOptions().timeZone).toBe("Pacific/Auckland")
@@ -57,4 +66,37 @@ describe("monthOf", () => {
     expect(monthOf(start)).toBe("2026-11")
     expect(monthOf(end)).toBe("2026-12")
   })
+})
+
+describe("nowInstant", () => {
+  beforeEach(() => vi.useFakeTimers())
+  afterEach(() => vi.useRealTimers())
+
+  test("is the current moment as ISO-8601 UTC", () => {
+    vi.setSystemTime(Date.UTC(2026, 9, 14, 13, 5))
+    expect(nowInstant()).toBe("2026-10-14T13:05:00.000Z")
+  })
+})
+
+describe("date picker conversion", () => {
+  test("a calendar date becomes local midnight of that day, whatever the zone", () => {
+    const picked = toPickerDate("2026-03-08")
+    expect([picked.getFullYear(), picked.getMonth(), picked.getDate(), picked.getHours()]).toEqual([
+      2026, 2, 8, 0,
+    ])
+  })
+
+  test("a picked day becomes its calendar date", () => {
+    expect(fromPickerDate(new Date(2026, 10, 1, 23, 59))).toBe("2026-11-01")
+  })
+
+  test("round-trips across both DST changes", () => {
+    for (const date of ["2026-03-08", "2026-11-01", "2026-12-31", "2028-02-29"]) {
+      expect(fromPickerDate(toPickerDate(date))).toBe(date)
+    }
+  })
+})
+
+test("formatDisplayDate shows a calendar date without shifting it", () => {
+  expect(formatDisplayDate("2026-11-01")).toBe("Nov 1, 2026")
 })

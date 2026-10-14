@@ -8,7 +8,8 @@ const allowed = new Set(["src/shared/dates.ts"])
 const skipDirs = new Set(["node_modules", "dist", "migrations"])
 const exts = /\.(ts|tsx|js|jsx|mjs|cjs)$/
 const pattern = /new\s+Date\s*\(([^)]*)\)/g
-const numeric = /^\s*-?[\d_]+(\.\d+)?\s*$/
+// One number, or a list of numbers (`new Date(2026, 2, 8)`).
+const numeric = /^\s*-?[\d_]+(\.\d+)?(\s*,\s*-?[\d_]+(\.\d+)?)*\s*$/
 
 /** @param {string} dir @returns {string[]} */
 function walk(dir) {
