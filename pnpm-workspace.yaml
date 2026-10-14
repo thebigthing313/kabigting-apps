@@ -19,3 +19,5 @@ minimumReleaseAgeExclude:
   - '@tanstack/react-db@0.5.9'
   - '@railway/cli@5.68.0'
   - railway@3.16.0
+overrides:
+  '@esbuild-kit/core-utils>esbuild': 0.25.12

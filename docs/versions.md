@@ -148,3 +148,8 @@ Resolved on 2026-10-14 (versions the spec fixed are installed exactly as listed 
   creates nor deletes a database.
 - Railway's edge cache must stay off (it is off by default). The SDK's `cdn` field is not accepted
   by CLI 5.68.0, so this is a dashboard check rather than part of `railway.ts`.
+- `pnpm-workspace.yaml` overrides `@esbuild-kit/core-utils>esbuild` to 0.25.12 (the copy Vite and
+  drizzle-kit already use). drizzle-kit 0.31.11 pulls esbuild 0.18.20 through
+  `@esbuild-kit/esm-loader`, which a Dependabot alert flags (dev-server request forgery, fixed in
+  0.25.0) and Dependabot cannot update itself. `db:generate` and `auth:generate` still produce no
+  changes with the override.
