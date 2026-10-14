@@ -238,3 +238,10 @@ Plugins in order: TanStack Router plugin, `@vitejs/plugin-react`, `@rolldown/plu
 ## 15. Out of scope
 
 The finances app and its Access data migration, custom domain, offline writes, multi-household, off-platform backups, transactional email, an in-app admin screen, push notifications and background sync, store listings, 2FA/passkeys/breached-password checks, staging environment, observability (error tracking and uptime monitoring), charts. See the map's Out of scope section.
+
+## 16. Decisions added during the build (by the user)
+
+- **Changesets** manage versioning and the changelog (`pnpm changeset`, `pnpm version-packages`; private package, nothing published).
+- CI **requires a changeset** for every merge to `main`.
+- A release **versions automatically**: the Changesets GitHub Action opens a "Version Packages" pull request from pending changesets; merging it bumps the version and writes `CHANGELOG.md`.
+- **No git author rewrite** (section 12.1 waived): the user's commit email is already public on their other repositories. The `research/*` and `worktree-*` branches stay local and are never pushed.

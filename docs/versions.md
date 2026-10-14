@@ -28,3 +28,15 @@ pin was resolved or the check was run.
 | Boundary 6: date-fns only in `src/shared/dates.ts`                                    | Pass: fails in `src/server`, passes in `dates.ts`                                                                | 2026-10-14 |
 | Rule 7: `new Date(<string>)` grep check                                               | Pass: flags `new Date("2026-01-01")`, allows `new Date(0)` and `new Date()`                                      | 2026-10-14 |
 | `tsc --noEmit` on the phase 1 configs with TypeScript 7.0.2                           | Pass (no `baseUrl`, no `incremental`)                                                                            | 2026-10-14 |
+| Node type stripping with Drizzle and Better Auth                                      | Pass: `node src/server/db/migrate.ts` applies migrations and `createAuth` answers `getSession`, no `tsx` needed  | 2026-10-14 |
+| Postgres 18 Docker volume layout                                                      | Pass: `PGDATA` is `/var/lib/postgresql/18/docker`; the volume mounts at `/var/lib/postgresql`                    | 2026-10-14 |
+| Postgres 18 native `uuidv7()` column default                                          | Pass (integration test)                                                                                          | 2026-10-14 |
+| Migrations apply from an empty database and re-run as a no-op                         | Pass (integration test)                                                                                          | 2026-10-14 |
+| `tsc` as the `erasableSyntaxOnly` gate                                                | Pass on shared and server code                                                                                   | 2026-10-14 |
+| Unit tests under `TZ=Pacific/Auckland`                                                | Pass: a guard test asserts the zone                                                                              | 2026-10-14 |
+
+## Notes
+
+- Better Auth generates its tables with `timestamp` (no time zone). The generated schema is never
+  hand-edited, so App tables use `timestamptz` and the auth tables keep Better Auth's choice. The
+  server runs in UTC on Railway.
