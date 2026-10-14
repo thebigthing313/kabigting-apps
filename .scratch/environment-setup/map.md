@@ -16,6 +16,7 @@ A locked set of stack decisions plus a scaffold spec a build agent can execute i
   - Railway-generated domain only; no custom domain.
 - Stack gaps raised and accepted: ORM/migrations, validation + API typing, Tailwind, PWA tooling, lint/format, testing, money/dates, CI/CD + envs + secrets, backups, toolchain pinning.
 - Skills: `grilling` + `domain-modeling` for grilling tickets; keep `CONTEXT.md` a glossary only.
+- Standing rule (user): once commits reach the public GitHub repository, publish no personal info. Before the first push: set a GitHub noreply author address, rewrite the author fields of existing commits and of any `research/*` or `worktree-*` branch that gets pushed (or do not push those branches), and re-scan files and history for personal names, emails and paths. Never put personal info in tickets or docs.
 - Tracker: local markdown in `.scratch/environment-setup/`.
 
 ## Decisions so far
@@ -33,12 +34,21 @@ A locked set of stack decisions plus a scaffold spec a build agent can execute i
 - [Grill: ORM and migrations](issues/09-orm-migrations.md): Drizzle 0.45.4 on `pg`; Better Auth tables prefixed `auth_`; `snake_case`, `amount_cents bigint`, `date` as strings; client-generated UUIDs (provisional on ticket 16); committed SQL migrations run by a programmatic pre-deploy script; forward-only.
 - [Grill: TanStack DB role and collections](issues/16-tanstack-db-collections.md): eager Query Collections over Hono REST; reads are `POST .../query`, writes return the row; optimistic with rollback via one factory; UUIDv7 client IDs; focus/reconnect refetch, no persistence; sign-out clears collections; beta pinned and contained in `src/client/data/`; disposable `skeleton_notes` proves the path.
 - [Grill: Validation and API typing](issues/10-validation-api-typing.md): Zod 4, hand-written shared schemas on shared primitives; type-only client import of route types via one file; one router per App; `{error:{code,message,details}}` envelope; `/query` with `ids` cap, `{rows}` response; strict inputs; `createAppRouter(appKey)` enforces the middleware chain.
+- [Research: Lint and format tooling facts](issues/18-lint-format-tooling.md): Oxlint has native React Compiler rules and `no-restricted-imports` with `allowTypeImports`; Oxfmt is pre-1.0 with built-in Tailwind sorting; Biome cannot make the type-only exception; typescript-eslint cannot run on TS 7 until 7.1. Branch `research/lint-format-tooling`.
+- [Grill: Lint and format](issues/06-lint-format.md): Oxlint + `oxlint-tsgolint` with native React Compiler rules; boundaries via `no-restricted-imports` (`allowTypeImports` for `api.ts`); `new Date(<string>)` is a grep check; pinned Prettier + Tailwind plugin; Husky + lint-staged autofix; zero warnings.
+- [Grill: CI/CD, environments and secrets](issues/13-cicd-envs-secrets.md): public GitHub repo, Railway deploys from `main`; production only; Actions run check, unit, integration (Postgres 18) and Playwright; IaC applied by hand; no production secrets in CI; Dependabot security only; `/api/health`.
+- [Grill: Tailwind and shadcn setup](issues/08-styling-shadcn.md): Tailwind v4; shadcn on Base UI, `nova` preset, **Olive base colour set at `init` (cannot change later)**; light/dark/system with pre-paint script; Sidebar shell; mobile-first with real desktop layouts; TanStack Form + TanStack Table; Prettier Tailwind plugin.
+- [Research: Testing tooling facts](issues/20-testing-tooling-facts.md): Vitest 5.0.4 supports Vite 8 and works with TS 7 (`--typecheck` experimental); browser mode ran Chromium + WebKit; compiled components need an explicit check; service-worker Playwright APIs are Chromium-only; Better Auth has `testUtils()`; keep `tsc --noEmit` as the erasable-syntax gate. Branch `research/testing-tooling-facts`.
+- [Research: PWA tooling facts](issues/21-pwa-tooling-facts.md): `vite-plugin-pwa` 2.0.0 supports Vite 8; `generateSW` + prompt; `@vite-pwa/assets-generator` for icons; Hono must set cache headers itself; iOS needs real-device checks. Branch `research/pwa-tooling-facts`.
+- [Grill: Testing strategy](issues/07-testing-strategy.md): Vitest 5 in unit/integration/browser projects; happy-dom plus browser mode (Chromium, WebKit); real Postgres 18 with per-worker template databases; no mocking, Better Auth `testUtils()`; Playwright on the production build; `fast-check` for money; non-NY timezone; React Compiler check; `tsc` as the syntax gate.
+- [Task: Write the Walking skeleton scaffold spec](issues/23-scaffold-spec.md): the build spec is [spec.md](spec.md); synthesises every decision above; nothing scaffolded.
+- [Grill: PWA tooling and updates](issues/12-pwa-updates.md): shell-only precache, never `/api/*`; update toast with draft-saving reload and a version header; "K" icon on Olive; Install menu item (iOS how-to); push/sync/offline writes out of scope.
+- [Grill: Backups](issues/14-backups.md): Railway volume backups only (default schedule); no off-platform copy or encryption; confirm schedules are enabled, manual backup before risky migrations, one restore rehearsal once real data exists.
+- [Research: Tailwind and shadcn facts](issues/19-shadcn-tailwind-facts.md): Tailwind v4 works with Vite 8; shadcn `init` needs `paths` in the root tsconfig; Base UI is shadcn default (Radix via `-b radix`); inline head script avoids theme flash; shadcn has a TanStack Form guide (Zod 4 unverified); `calendar.tsx` compiles with a skip; Olive not checked. Branch `research/shadcn-tailwind-facts`.
 
 
 ## Not yet specified
 
-- **Scaffold spec / hand-off.** Turn all decisions into the Walking skeleton build spec. Graduates once the grilling tickets close.
-- **Observability.** Error tracking and logs on Railway. Depends on the deployment research.
 
 ## Out of scope
 
@@ -46,6 +56,9 @@ A locked set of stack decisions plus a scaffold spec a build agent can execute i
 - Custom domain.
 - Offline writes and conflict resolution (online-first was chosen).
 - Multi-household / tenancy.
+- Observability: error tracking, uptime monitoring and alerts (Railway logs only); decided by the user.
+- Off-platform and encrypted backups, long retention beyond Railway's, automated backup monitoring (revisit if the data becomes hard to recreate).
+- Push notifications, background/periodic sync, and Play Store / App Store listings (the PWA is installed from the browser).
 - Transactional email (invites by link, self-service password reset); revisit only if the Admin-only reset becomes a burden.
 - In-app admin screen for managing Accounts and App access (the skeleton uses a script).
 - Hardening beyond the skeleton: 2FA, passkeys, breached-password check.
