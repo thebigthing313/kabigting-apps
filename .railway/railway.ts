@@ -23,9 +23,9 @@ export default defineRailway(() => {
     preDeploy: "node src/server/db/migrate.ts",
     healthcheck: "/api/health",
     healthcheckTimeout: 120,
-    // The app sets its own cache headers (no-cache shell, immutable assets, no-store API);
-    // keep Railway's edge cache off so a stale sw.js or index.html is never held there.
-    cdn: { enabled: false },
+    // Railway's edge cache must stay off (it is off by default): the app sets its own cache
+    // headers and a cached sw.js or index.html would pin old builds. The SDK's `cdn` field is
+    // not accepted by CLI 5.68.0, so this is checked in the dashboard instead.
     env: {
       DATABASE_URL: db.env.DATABASE_URL,
       BETTER_AUTH_SECRET: preserve(),
