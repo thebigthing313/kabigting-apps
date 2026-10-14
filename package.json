@@ -37,7 +37,8 @@
     "admin:ban": "node --env-file-if-exists=.env scripts/admin.ts ban",
     "test:component": "vitest run --project component --project browser",
     "icons:generate": "pwa-assets-generator",
-    "test:e2e": "pnpm build && playwright test"
+    "test:e2e": "pnpm build && playwright test",
+    "test:all": "pnpm test:unit && pnpm test:int && pnpm test:component && pnpm test:e2e"
   },
   "devDependencies": {
     "@babel/core": "7.29.7",

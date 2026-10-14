@@ -51,6 +51,8 @@ pin was resolved or the check was run.
 | One real `vite build` with vite-plugin-pwa 2.0.0 on Vite 8.3.4                                       | Pass: `generateSW`, one navigation route with `denylist: [/^\/api\//]`, no runtime routes, precache holds only shell files (no `/api`, no source maps, no `version.json`)                                                                        | 2026-10-14 |
 | Chromium service-worker tests (Playwright on the production build)                                   | Pass: manifest fields and icons, registration and control, the shell opening offline with "You're offline", a changed `sw.js` raising "Update available" and Reload switching to it                                                              | 2026-10-14 |
 | Real-device checks of `theme-color` (WebKit bug 305546) and iOS update timing                        | Deferred to phase 8 (needs the deployed domain and real phones)                                                                                                                                                                                  | 2026-10-14 |
+| `pnpm test:all` locally                                                                              | Pass: 114 unit, 54 integration, 22 component/browser, 29 end-to-end (Chromium and WebKit, phone and desktop, plus the Chromium PWA project); three consecutive e2e runs green                                                                    | 2026-10-14 |
+| CI on GitHub                                                                                         | Not run yet: no remote exists (phase 8)                                                                                                                                                                                                          | 2026-10-14 |
 
 ## Notes
 
@@ -89,3 +91,11 @@ pin was resolved or the check was run.
 - Update flow: Reload also reloads directly when no service worker controls the page (a deploy
   during someone's first visit), because no "controlling" event will come. A failed session
   check offline throws a network error instead of reading as "signed out".
+- End-to-end tests run the production auth config, which rate-limits sign-in per client address;
+  each test sends its own `X-Forwarded-For`. Whether Better Auth trusts a client-supplied
+  `X-Forwarded-For` behind Railway's proxy (which would let a client dodge the limit) is to be
+  checked at deploy.
+- The release workflow opens the "Version Packages" pull request with `CHANGESETS_TOKEN` if that
+  secret exists, else the default token; pull requests opened by the default token do not trigger
+  CI, so with required checks that pull request could not merge without the token or an admin
+  bypass.

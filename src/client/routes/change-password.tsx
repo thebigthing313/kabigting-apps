@@ -63,7 +63,14 @@ function ChangePasswordPage() {
           : "Your other devices will be signed out."
       }
     >
-      <form action={submit}>
+      {/* onSubmit, not a form action: React resets a form after an action, which would clear
+          what was typed when the attempt fails. */}
+      <form
+        onSubmit={(event) => {
+          event.preventDefault()
+          void submit(new FormData(event.currentTarget))
+        }}
+      >
         <FieldGroup>
           <Field>
             <FieldLabel htmlFor="current">

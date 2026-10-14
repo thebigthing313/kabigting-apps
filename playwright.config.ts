@@ -5,6 +5,15 @@ import { defineConfig, devices } from "@playwright/test"
 const PORT = 4173
 const BASE_URL = `http://localhost:${PORT}`
 
+// Every user-facing project depends on the one sign-in; service workers are blocked there so a
+// test never runs against a cached shell. The PWA project runs last, alone, in Chromium.
+const browsers = [
+  { name: "chromium-desktop", device: devices["Desktop Chrome"] },
+  { name: "chromium-phone", device: devices["Pixel 7"] },
+  { name: "webkit-desktop", device: devices["Desktop Safari"] },
+  { name: "webkit-phone", device: devices["iPhone 15"] },
+]
+
 export default defineConfig({
   testDir: "e2e",
   forbidOnly: Boolean(process.env.CI),
@@ -25,5 +34,19 @@ export default defineConfig({
       NODE_ENV: "production",
     },
   },
-  projects: [{ name: "chromium-desktop", use: { ...devices["Desktop Chrome"] } }],
+  projects: [
+    { name: "setup", testMatch: /auth\.setup\.ts/, use: { ...devices["Desktop Chrome"] } },
+    ...browsers.map(({ name, device }) => ({
+      name,
+      dependencies: ["setup"],
+      testIgnore: /pwa\.spec\.ts/,
+      use: { ...device, serviceWorkers: "block" as const },
+    })),
+    {
+      name: "pwa-chromium",
+      testMatch: /pwa\.spec\.ts/,
+      dependencies: browsers.map(({ name }) => name),
+      use: { ...devices["Desktop Chrome"] },
+    },
+  ],
 })

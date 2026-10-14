@@ -46,7 +46,14 @@ function SignInPage() {
       title="Sign in"
       description="Kabigting Apps is invite-only. Ask the Admin for an Account."
     >
-      <form action={submit}>
+      {/* onSubmit, not a form action: React resets a form after an action, which would clear
+          what was typed when the attempt fails. */}
+      <form
+        onSubmit={(event) => {
+          event.preventDefault()
+          void submit(new FormData(event.currentTarget))
+        }}
+      >
         <FieldGroup>
           <Field>
             <FieldLabel htmlFor="email">Email</FieldLabel>

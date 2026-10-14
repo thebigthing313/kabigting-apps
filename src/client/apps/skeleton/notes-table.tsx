@@ -1,5 +1,6 @@
 import { createColumnHelper, tableFeatures, useTable } from "@tanstack/react-table"
 import { PencilIcon, Trash2Icon } from "lucide-react"
+import { useState } from "react"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -9,7 +10,6 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
 import { Button } from "@/components/ui/button"
 import {
@@ -42,36 +42,66 @@ export function SignedAmount({ cents }: { cents: number }) {
 
 type Actions = { onEdit: (note: Note) => void; onDelete: (note: Note) => void }
 
-function RowActions({ note, onEdit, onDelete }: { note: Note } & Actions) {
+function RowActions({
+  note,
+  onEdit,
+  onAskDelete,
+}: {
+  note: Note
+  onEdit: (note: Note) => void
+  onAskDelete: (note: Note) => void
+}) {
   return (
     <div className="flex justify-end gap-1">
       <Button variant="ghost" size="icon" className="size-11" onClick={() => onEdit(note)}>
         <PencilIcon />
         <span className="sr-only">Edit {note.text}</span>
       </Button>
-      <AlertDialog>
-        <AlertDialogTrigger render={<Button variant="ghost" size="icon" className="size-11" />}>
-          <Trash2Icon />
-          <span className="sr-only">Delete {note.text}</span>
-        </AlertDialogTrigger>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete this note?</AlertDialogTitle>
-            <AlertDialogDescription>“{note.text}” will be removed.</AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel className="h-11">Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              variant="destructive"
-              className="h-11"
-              onClick={() => onDelete(note)}
-            >
-              Delete
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <Button variant="ghost" size="icon" className="size-11" onClick={() => onAskDelete(note)}>
+        <Trash2Icon />
+        <span className="sr-only">Delete {note.text}</span>
+      </Button>
     </div>
+  )
+}
+
+/** One confirmation for the whole table; it closes before the delete is sent. */
+function ConfirmDelete({
+  note,
+  onCancel,
+  onConfirm,
+}: {
+  note: Note | null
+  onCancel: () => void
+  onConfirm: (note: Note) => void
+}) {
+  return (
+    <AlertDialog
+      open={note !== null}
+      onOpenChange={(open) => {
+        if (!open) onCancel()
+      }}
+    >
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Delete this note?</AlertDialogTitle>
+          <AlertDialogDescription>“{note?.text}” will be removed.</AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel className="h-11">Cancel</AlertDialogCancel>
+          <AlertDialogAction
+            variant="destructive"
+            className="h-11"
+            onClick={() => {
+              if (note) onConfirm(note)
+              onCancel()
+            }}
+          >
+            Delete
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   )
 }
 
@@ -87,6 +117,7 @@ const columns = helper.columns([
 export function NotesTable({ notes, onEdit, onDelete }: { notes: Note[] } & Actions) {
   const table = useTable({ features, columns, data: notes })
   const rows = table.getRowModel().rows
+  const [confirming, setConfirming] = useState<Note | null>(null)
 
   return (
     <>
@@ -100,7 +131,7 @@ export function NotesTable({ notes, onEdit, onDelete }: { notes: Note[] } & Acti
               </p>
             </div>
             <SignedAmount cents={row.original.amountCents} />
-            <RowActions note={row.original} onEdit={onEdit} onDelete={onDelete} />
+            <RowActions note={row.original} onEdit={onEdit} onAskDelete={setConfirming} />
           </li>
         ))}
       </ul>
@@ -126,13 +157,15 @@ export function NotesTable({ notes, onEdit, onDelete }: { notes: Note[] } & Acti
                   <SignedAmount cents={row.original.amountCents} />
                 </TableCell>
                 <TableCell>
-                  <RowActions note={row.original} onEdit={onEdit} onDelete={onDelete} />
+                  <RowActions note={row.original} onEdit={onEdit} onAskDelete={setConfirming} />
                 </TableCell>
               </TableRow>
             ))}
           </TableBody>
         </Table>
       </div>
+
+      <ConfirmDelete note={confirming} onCancel={() => setConfirming(null)} onConfirm={onDelete} />
     </>
   )
 }
