@@ -1,4 +1,5 @@
 allowBuilds:
+  '@railway/cli': true
   esbuild: true
 minimumReleaseAgeExclude:
   - lucide-react@1.57.0
@@ -16,3 +17,5 @@ minimumReleaseAgeExclude:
   - '@tanstack/db@0.14.0'
   - '@tanstack/query-db-collection@1.4.4'
   - '@tanstack/react-db@0.5.9'
+  - '@railway/cli@5.68.0'
+  - railway@3.16.0
