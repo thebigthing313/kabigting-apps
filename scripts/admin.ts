@@ -7,7 +7,7 @@
 import { parseArgs } from "node:util"
 import { banAccount, createAccount, resetAccount, type AccountDeps } from "#server/auth/accounts.ts"
 import { createAuth } from "#server/auth/auth.ts"
-import { APP_KEYS, isAppKey } from "#server/core/apps.ts"
+import { APP_KEYS, isAppKey } from "#shared/apps.ts"
 import { createDb } from "#server/db/client.ts"
 import { parseEnv } from "#server/env.ts"
 
