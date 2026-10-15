@@ -1,5 +1,6 @@
-import { EllipsisVerticalIcon, KeyRoundIcon } from "lucide-react"
+import { EllipsisVerticalIcon, KeyRoundIcon, UndoIcon, UserXIcon } from "lucide-react"
 import { useState } from "react"
+import { toast } from "sonner"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -24,10 +25,15 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { type AdminAccount, useResetAccount } from "@/data/admin-accounts"
+import {
+  type AdminAccount,
+  useRemoveAccount,
+  useResetAccount,
+  useRestoreAccount,
+} from "@/data/admin-accounts"
 import { IssuedPassword } from "@/shell/accounts/new-account-dialog"
 
-export type AccountAction = "reset"
+export type AccountAction = "reset" | "remove"
 
 export type ActionTarget = { action: AccountAction; account: AdminAccount }
 
@@ -39,6 +45,8 @@ export function AccountActionsMenu({
   account: AdminAccount
   onAction: (target: ActionTarget) => void
 }) {
+  const restore = useRestoreAccount()
+
   return (
     <DropdownMenu>
       <DropdownMenuTrigger render={<Button variant="ghost" size="icon" className="size-11" />}>
@@ -46,13 +54,39 @@ export function AccountActionsMenu({
         <span className="sr-only">Actions for {account.email}</span>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="min-w-48">
-        <DropdownMenuItem
-          className="min-h-11"
-          onClick={() => onAction({ action: "reset", account })}
-        >
-          <KeyRoundIcon />
-          Reset password
-        </DropdownMenuItem>
+        {account.status === "removed" ? (
+          // Restoring gives back nothing the Account did not already have, so no confirmation.
+          <DropdownMenuItem
+            className="min-h-11"
+            disabled={restore.isPending}
+            onClick={() =>
+              restore.mutate(account.id, {
+                onSuccess: () => toast.success(`Restored ${account.name}`),
+              })
+            }
+          >
+            <UndoIcon />
+            Restore
+          </DropdownMenuItem>
+        ) : (
+          <>
+            <DropdownMenuItem
+              className="min-h-11"
+              onClick={() => onAction({ action: "reset", account })}
+            >
+              <KeyRoundIcon />
+              Reset password
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              variant="destructive"
+              className="min-h-11"
+              onClick={() => onAction({ action: "remove", account })}
+            >
+              <UserXIcon />
+              Remove
+            </DropdownMenuItem>
+          </>
+        )}
       </DropdownMenuContent>
     </DropdownMenu>
   )
@@ -145,6 +179,29 @@ function ResetPassword({ account, onClose }: { account: AdminAccount; onClose: (
   )
 }
 
+function RemoveAccount({ account, onClose }: { account: AdminAccount; onClose: () => void }) {
+  const remove = useRemoveAccount()
+  return (
+    <ConfirmCommand
+      title="Remove Account?"
+      description={`Sign ${account.name} out everywhere and block sign-in? Their data is kept and you can restore them.`}
+      confirmLabel="Remove"
+      pendingLabel="Removing…"
+      pending={remove.isPending}
+      onCancel={onClose}
+      onConfirm={() =>
+        remove.mutate(account.id, {
+          onSuccess: () => {
+            toast.success(`Removed ${account.name}`)
+            onClose()
+          },
+          onError: onClose,
+        })
+      }
+    />
+  )
+}
+
 /** The dialog for whichever action the Admin picked, if any. */
 export function AccountActionDialog({
   target,
@@ -155,8 +212,12 @@ export function AccountActionDialog({
 }) {
   if (!target) return null
   const { action, account } = target
-  if (action === "reset") {
-    return <ResetPassword key={account.id} account={account} onClose={onClose} />
+  switch (action) {
+    case "reset":
+      return <ResetPassword key={account.id} account={account} onClose={onClose} />
+    case "remove":
+      return <RemoveAccount key={account.id} account={account} onClose={onClose} />
+    default:
+      return null
   }
-  return null
 }

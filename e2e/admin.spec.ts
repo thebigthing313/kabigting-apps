@@ -118,4 +118,31 @@ test("the Admin manages an Account from creation onwards", async ({ page }, test
   await signInFresh(page, email, resetPassword)
   await replaceTemporaryPassword(page, resetPassword, "another-password-of-mine")
   await expect(page.getByRole("heading", { name: "Hello, Created" })).toBeVisible()
+  await signOut(page, "Created")
+
+  // Remove: sign-in is blocked. Restore: the same password works again.
+  await adminOpensAccounts(page)
+  const row = page
+    .getByRole("listitem")
+    .or(page.getByRole("row"))
+    .filter({ hasText: email })
+    .filter({ visible: true })
+  await openActions(page, email)
+  await page.getByRole("menuitem", { name: "Remove" }).click()
+  await expect(page.getByRole("alertdialog")).toContainText("Their data is kept")
+  await page.getByRole("alertdialog").getByRole("button", { name: "Remove" }).click()
+  await expect(row).toContainText("Removed")
+  await signOut(page, "Admin")
+
+  await signInFresh(page, email, "another-password-of-mine")
+  await expect(page.getByText("That email and password do not match an Account.")).toBeVisible()
+
+  await adminOpensAccounts(page)
+  await openActions(page, email)
+  await page.getByRole("menuitem", { name: "Restore" }).click()
+  await expect(row).toContainText("Active")
+  await signOut(page, "Admin")
+
+  await signInFresh(page, email, "another-password-of-mine")
+  await expect(page.getByRole("heading", { name: "Hello, Created" })).toBeVisible()
 })

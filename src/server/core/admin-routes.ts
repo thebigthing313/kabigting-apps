@@ -3,8 +3,10 @@ import {
   accountIdByEmail,
   createAccount,
   findAccount,
+  banAccount,
   listAccounts,
   resetAccount,
+  restoreAccount,
 } from "#server/auth/accounts.ts"
 import { bodyLimit } from "#server/core/body-limit.ts"
 import type { AppEnv, Deps } from "#server/core/context.ts"
@@ -52,6 +54,16 @@ export function adminRoutes(deps: Deps) {
     .post("/accounts/:id/reset", validate("param", accountParams), async (c) => {
       const ref = await otherAccount(deps, c.get("account").id, c.req.valid("param").id)
       await resetAccount(deps, ref)
+      return c.json({ row: await accountRow(deps, ref.userId) })
+    })
+    .post("/accounts/:id/remove", validate("param", accountParams), async (c) => {
+      const ref = await otherAccount(deps, c.get("account").id, c.req.valid("param").id)
+      await banAccount(deps, ref)
+      return c.json({ row: await accountRow(deps, ref.userId) })
+    })
+    .post("/accounts/:id/restore", validate("param", accountParams), async (c) => {
+      const ref = await otherAccount(deps, c.get("account").id, c.req.valid("param").id)
+      await restoreAccount(deps, ref)
       return c.json({ row: await accountRow(deps, ref.userId) })
     })
 }

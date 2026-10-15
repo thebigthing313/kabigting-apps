@@ -258,3 +258,76 @@ describe("resetting a password", () => {
     expect(await session(server.app, target.headers)).not.toBeNull()
   })
 })
+
+describe("removing and restoring an Account", () => {
+  test("removal blocks sign-in and signs out everywhere; restoring lets the old password back in", async () => {
+    const admin = await server.signedInAccount({ role: "admin" })
+    const email = uniqueEmail()
+    const created = rowResponse.parse(
+      await (await createViaApi(admin.headers, { email, name: "Leaving", apps: [] })).json(),
+    ).row
+    const temporary = created.temporaryPassword ?? ""
+    const signedIn = await signIn(server.app, email, temporary)
+    const settled = await changePassword(server.app, signedIn.headers, temporary, "my-own-password")
+
+    const removed = await act(admin.headers, created.id, "remove")
+    expect(removed.status).toBe(200)
+    expect(rowResponse.parse(await removed.json()).row).toMatchObject({ status: "removed" })
+    expect(await session(server.app, settled.headers)).toBeNull()
+    expect((await signIn(server.app, email, "my-own-password")).status).not.toBe(200)
+
+    const again = await act(admin.headers, created.id, "remove")
+    expect(again.status).toBe(200)
+    expect(rowResponse.parse(await again.json()).row).toMatchObject({ status: "removed" })
+
+    const restored = await act(admin.headers, created.id, "restore")
+    expect(restored.status).toBe(200)
+    expect(rowResponse.parse(await restored.json()).row).toMatchObject({ status: "active" })
+    expect((await signIn(server.app, email, "my-own-password")).status).toBe(200)
+  })
+
+  test("removal clears a temporary password; after a restore the Admin must reset", async () => {
+    const admin = await server.signedInAccount({ role: "admin" })
+    const email = uniqueEmail()
+    const created = rowResponse.parse(
+      await (await createViaApi(admin.headers, { email, name: "Never came", apps: [] })).json(),
+    ).row
+
+    const removed = rowResponse.parse(await (await act(admin.headers, created.id, "remove")).json())
+    expect(removed.row).toMatchObject({ status: "removed", temporaryPassword: null })
+
+    const restored = rowResponse.parse(
+      await (await act(admin.headers, created.id, "restore")).json(),
+    )
+    expect(restored.row).toMatchObject({
+      status: "awaiting_password_change",
+      temporaryPassword: null,
+    })
+  })
+
+  test("restoring an Active Account changes nothing", async () => {
+    const admin = await server.signedInAccount({ role: "admin" })
+    const member = await server.signedInAccount()
+    const response = await act(admin.headers, member.user.id, "restore")
+    expect(response.status).toBe(200)
+    expect(rowResponse.parse(await response.json()).row).toMatchObject({ status: "active" })
+    expect(await session(server.app, member.headers)).not.toBeNull()
+  })
+
+  test.each(["remove", "restore"])(
+    "%s refuses the Admin's own Account and unknown ones",
+    async (action) => {
+      const admin = await server.signedInAccount({ role: "admin" })
+      expect((await act(admin.headers, admin.user.id, action)).status).toBe(409)
+      expect((await act(admin.headers, "no-such-account", action)).status).toBe(404)
+      expect(await session(server.app, admin.headers)).not.toBeNull()
+    },
+  )
+
+  test("a non-Admin cannot remove anyone", async () => {
+    const caller = await server.signedInAccount()
+    const target = await server.signedInAccount()
+    expect((await act(caller.headers, target.user.id, "remove")).status).toBe(403)
+    expect(await session(server.app, target.headers)).not.toBeNull()
+  })
+})

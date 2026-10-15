@@ -168,7 +168,10 @@ export async function resetAccount(
   return { temporaryPassword }
 }
 
-/** Removal: ban (blocks sign-in) and revoke every session. Data is kept. */
+/**
+ * Removal: ban (blocks sign-in), revoke every session and forget any temporary password. Data
+ * is kept, and removing a Removed Account changes nothing.
+ */
 export async function banAccount({ db, auth }: AccountDeps, ref: AccountRef) {
   const userId = await findUserId(db, ref)
   const context = await auth.$context
@@ -177,4 +180,16 @@ export async function banAccount({ db, auth }: AccountDeps, ref: AccountRef) {
     banReason: "Removed by the Admin",
   })
   await context.internalAdapter.deleteUserSessions(userId)
+  await forgetTemporaryPassword(db, userId)
+}
+
+/** Lets a Removed Account sign in again with its existing password. */
+export async function restoreAccount({ db, auth }: AccountDeps, ref: AccountRef) {
+  const userId = await findUserId(db, ref)
+  const context = await auth.$context
+  await context.internalAdapter.updateUser(userId, {
+    banned: false,
+    banReason: null,
+    banExpires: null,
+  })
 }

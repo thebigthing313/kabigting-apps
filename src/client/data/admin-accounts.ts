@@ -40,3 +40,15 @@ export function useResetAccount() {
     readJson(await api.admin.accounts[":id"].reset.$post({ param: { id } })),
   )
 }
+
+export function useRemoveAccount() {
+  return useAccountCommand("Removing the Account", async (id: string) =>
+    readJson(await api.admin.accounts[":id"].remove.$post({ param: { id } })),
+  )
+}
+
+export function useRestoreAccount() {
+  return useAccountCommand("Restoring the Account", async (id: string) =>
+    readJson(await api.admin.accounts[":id"].restore.$post({ param: { id } })),
+  )
+}
