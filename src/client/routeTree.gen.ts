@@ -14,6 +14,7 @@ import { Route as ChangePasswordRouteImport } from './routes/change-password'
 import { Route as SignInRouteImport } from './routes/sign-in'
 import { Route as AppIndexRouteImport } from './routes/_app/index'
 import { Route as AppSkeletonRouteImport } from './routes/_app/skeleton'
+import { Route as AppAdminAccountsRouteImport } from './routes/_app/admin/accounts'
 
 const AppRoute = AppRouteImport.update({
   id: '/_app',
@@ -39,18 +40,25 @@ const AppSkeletonRoute = AppSkeletonRouteImport.update({
   path: '/skeleton',
   getParentRoute: () => AppRoute,
 } as any)
+const AppAdminAccountsRoute = AppAdminAccountsRouteImport.update({
+  id: '/admin/accounts',
+  path: '/admin/accounts',
+  getParentRoute: () => AppRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof AppIndexRoute
   '/change-password': typeof ChangePasswordRoute
   '/sign-in': typeof SignInRoute
   '/skeleton': typeof AppSkeletonRoute
+  '/admin/accounts': typeof AppAdminAccountsRoute
 }
 export interface FileRoutesByTo {
   '/change-password': typeof ChangePasswordRoute
   '/sign-in': typeof SignInRoute
   '/skeleton': typeof AppSkeletonRoute
   '/': typeof AppIndexRoute
+  '/admin/accounts': typeof AppAdminAccountsRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -59,12 +67,14 @@ export interface FileRoutesById {
   '/sign-in': typeof SignInRoute
   '/_app/skeleton': typeof AppSkeletonRoute
   '/_app/': typeof AppIndexRoute
+  '/_app/admin/accounts': typeof AppAdminAccountsRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/change-password' | '/sign-in' | '/skeleton'
+  fullPaths:
+    '/' | '/change-password' | '/sign-in' | '/skeleton' | '/admin/accounts'
   fileRoutesByTo: FileRoutesByTo
-  to: '/change-password' | '/sign-in' | '/skeleton' | '/'
+  to: '/change-password' | '/sign-in' | '/skeleton' | '/' | '/admin/accounts'
   id:
     | '__root__'
     | '/_app'
@@ -72,6 +82,7 @@ export interface FileRouteTypes {
     | '/sign-in'
     | '/_app/skeleton'
     | '/_app/'
+    | '/_app/admin/accounts'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -117,17 +128,26 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppSkeletonRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/admin/accounts': {
+      id: '/_app/admin/accounts'
+      path: '/admin/accounts'
+      fullPath: '/admin/accounts'
+      preLoaderRoute: typeof AppAdminAccountsRouteImport
+      parentRoute: typeof AppRoute
+    }
   }
 }
 
 interface AppRouteChildren {
   AppSkeletonRoute: typeof AppSkeletonRoute
   AppIndexRoute: typeof AppIndexRoute
+  AppAdminAccountsRoute: typeof AppAdminAccountsRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
   AppSkeletonRoute: AppSkeletonRoute,
   AppIndexRoute: AppIndexRoute,
+  AppAdminAccountsRoute: AppAdminAccountsRoute,
 }
 
 const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)

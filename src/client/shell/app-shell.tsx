@@ -1,5 +1,5 @@
 import { getRouteApi, Link, Outlet, useNavigate } from "@tanstack/react-router"
-import { ChevronsUpDownIcon, HouseIcon, KeyRoundIcon, LogOutIcon } from "lucide-react"
+import { ChevronsUpDownIcon, HouseIcon, KeyRoundIcon, LogOutIcon, UsersIcon } from "lucide-react"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -95,6 +95,25 @@ function ShellSidebar() {
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
+        {session.user.role === "admin" && (
+          <SidebarGroup>
+            <SidebarGroupLabel>Admin</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                <SidebarMenuItem>
+                  <SidebarMenuButton
+                    size="lg"
+                    tooltip="Accounts"
+                    render={<Link to="/admin/accounts" />}
+                  >
+                    <UsersIcon />
+                    <span>Accounts</span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
       </SidebarContent>
       <SidebarFooter className="pb-[max(0.5rem,env(safe-area-inset-bottom))]">
         <SidebarMenu>

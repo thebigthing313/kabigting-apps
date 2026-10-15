@@ -1,13 +1,19 @@
-// Account administration from the command line (there is no admin screen):
+// Account administration from the command line, beside the Admin's Accounts screen. Use it to
+// seed the first Admin and to recover if the Admin is locked out:
 //   pnpm admin:create --email <email> --name <name>
 //   pnpm admin:create-account --email <email> --name <name> --apps skeleton,...
 //   pnpm admin:reset --email <email>
 //   pnpm admin:ban --email <email>
 // Temporary passwords are printed once; share them out of band.
 import { parseArgs } from "node:util"
-import { banAccount, createAccount, resetAccount, type AccountDeps } from "#server/auth/accounts.ts"
+import {
+  removeAccount,
+  createAccount,
+  resetAccount,
+  type AccountDeps,
+} from "#server/auth/accounts.ts"
 import { createAuth } from "#server/auth/auth.ts"
-import { APP_KEYS, isAppKey } from "#server/core/apps.ts"
+import { APP_KEYS, isAppKey } from "#shared/apps.ts"
 import { createDb } from "#server/db/client.ts"
 import { parseEnv } from "#server/env.ts"
 
@@ -75,7 +81,7 @@ export async function runAdmin(
     }
     case "ban": {
       const email = required(values.email, "email")
-      await banAccount(deps, { email })
+      await removeAccount(deps, { email })
       print(`Banned ${email}; every session is signed out`)
       return
     }

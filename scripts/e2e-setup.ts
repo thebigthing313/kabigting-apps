@@ -2,7 +2,7 @@
 // Playwright's web server command before the production server starts.
 import { mkdirSync, writeFileSync } from "node:fs"
 import pg from "pg"
-import { createAccount, grantApps } from "#server/auth/accounts.ts"
+import { createAccount, forgetTemporaryPassword, grantApps } from "#server/auth/accounts.ts"
 import { createAuth } from "#server/auth/auth.ts"
 import { createDb } from "#server/db/client.ts"
 import { runMigrations } from "#server/db/migrate.ts"
@@ -27,20 +27,29 @@ const auth = createAuth({ db, baseURL: env.BASE_URL, secret: env.BETTER_AUTH_SEC
 const context = await auth.$context
 
 /** An Account whose password is already its own (as after the forced change). */
-async function settledAccount(email: string, name: string, password: string, apps: string[]) {
-  const { userId } = await createAccount({ db, auth }, { email, name, apps })
+async function settledAccount(
+  email: string,
+  name: string,
+  password: string,
+  apps: string[],
+  role: "admin" | "user" = "user",
+) {
+  const { userId } = await createAccount({ db, auth }, { email, name, apps, role })
   await context.internalAdapter.updatePassword(userId, await context.password.hash(password))
   await context.internalAdapter.updateUser(userId, { mustChangePassword: false })
+  await forgetTemporaryPassword(db, userId)
   await grantApps(db, userId, apps)
 }
 
 const accounts = {
+  admin: { email: "admin@example.com", password: "e2e-admin-password" },
   member: { email: "member@example.com", password: "e2e-member-password" },
   guest: { email: "guest@example.com", password: "e2e-guest-password" },
   // Fresh Accounts for the forced-change test, one per Playwright project.
   newcomers: {} as Record<string, { email: string; temporaryPassword: string }>,
 }
 await settledAccount(accounts.member.email, "Member", accounts.member.password, ["skeleton"])
+await settledAccount(accounts.admin.email, "Admin", accounts.admin.password, ["skeleton"], "admin")
 await settledAccount(accounts.guest.email, "Guest", accounts.guest.password, [])
 for (const project of ["chromium-desktop", "chromium-phone", "webkit-desktop", "webkit-phone"]) {
   const email = `newcomer-${project}@example.com`

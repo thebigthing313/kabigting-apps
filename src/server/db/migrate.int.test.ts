@@ -35,6 +35,7 @@ test("migrations apply to an empty database and create every table", async () =>
     "auth_user",
     "auth_verification",
     "skeleton_notes",
+    "temporary_password",
   ])
 })
 

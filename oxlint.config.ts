@@ -1,5 +1,5 @@
 import { defineConfig } from "oxlint"
-import { APP_KEYS } from "./src/server/core/apps.ts"
+import { APP_KEYS } from "./src/shared/apps.ts"
 
 /** Each App gets an override that forbids importing any other App's folder. */
 const APPS: readonly string[] = APP_KEYS

@@ -16,7 +16,7 @@ A locked set of stack decisions plus a scaffold spec a build agent can execute i
   - Railway-generated domain only; no custom domain.
 - Stack gaps raised and accepted: ORM/migrations, validation + API typing, Tailwind, PWA tooling, lint/format, testing, money/dates, CI/CD + envs + secrets, backups, toolchain pinning.
 - Skills: `grilling` + `domain-modeling` for grilling tickets; keep `CONTEXT.md` a glossary only.
-- Standing rule (user): once commits reach the public GitHub repository, publish no personal info. Before the first push: set a GitHub noreply author address, rewrite the author fields of existing commits and of any `research/*` or `worktree-*` branch that gets pushed (or do not push those branches), and re-scan files and history for personal names, emails and paths. Never put personal info in tickets or docs.
+- Standing rule (user): the repository is public, so no personal names, emails or local paths go into files, tickets or docs. Commit author fields are exempt: the user's commit email is already public, so no noreply address and no author rewrites (struck by the user on 2026-10-14).
 - Tracker: local markdown in `.scratch/environment-setup/`.
 
 ## Decisions so far

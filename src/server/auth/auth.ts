@@ -2,6 +2,7 @@ import { drizzleAdapter } from "@better-auth/drizzle-adapter"
 import { betterAuth, type BetterAuthOptions } from "better-auth"
 import { APIError, createAuthMiddleware } from "better-auth/api"
 import { admin, testUtils } from "better-auth/plugins"
+import { forgetTemporaryPassword } from "#server/auth/accounts.ts"
 import type { Db } from "#server/db/client.ts"
 import * as authSchema from "#server/db/schema/auth.ts"
 
@@ -57,7 +58,7 @@ function options({ db, baseURL, secret }: AuthDeps) {
     account: { modelName: "auth_account" },
     verification: { modelName: "auth_verification" },
     rateLimit: { enabled: true },
-    hooks: { before: rejectReusedPassword, after: clearMustChangePassword },
+    hooks: { before: rejectReusedPassword, after: clearMustChangePassword(db) },
   } satisfies BetterAuthOptions
 }
 
@@ -76,13 +77,19 @@ const rejectReusedPassword = createAuthMiddleware(async (ctx) => {
   return { context: { body: { ...body, revokeOtherSessions: true } } }
 })
 
-/** After a successful change-password, the Account no longer has a temporary password. */
-const clearMustChangePassword = createAuthMiddleware(async (ctx) => {
-  if (ctx.path !== "/change-password") return
-  const userId = ctx.context.newSession?.user.id
-  if (!userId) return
-  await ctx.context.internalAdapter.updateUser(userId, { mustChangePassword: false })
-})
+/**
+ * After a successful change-password, the Account no longer has a temporary password: the flag
+ * is cleared and the Admin can no longer read the old one.
+ */
+function clearMustChangePassword(db: Db) {
+  return createAuthMiddleware(async (ctx) => {
+    if (ctx.path !== "/change-password") return
+    const userId = ctx.context.newSession?.user.id
+    if (!userId) return
+    await ctx.context.internalAdapter.updateUser(userId, { mustChangePassword: false })
+    await forgetTemporaryPassword(db, userId)
+  })
+}
 
 function isPasswordChange(body: unknown): body is { currentPassword: string; newPassword: string } {
   return (

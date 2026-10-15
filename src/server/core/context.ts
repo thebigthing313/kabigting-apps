@@ -1,3 +1,4 @@
+import type { AccountDeps } from "#server/auth/accounts.ts"
 import type { Auth } from "#server/auth/auth.ts"
 import type { Db } from "#server/db/client.ts"
 
@@ -7,7 +8,8 @@ export type Session = Auth["$Infer"]["Session"]
 export type Account = { id: string; email: string; name: string; role: string }
 
 /** The parts of Better Auth the app uses, so a test instance with extra plugins also fits. */
-export type AuthServer = Pick<Auth, "handler"> & { api: Pick<Auth["api"], "getSession"> }
+export type AuthServer = Pick<Auth, "handler"> &
+  AccountDeps["auth"] & { api: Pick<Auth["api"], "getSession"> }
 
 export type Deps = { db: Db; auth: AuthServer }
 

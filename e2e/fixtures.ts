@@ -3,6 +3,7 @@ import { test as base, expect, type Page } from "@playwright/test"
 import { z } from "zod"
 
 const accountsFile = z.object({
+  admin: z.object({ email: z.string(), password: z.string() }),
   member: z.object({ email: z.string(), password: z.string() }),
   guest: z.object({ email: z.string(), password: z.string() }),
   newcomers: z.record(z.string(), z.object({ email: z.string(), temporaryPassword: z.string() })),
@@ -47,4 +48,18 @@ export async function openAccountMenu(page: Page, name: string) {
   if (!(await account.isVisible()))
     await page.getByRole("button", { name: "Toggle Sidebar" }).click()
   await account.click()
+}
+
+let addressCounter = 0
+
+/**
+ * Moves the page to a fresh client address. A test that signs in several times does this first,
+ * so the per-address sign-in rate limit sees separate devices.
+ */
+export async function useNewAddress(page: Page) {
+  addressCounter += 1
+  const worker = test.info().workerIndex % 16
+  await page.setExtraHTTPHeaders({
+    "x-forwarded-for": `172.${16 + worker}.${Math.floor(addressCounter / 250) % 250}.${(addressCounter % 250) + 1}`,
+  })
 }
