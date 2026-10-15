@@ -5,7 +5,14 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 
 /** The temporary password the Admin passes on: hidden until shown, copyable either way. */
-export function TemporaryPassword({ password, label }: { password: string; label: string }) {
+export function TemporaryPassword({
+  password,
+  accessibleName,
+}: {
+  password: string
+  /** Names the field for assistive tech when several are on screen, e.g. with the email. */
+  accessibleName?: string
+}) {
   const id = useId()
   const [shown, setShown] = useState(false)
 
@@ -21,11 +28,12 @@ export function TemporaryPassword({ password, label }: { password: string; label
   return (
     <div className="flex flex-col gap-1">
       <label htmlFor={id} className="text-xs text-muted-foreground">
-        {label}
+        Temporary password
       </label>
       <div className="flex items-center gap-1">
         <Input
           id={id}
+          aria-label={accessibleName}
           readOnly
           type={shown ? "text" : "password"}
           value={password}

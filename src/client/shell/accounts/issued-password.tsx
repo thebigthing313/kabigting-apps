@@ -12,7 +12,7 @@ export function IssuedPassword({ account, onDone }: { account: AdminAccount; onD
         <span className="text-muted-foreground">({account.email})</span>
       </p>
       {account.temporaryPassword ? (
-        <TemporaryPassword password={account.temporaryPassword} label="Temporary password" />
+        <TemporaryPassword password={account.temporaryPassword} />
       ) : null}
       <p className="text-sm text-muted-foreground">
         Send this to them yourself. They must change it when they first sign in.

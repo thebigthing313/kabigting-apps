@@ -80,7 +80,7 @@ function PendingPassword({ account }: { account: AdminAccount }) {
   return (
     <TemporaryPassword
       password={account.temporaryPassword}
-      label={`Temporary password for ${account.email}`}
+      accessibleName={`Temporary password for ${account.email}`}
     />
   )
 }
