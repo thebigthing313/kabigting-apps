@@ -1,6 +1,8 @@
 # Agent guide
 
-Read `CONTEXT.md` first and use its terms (Shell, App, Account, Admin, Guest, Amount).
+Read `CONTEXT.md` first and use its terms (Shell, App, Account, Admin, Guest, Amount). For the
+Finances App, also read `docs/finances/CONTEXT.md`: there, Account means a payee or income source.
+`CONTEXT-MAP.md` lists every glossary.
 
 ## Layout
 
