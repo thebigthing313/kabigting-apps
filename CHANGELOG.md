@@ -1,5 +1,11 @@
 # kabigting-apps
 
+## 0.2.0
+
+### Minor Changes
+
+- d35f94e: Admin screen for managing Accounts and their App access.
+
 ## 0.1.0
 
 ### Minor Changes
