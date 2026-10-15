@@ -1,7 +1,7 @@
 // Account provisioning for the admin scripts. There is no sign-up and no email: the Admin
 // creates Accounts, shares the one-time temporary password out of band, and resets it on request.
 import { randomInt } from "node:crypto"
-import { asc, eq, inArray, sql, type SQL } from "drizzle-orm"
+import { and, asc, eq, inArray, notInArray, sql, type SQL } from "drizzle-orm"
 import type { Auth } from "#server/auth/auth.ts"
 import type { Db } from "#server/db/client.ts"
 import { appAccess, auth_user, temporaryPasswords } from "#server/db/schema/index.ts"
@@ -129,6 +129,29 @@ export async function grantApps(db: Db, userId: string, apps: readonly string[])
     .insert(appAccess)
     .values(apps.map((appKey) => ({ userId, appKey })))
     .onConflictDoNothing()
+}
+
+/**
+ * Replaces the Account's App access with exactly these Apps, in one transaction. Revoking does
+ * not sign the Account out: App routes refuse it from the next request.
+ */
+export async function setApps(db: Db, userId: string, apps: readonly string[]): Promise<void> {
+  await db.transaction(async (tx) => {
+    await tx
+      .delete(appAccess)
+      .where(
+        and(
+          eq(appAccess.userId, userId),
+          apps.length > 0 ? notInArray(appAccess.appKey, [...apps]) : undefined,
+        ),
+      )
+    if (apps.length > 0) {
+      await tx
+        .insert(appAccess)
+        .values([...new Set(apps)].map((appKey) => ({ userId, appKey })))
+        .onConflictDoNothing()
+    }
+  })
 }
 
 export async function createAccount(

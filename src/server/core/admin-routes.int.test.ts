@@ -331,3 +331,54 @@ describe("removing and restoring an Account", () => {
     expect(await session(server.app, target.headers)).not.toBeNull()
   })
 })
+
+function setApps(headers: Headers, userId: string, body: unknown) {
+  return server.app.request(`${ACCOUNTS}/${userId}/apps`, json("PUT", body, headers))
+}
+
+function notes(headers: Headers) {
+  return server.app.request("/api/skeleton/notes/query", json("POST", {}, headers))
+}
+
+describe("editing App access", () => {
+  test("grants and revokes Apps; a revoked App refuses the Account at once", async () => {
+    const admin = await server.signedInAccount({ role: "admin" })
+    const guest = await server.signedInAccount()
+    expect((await notes(guest.headers)).status).toBe(403)
+
+    const granted = await setApps(admin.headers, guest.user.id, { apps: ["skeleton"] })
+    expect(granted.status).toBe(200)
+    expect(rowResponse.parse(await granted.json()).row).toMatchObject({ apps: ["skeleton"] })
+    expect((await notes(guest.headers)).status).toBe(200)
+
+    const revoked = await setApps(admin.headers, guest.user.id, { apps: [] })
+    expect(revoked.status).toBe(200)
+    expect(rowResponse.parse(await revoked.json()).row).toMatchObject({ apps: [] })
+    const refused = await notes(guest.headers)
+    expect(refused.status).toBe(403)
+    expect(await refused.json()).toMatchObject({ error: { code: "forbidden_app" } })
+    // Revoking an App does not sign the Account out.
+    expect(await session(server.app, guest.headers)).not.toBeNull()
+  })
+
+  test("saving the same set twice changes nothing", async () => {
+    const admin = await server.signedInAccount({ role: "admin" })
+    const member = await server.signedInAccount({ apps: ["skeleton"] })
+    const response = await setApps(admin.headers, member.user.id, {
+      apps: ["skeleton", "skeleton"],
+    })
+    expect(response.status).toBe(200)
+    expect(rowResponse.parse(await response.json()).row).toMatchObject({ apps: ["skeleton"] })
+  })
+
+  test("refusals: unknown App, the Admin's own Account, an unknown Account, a non-Admin", async () => {
+    const admin = await server.signedInAccount({ role: "admin" })
+    const member = await server.signedInAccount({ apps: ["skeleton"] })
+    expect((await setApps(admin.headers, member.user.id, { apps: ["nope"] })).status).toBe(400)
+    expect((await setApps(admin.headers, member.user.id, {})).status).toBe(400)
+    expect((await setApps(admin.headers, admin.user.id, { apps: [] })).status).toBe(409)
+    expect((await setApps(admin.headers, "no-such-account", { apps: [] })).status).toBe(404)
+    expect((await setApps(member.headers, admin.user.id, { apps: [] })).status).toBe(403)
+    expect((await notes(member.headers)).status).toBe(200)
+  })
+})

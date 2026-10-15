@@ -7,6 +7,7 @@ import {
   listAccounts,
   resetAccount,
   restoreAccount,
+  setApps,
 } from "#server/auth/accounts.ts"
 import { bodyLimit } from "#server/core/body-limit.ts"
 import type { AppEnv, Deps } from "#server/core/context.ts"
@@ -15,7 +16,7 @@ import { mustChangePassword } from "#server/core/must-change-password.ts"
 import { requireAdmin } from "#server/core/require-admin.ts"
 import { requireSession } from "#server/core/session.ts"
 import { validate } from "#server/core/validate.ts"
-import { accountParams, createAccountInput } from "#shared/schemas/admin.ts"
+import { accountParams, createAccountInput, setAppsInput } from "#shared/schemas/admin.ts"
 
 async function accountRow(deps: Deps, userId: string) {
   const row = await findAccount(deps.db, userId)
@@ -66,4 +67,14 @@ export function adminRoutes(deps: Deps) {
       await restoreAccount(deps, ref)
       return c.json({ row: await accountRow(deps, ref.userId) })
     })
+    .put(
+      "/accounts/:id/apps",
+      validate("param", accountParams),
+      validate("json", setAppsInput),
+      async (c) => {
+        const ref = await otherAccount(deps, c.get("account").id, c.req.valid("param").id)
+        await setApps(db, ref.userId, c.req.valid("json").apps)
+        return c.json({ row: await accountRow(deps, ref.userId) })
+      },
+    )
 }

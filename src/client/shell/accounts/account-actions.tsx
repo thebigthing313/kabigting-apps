@@ -1,4 +1,10 @@
-import { EllipsisVerticalIcon, KeyRoundIcon, UndoIcon, UserXIcon } from "lucide-react"
+import {
+  EllipsisVerticalIcon,
+  KeyRoundIcon,
+  LayoutGridIcon,
+  UndoIcon,
+  UserXIcon,
+} from "lucide-react"
 import { useState } from "react"
 import { toast } from "sonner"
 import {
@@ -30,10 +36,21 @@ import {
   useRemoveAccount,
   useResetAccount,
   useRestoreAccount,
+  useSetApps,
 } from "@/data/admin-accounts"
-import { IssuedPassword } from "@/shell/accounts/new-account-dialog"
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet"
+import { AppCheckboxes } from "@/shell/accounts/app-checkboxes"
+import { IssuedPassword } from "@/shell/accounts/issued-password"
+import type { AppKey } from "@shared/apps"
 
-export type AccountAction = "reset" | "remove"
+export type AccountAction = "apps" | "reset" | "remove"
 
 export type ActionTarget = { action: AccountAction; account: AdminAccount }
 
@@ -70,6 +87,13 @@ export function AccountActionsMenu({
           </DropdownMenuItem>
         ) : (
           <>
+            <DropdownMenuItem
+              className="min-h-11"
+              onClick={() => onAction({ action: "apps", account })}
+            >
+              <LayoutGridIcon />
+              Edit Apps
+            </DropdownMenuItem>
             <DropdownMenuItem
               className="min-h-11"
               onClick={() => onAction({ action: "reset", account })}
@@ -202,6 +226,63 @@ function RemoveAccount({ account, onClose }: { account: AdminAccount; onClose: (
   )
 }
 
+/** Tick the Apps the Account may open; Save sends the whole set at once. */
+function EditApps({ account, onClose }: { account: AdminAccount; onClose: () => void }) {
+  const save = useSetApps()
+  const [apps, setApps] = useState<AppKey[]>(account.apps)
+
+  return (
+    <Sheet
+      open
+      onOpenChange={(open) => {
+        if (!open && !save.isPending) onClose()
+      }}
+    >
+      <SheetContent>
+        <SheetHeader>
+          <SheetTitle>Edit Apps</SheetTitle>
+          <SheetDescription>
+            {account.name} ({account.email}) can open only the ticked Apps.
+          </SheetDescription>
+        </SheetHeader>
+        <form
+          className="flex flex-1 flex-col"
+          onSubmit={(event) => {
+            event.preventDefault()
+            save.mutate(
+              { id: account.id, apps },
+              {
+                onSuccess: () => {
+                  toast.success(`Saved Apps for ${account.name}`)
+                  onClose()
+                },
+              },
+            )
+          }}
+        >
+          <div className="px-4">
+            <AppCheckboxes value={apps} onChange={setApps} />
+          </div>
+          <SheetFooter>
+            <Button type="submit" className="h-11" disabled={save.isPending}>
+              {save.isPending ? "Saving…" : "Save"}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              className="h-11"
+              disabled={save.isPending}
+              onClick={onClose}
+            >
+              Cancel
+            </Button>
+          </SheetFooter>
+        </form>
+      </SheetContent>
+    </Sheet>
+  )
+}
+
 /** The dialog for whichever action the Admin picked, if any. */
 export function AccountActionDialog({
   target,
@@ -213,6 +294,8 @@ export function AccountActionDialog({
   if (!target) return null
   const { action, account } = target
   switch (action) {
+    case "apps":
+      return <EditApps key={account.id} account={account} onClose={onClose} />
     case "reset":
       return <ResetPassword key={account.id} account={account} onClose={onClose} />
     case "remove":

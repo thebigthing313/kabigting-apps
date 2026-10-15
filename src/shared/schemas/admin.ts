@@ -34,3 +34,6 @@ export type CreateAccountInput = z.input<typeof createAccountInput>
 
 /** Better Auth ids are opaque strings, not UUIDs. */
 export const accountParams = z.strictObject({ id: z.string().min(1).max(100) })
+
+/** The full set of Apps the Account may open after saving. */
+export const setAppsInput = z.strictObject({ apps: z.array(appKey) })

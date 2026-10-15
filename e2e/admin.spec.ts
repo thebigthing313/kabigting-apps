@@ -145,4 +145,19 @@ test("the Admin manages an Account from creation onwards", async ({ page }, test
 
   await signInFresh(page, email, "another-password-of-mine")
   await expect(page.getByRole("heading", { name: "Hello, Created" })).toBeVisible()
+  await signOut(page, "Created")
+
+  // Edit Apps: unticking Notes takes it away.
+  await adminOpensAccounts(page)
+  await openActions(page, email)
+  await page.getByRole("menuitem", { name: "Edit Apps" }).click()
+  const sheet = page.getByRole("dialog")
+  await expect(sheet.getByRole("checkbox", { name: "Notes" })).toBeChecked()
+  await sheet.getByRole("checkbox", { name: "Notes" }).click()
+  await sheet.getByRole("button", { name: "Save" }).click()
+  await expect(row).toContainText("No Apps")
+  await signOut(page, "Admin")
+
+  await signInFresh(page, email, "another-password-of-mine")
+  await expect(page.getByText("No Apps have been shared with you yet.")).toBeVisible()
 })

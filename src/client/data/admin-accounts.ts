@@ -3,6 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { api } from "@/data/api"
 import { readJson, reportError } from "@/data/error-handler"
+import type { AppKey } from "@shared/apps"
 import type { AdminAccount, CreateAccountInput } from "@shared/schemas/admin"
 
 export type { AdminAccount, CreateAccountInput }
@@ -50,5 +51,15 @@ export function useRemoveAccount() {
 export function useRestoreAccount() {
   return useAccountCommand("Restoring the Account", async (id: string) =>
     readJson(await api.admin.accounts[":id"].restore.$post({ param: { id } })),
+  )
+}
+
+export function useSetApps() {
+  return useAccountCommand(
+    "Saving App access",
+    async ({ id, apps }: { id: string; apps: readonly AppKey[] }) =>
+      readJson(
+        await api.admin.accounts[":id"].apps.$put({ param: { id }, json: { apps: [...apps] } }),
+      ),
   )
 }
