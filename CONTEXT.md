@@ -24,6 +24,14 @@ _Avoid_: Superuser, owner
 An Account granted access to specific Apps only, such as a friend who is shared one App but not Finances.
 _Avoid_: Friend, external user, collaborator
 
+**App access**:
+A grant letting one Account open one App; without it the App is hidden and refused. Revoking it leaves the Account able to sign in.
+_Avoid_: Permission, entitlement
+
+**Removed Account**:
+An Account the Admin has blocked from signing in and signed out everywhere; its data is kept, and the Admin can restore it.
+_Avoid_: Deleted, revoked, disabled
+
 **Walking skeleton**:
 The thinnest deployed end-to-end slice: sign in, read one record through the client cache from Postgres, installable on the Railway URL.
 _Avoid_: Boilerplate, starter, MVP
