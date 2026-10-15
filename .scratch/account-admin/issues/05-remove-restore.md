@@ -6,6 +6,8 @@
 
 **Status:** ready-for-agent
 
+**Issue:** #11
+
 - [ ] Remove bans the Account, deletes every session it has and clears its stored temporary password; removing it again changes nothing
 - [ ] Restore unbans the Account without touching its password; restoring an Active Account changes nothing
 - [ ] Both refuse the Admin's own Account (409) and an unknown id (404)

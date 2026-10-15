@@ -6,6 +6,8 @@
 
 **Status:** ready-for-agent
 
+**Issue:** #8
+
 - [ ] A new error code, `forbidden_admin` (403), and an Admin guard that runs after the session check and the forced-password-change check
 - [ ] Listing the Accounts returns each one's id, email, name, role, status flags and Apps, ordered by email
 - [ ] A non-Admin gets 403 `forbidden_admin`, a signed-out caller gets 401, and an Admin who must change their password gets 403 `password_change_required`

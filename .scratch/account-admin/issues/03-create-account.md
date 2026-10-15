@@ -6,6 +6,8 @@
 
 **Status:** ready-for-agent
 
+**Issue:** #9
+
 - [ ] A new table owned by the app holds at most one temporary password per Account and never feeds the session payload, with a committed, forward-only migration
 - [ ] Creating an Account (from the UI or the CLI) stores the password, and the Account's own password change deletes it
 - [ ] Creating an Account validates strictly (email trimmed and lowercased, name 1–100 characters, known App keys only) and returns the row with the password

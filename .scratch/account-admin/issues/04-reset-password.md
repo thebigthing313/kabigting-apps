@@ -6,6 +6,8 @@
 
 **Status:** ready-for-agent
 
+**Issue:** #10
+
 - [ ] Resetting issues a new password, sets the forced change, deletes every session the Account has and stores the new password
 - [ ] Resetting the Admin's own Account returns 409 `conflict` ("You cannot change your own Account here"), and an unknown id returns 404
 - [ ] A confirm dialog, a pending state, then the result view with Show and Copy

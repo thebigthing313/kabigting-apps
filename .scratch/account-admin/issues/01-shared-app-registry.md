@@ -6,6 +6,8 @@
 
 **Status:** ready-for-agent
 
+**Issue:** #7
+
 - [ ] App keys and titles are declared once in shared code, and the server and client registries derive from it
 - [ ] A shared App key without a client entry is a type error
 - [ ] The Shell sidebar, Home launcher, App access check and admin CLI behave exactly as before

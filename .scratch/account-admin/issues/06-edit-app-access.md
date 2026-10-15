@@ -6,6 +6,8 @@
 
 **Status:** ready-for-agent
 
+**Issue:** #12
+
 - [ ] Saving replaces the Account's App access with the given set in a single transaction
 - [ ] An unknown App key returns 400, the Admin's own Account returns 409 and an unknown id returns 404
 - [ ] An Edit Apps sheet with checkboxes from the shared App registry; Save shows a pending state and Cancel discards the changes
