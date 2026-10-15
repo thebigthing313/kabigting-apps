@@ -382,3 +382,39 @@ describe("editing App access", () => {
     expect((await notes(member.headers)).status).toBe(200)
   })
 })
+
+describe("guards on every route", () => {
+  test.each([
+    ["GET", ""],
+    ["POST", ""],
+    ["POST", "/target/reset"],
+    ["POST", "/target/remove"],
+    ["POST", "/target/restore"],
+    ["PUT", "/target/apps"],
+  ])("%s accounts%s answers a non-Admin with 403 forbidden_admin", async (method, path) => {
+    const caller = await server.signedInAccount()
+    const target = await server.signedInAccount()
+    const url = `${ACCOUNTS}${path.replace("target", target.user.id)}`
+    const init =
+      method === "GET" ? { headers: caller.headers } : json(method, { apps: [] }, caller.headers)
+    const response = await server.app.request(url, init)
+    expect(response.status).toBe(403)
+    expect(await response.json()).toMatchObject({ error: { code: "forbidden_admin" } })
+  })
+})
+
+test("an Account whose password was set without the change flow never shows a stored one", async () => {
+  // As the e2e seed and the CLI can leave it: a stored temporary password on an Active Account.
+  const admin = await server.signedInAccount({ role: "admin" })
+  const email = uniqueEmail()
+  const created = rowResponse.parse(
+    await (await createViaApi(admin.headers, { email, name: "Seeded", apps: [] })).json(),
+  ).row
+  await server.db
+    .update(auth_user)
+    .set({ mustChangePassword: false })
+    .where(eq(auth_user.id, created.id))
+
+  const listed = (await listAccounts(admin.headers)).find((r) => r.id === created.id)
+  expect(listed).toMatchObject({ status: "active", temporaryPassword: null })
+})

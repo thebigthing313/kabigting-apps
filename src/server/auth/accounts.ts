@@ -1,7 +1,8 @@
-// Account provisioning for the admin scripts. There is no sign-up and no email: the Admin
-// creates Accounts, shares the one-time temporary password out of band, and resets it on request.
+// Account administration, shared by the Admin's Accounts screen and the admin CLI. There is no
+// sign-up and no email: the Admin creates Accounts, passes the temporary password on out of band,
+// and resets it on request.
 import { randomInt } from "node:crypto"
-import { and, asc, eq, inArray, notInArray, sql, type SQL } from "drizzle-orm"
+import { and, asc, eq, inArray, notInArray, sql } from "drizzle-orm"
 import type { Auth } from "#server/auth/auth.ts"
 import type { Db } from "#server/db/client.ts"
 import { appAccess, auth_user, temporaryPasswords } from "#server/db/schema/index.ts"
@@ -73,7 +74,7 @@ export async function forgetTemporaryPassword(db: Db, userId: string): Promise<v
 }
 
 /** Every Account as the Admin's screen shows it, ordered by email. */
-export async function listAccounts(db: Db, where?: SQL): Promise<AdminAccount[]> {
+export async function listAccounts(db: Db, userId?: string): Promise<AdminAccount[]> {
   const users = await db
     .select({
       id: auth_user.id,
@@ -86,7 +87,7 @@ export async function listAccounts(db: Db, where?: SQL): Promise<AdminAccount[]>
     })
     .from(auth_user)
     .leftJoin(temporaryPasswords, eq(temporaryPasswords.userId, auth_user.id))
-    .where(where)
+    .where(userId === undefined ? undefined : eq(auth_user.id, userId))
     .orderBy(asc(auth_user.email))
   const grants = await db
     .select({ userId: appAccess.userId, appKey: appAccess.appKey })
@@ -99,27 +100,32 @@ export async function listAccounts(db: Db, where?: SQL): Promise<AdminAccount[]>
     )
     .orderBy(asc(appAccess.appKey))
 
-  return users.map((user) => ({
-    id: user.id,
-    email: user.email,
-    name: user.name,
-    role: user.role === "admin" ? "admin" : "user",
-    status: user.banned
+  return users.map((user) => {
+    const status = user.banned
       ? "removed"
       : user.mustChangePassword
         ? "awaiting_password_change"
-        : "active",
-    apps: grants
-      .filter((grant) => grant.userId === user.id)
-      .map((grant) => grant.appKey)
-      .filter(isAppKey),
-    temporaryPassword: user.temporaryPassword,
-  }))
+        : "active"
+    return {
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      role: user.role === "admin" ? "admin" : "user",
+      status,
+      apps: grants
+        .filter((grant) => grant.userId === user.id)
+        .map((grant) => grant.appKey)
+        .filter(isAppKey),
+      // Only while the Account still has to replace it; a password set any other way (the CLI,
+      // the e2e seed) must not leave an old one readable.
+      temporaryPassword: status === "awaiting_password_change" ? user.temporaryPassword : null,
+    }
+  })
 }
 
 /** One Account as the Admin's screen shows it, or null. */
 export async function findAccount(db: Db, userId: string): Promise<AdminAccount | null> {
-  const [account] = await listAccounts(db, eq(auth_user.id, userId))
+  const [account] = await listAccounts(db, userId)
   return account ?? null
 }
 
@@ -195,7 +201,7 @@ export async function resetAccount(
  * Removal: ban (blocks sign-in), revoke every session and forget any temporary password. Data
  * is kept, and removing a Removed Account changes nothing.
  */
-export async function banAccount({ db, auth }: AccountDeps, ref: AccountRef) {
+export async function removeAccount({ db, auth }: AccountDeps, ref: AccountRef) {
   const userId = await findUserId(db, ref)
   const context = await auth.$context
   await context.internalAdapter.updateUser(userId, {

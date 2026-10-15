@@ -6,7 +6,12 @@
 //   pnpm admin:ban --email <email>
 // Temporary passwords are printed once; share them out of band.
 import { parseArgs } from "node:util"
-import { banAccount, createAccount, resetAccount, type AccountDeps } from "#server/auth/accounts.ts"
+import {
+  removeAccount,
+  createAccount,
+  resetAccount,
+  type AccountDeps,
+} from "#server/auth/accounts.ts"
 import { createAuth } from "#server/auth/auth.ts"
 import { APP_KEYS, isAppKey } from "#shared/apps.ts"
 import { createDb } from "#server/db/client.ts"
@@ -76,7 +81,7 @@ export async function runAdmin(
     }
     case "ban": {
       const email = required(values.email, "email")
-      await banAccount(deps, { email })
+      await removeAccount(deps, { email })
       print(`Banned ${email}; every session is signed out`)
       return
     }

@@ -3,8 +3,8 @@ import {
   accountIdByEmail,
   createAccount,
   findAccount,
-  banAccount,
   listAccounts,
+  removeAccount,
   resetAccount,
   restoreAccount,
   setApps,
@@ -25,13 +25,19 @@ async function accountRow(deps: Deps, userId: string) {
 }
 
 /**
- * The Account an action targets: never the caller (the Admin keeps the CLI for their own
- * Account, so the screen cannot lock them out), and it must exist.
+ * Runs an action on one Account and answers with its row afterwards. Never on the caller: the
+ * Admin keeps the CLI for their own Account, so the screen cannot lock them out.
  */
-async function otherAccount(deps: Deps, callerId: string, userId: string) {
+async function actOn(
+  deps: Deps,
+  callerId: string,
+  userId: string,
+  action: (ref: { userId: string }) => Promise<unknown>,
+) {
   if (userId === callerId) throw new ApiError("conflict", "You cannot change your own Account here")
   await accountRow(deps, userId)
-  return { userId }
+  await action({ userId })
+  return { row: await accountRow(deps, userId) }
 }
 
 /** The Admin's Accounts screen. Part of the Shell, not an App: gated by role, not App access. */
@@ -52,29 +58,36 @@ export function adminRoutes(deps: Deps) {
       const { userId } = await createAccount(deps, input)
       return c.json({ row: await accountRow(deps, userId) }, 201)
     })
-    .post("/accounts/:id/reset", validate("param", accountParams), async (c) => {
-      const ref = await otherAccount(deps, c.get("account").id, c.req.valid("param").id)
-      await resetAccount(deps, ref)
-      return c.json({ row: await accountRow(deps, ref.userId) })
-    })
-    .post("/accounts/:id/remove", validate("param", accountParams), async (c) => {
-      const ref = await otherAccount(deps, c.get("account").id, c.req.valid("param").id)
-      await banAccount(deps, ref)
-      return c.json({ row: await accountRow(deps, ref.userId) })
-    })
-    .post("/accounts/:id/restore", validate("param", accountParams), async (c) => {
-      const ref = await otherAccount(deps, c.get("account").id, c.req.valid("param").id)
-      await restoreAccount(deps, ref)
-      return c.json({ row: await accountRow(deps, ref.userId) })
-    })
+    .post("/accounts/:id/reset", validate("param", accountParams), async (c) =>
+      c.json(
+        await actOn(deps, c.get("account").id, c.req.valid("param").id, (ref) =>
+          resetAccount(deps, ref),
+        ),
+      ),
+    )
+    .post("/accounts/:id/remove", validate("param", accountParams), async (c) =>
+      c.json(
+        await actOn(deps, c.get("account").id, c.req.valid("param").id, (ref) =>
+          removeAccount(deps, ref),
+        ),
+      ),
+    )
+    .post("/accounts/:id/restore", validate("param", accountParams), async (c) =>
+      c.json(
+        await actOn(deps, c.get("account").id, c.req.valid("param").id, (ref) =>
+          restoreAccount(deps, ref),
+        ),
+      ),
+    )
     .put(
       "/accounts/:id/apps",
       validate("param", accountParams),
       validate("json", setAppsInput),
-      async (c) => {
-        const ref = await otherAccount(deps, c.get("account").id, c.req.valid("param").id)
-        await setApps(db, ref.userId, c.req.valid("json").apps)
-        return c.json({ row: await accountRow(deps, ref.userId) })
-      },
+      async (c) =>
+        c.json(
+          await actOn(deps, c.get("account").id, c.req.valid("param").id, (ref) =>
+            setApps(db, ref.userId, c.req.valid("json").apps),
+          ),
+        ),
     )
 }

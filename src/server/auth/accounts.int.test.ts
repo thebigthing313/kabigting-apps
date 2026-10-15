@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from "vitest"
-import { banAccount, createAccount, resetAccount } from "#server/auth/accounts.ts"
+import { removeAccount, createAccount, resetAccount } from "#server/auth/accounts.ts"
 import * as http from "#server/test/http-auth.ts"
 import { createTestServer, json, type TestServer } from "#server/test/server.ts"
 
@@ -158,12 +158,12 @@ describe("resetAccount", () => {
   })
 })
 
-describe("banAccount", () => {
+describe("removeAccount", () => {
   test("blocks sign-in and revokes existing sessions", async () => {
     const email = uniqueEmail()
     const { temporaryPassword } = await createAccount(server, { email, name: "I", apps: [] })
     const { headers } = await signIn(email, temporaryPassword)
-    await banAccount(server, { email })
+    await removeAccount(server, { email })
     expect(await session(headers)).toBeNull()
     expect((await signIn(email, temporaryPassword)).status).not.toBe(200)
   })

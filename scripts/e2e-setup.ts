@@ -2,7 +2,7 @@
 // Playwright's web server command before the production server starts.
 import { mkdirSync, writeFileSync } from "node:fs"
 import pg from "pg"
-import { createAccount, grantApps } from "#server/auth/accounts.ts"
+import { createAccount, forgetTemporaryPassword, grantApps } from "#server/auth/accounts.ts"
 import { createAuth } from "#server/auth/auth.ts"
 import { createDb } from "#server/db/client.ts"
 import { runMigrations } from "#server/db/migrate.ts"
@@ -37,6 +37,7 @@ async function settledAccount(
   const { userId } = await createAccount({ db, auth }, { email, name, apps, role })
   await context.internalAdapter.updatePassword(userId, await context.password.hash(password))
   await context.internalAdapter.updateUser(userId, { mustChangePassword: false })
+  await forgetTemporaryPassword(db, userId)
   await grantApps(db, userId, apps)
 }
 
