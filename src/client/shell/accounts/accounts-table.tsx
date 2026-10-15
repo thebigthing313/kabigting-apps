@@ -9,6 +9,7 @@ import {
 } from "@/components/ui/table"
 import type { AdminAccount } from "@/data/admin-accounts"
 import { cn } from "@/lib/utils"
+import { AccountActionsMenu, type ActionTarget } from "@/shell/accounts/account-actions"
 import { TemporaryPassword } from "@/shell/accounts/temporary-password"
 import { appTitle } from "@shared/apps"
 import type { AccountStatus } from "@shared/schemas/admin"
@@ -93,7 +94,15 @@ const columns = helper.columns([
 ])
 
 /** A real table on wide screens, a list of cards on phones. */
-export function AccountsTable({ accounts, selfId }: { accounts: AdminAccount[]; selfId: string }) {
+export function AccountsTable({
+  accounts,
+  selfId,
+  onAction,
+}: {
+  accounts: AdminAccount[]
+  selfId: string
+  onAction: (target: ActionTarget) => void
+}) {
   const table = useTable({ features, columns, data: accounts })
   const rows = table.getRowModel().rows
 
@@ -102,7 +111,14 @@ export function AccountsTable({ accounts, selfId }: { accounts: AdminAccount[]; 
       <ul className="divide-y rounded-xl border md:hidden" aria-label="Accounts">
         {rows.map((row) => (
           <li key={row.id} className="flex flex-col gap-2 p-4">
-            <Identity account={row.original} isSelf={row.original.id === selfId} />
+            <div className="flex items-start gap-2">
+              <div className="min-w-0 flex-1">
+                <Identity account={row.original} isSelf={row.original.id === selfId} />
+              </div>
+              {row.original.id === selfId ? null : (
+                <AccountActionsMenu account={row.original} onAction={onAction} />
+              )}
+            </div>
             <div className="flex flex-wrap items-center gap-2">
               <StatusBadge status={row.original.status} />
               <AppChips apps={row.original.apps} />
@@ -119,6 +135,9 @@ export function AccountsTable({ accounts, selfId }: { accounts: AdminAccount[]; 
               <TableHead className="pl-4">Account</TableHead>
               <TableHead className="w-80">Status</TableHead>
               <TableHead className="w-56">Apps</TableHead>
+              <TableHead className="w-16">
+                <span className="sr-only">Actions</span>
+              </TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -135,6 +154,11 @@ export function AccountsTable({ accounts, selfId }: { accounts: AdminAccount[]; 
                 </TableCell>
                 <TableCell>
                   <AppChips apps={row.original.apps} />
+                </TableCell>
+                <TableCell className="text-right">
+                  {row.original.id === selfId ? null : (
+                    <AccountActionsMenu account={row.original} onAction={onAction} />
+                  )}
                 </TableCell>
               </TableRow>
             ))}

@@ -31,3 +31,6 @@ export const createAccountInput = z.strictObject({
 })
 
 export type CreateAccountInput = z.input<typeof createAccountInput>
+
+/** Better Auth ids are opaque strings, not UUIDs. */
+export const accountParams = z.strictObject({ id: z.string().min(1).max(100) })

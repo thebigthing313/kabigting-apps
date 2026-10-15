@@ -34,3 +34,9 @@ export function useCreateAccount() {
     readJson(await api.admin.accounts.$post({ json })),
   )
 }
+
+export function useResetAccount() {
+  return useAccountCommand("Resetting the password", async (id: string) =>
+    readJson(await api.admin.accounts[":id"].reset.$post({ param: { id } })),
+  )
+}

@@ -193,3 +193,68 @@ describe("creating an Account", () => {
     expect(response.status).toBe(403)
   })
 })
+
+/** Runs an action on one Account as the given caller. */
+function act(headers: Headers, userId: string, action: string) {
+  return server.app.request(`${ACCOUNTS}/${userId}/${action}`, json("POST", {}, headers))
+}
+
+describe("resetting a password", () => {
+  test("issues a new temporary password, forces a change and signs the Account out", async () => {
+    const admin = await server.signedInAccount({ role: "admin" })
+    const email = uniqueEmail()
+    const created = rowResponse.parse(
+      await (await createViaApi(admin.headers, { email, name: "Forgetful", apps: [] })).json(),
+    ).row
+    const oldPassword = created.temporaryPassword ?? ""
+    const signedIn = await signIn(server.app, email, oldPassword)
+    const settled = await changePassword(
+      server.app,
+      signedIn.headers,
+      oldPassword,
+      "a-password-i-forgot",
+    )
+
+    const response = await act(admin.headers, created.id, "reset")
+    expect(response.status).toBe(200)
+    const { row } = rowResponse.parse(await response.json())
+    expect(row).toMatchObject({ status: "awaiting_password_change" })
+    const newPassword = row.temporaryPassword ?? ""
+    expect(newPassword).not.toBe("")
+    expect(newPassword).not.toBe(oldPassword)
+
+    expect(await session(server.app, settled.headers)).toBeNull()
+    expect((await signIn(server.app, email, "a-password-i-forgot")).status).toBe(401)
+    const again = await signIn(server.app, email, newPassword)
+    expect(again.status).toBe(200)
+    expect(await session(server.app, again.headers)).toMatchObject({
+      user: { mustChangePassword: true },
+    })
+    const listed = (await listAccounts(admin.headers)).find((r) => r.id === created.id)
+    expect(listed).toMatchObject({ temporaryPassword: newPassword })
+  })
+
+  test("the Admin cannot reset their own Account here", async () => {
+    const admin = await server.signedInAccount({ role: "admin" })
+    const response = await act(admin.headers, admin.user.id, "reset")
+    expect(response.status).toBe(409)
+    expect(await response.json()).toMatchObject({
+      error: { code: "conflict", message: "You cannot change your own Account here" },
+    })
+    expect(await session(server.app, admin.headers)).not.toBeNull()
+  })
+
+  test("an unknown Account is a 404", async () => {
+    const admin = await server.signedInAccount({ role: "admin" })
+    const response = await act(admin.headers, "no-such-account", "reset")
+    expect(response.status).toBe(404)
+    expect(await response.json()).toMatchObject({ error: { code: "not_found" } })
+  })
+
+  test("a non-Admin cannot reset anyone", async () => {
+    const caller = await server.signedInAccount()
+    const target = await server.signedInAccount()
+    expect((await act(caller.headers, target.user.id, "reset")).status).toBe(403)
+    expect(await session(server.app, target.headers)).not.toBeNull()
+  })
+})

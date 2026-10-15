@@ -47,9 +47,13 @@ export async function accountIdByEmail(db: Db, email: string): Promise<string | 
   return user?.id ?? null
 }
 
-async function findUserId(db: Db, email: string): Promise<string> {
-  const id = await accountIdByEmail(db, email)
-  if (!id) throw new Error(`No Account with email ${email}`)
+/** The Admin's screen names an Account by id; the CLI names it by email. */
+export type AccountRef = { userId: string } | { email: string }
+
+async function findUserId(db: Db, ref: AccountRef): Promise<string> {
+  if ("userId" in ref) return ref.userId
+  const id = await accountIdByEmail(db, ref.email)
+  if (!id) throw new Error(`No Account with email ${ref.email}`)
   return id
 }
 
@@ -149,9 +153,9 @@ export async function createAccount(
 /** New temporary password, forced change again, and every session signed out. */
 export async function resetAccount(
   { db, auth }: AccountDeps,
-  { email }: { email: string },
+  ref: AccountRef,
 ): Promise<{ temporaryPassword: string }> {
-  const userId = await findUserId(db, email)
+  const userId = await findUserId(db, ref)
   const temporaryPassword = generateTemporaryPassword()
   const context = await auth.$context
   await context.internalAdapter.updatePassword(
@@ -165,8 +169,8 @@ export async function resetAccount(
 }
 
 /** Removal: ban (blocks sign-in) and revoke every session. Data is kept. */
-export async function banAccount({ db, auth }: AccountDeps, { email }: { email: string }) {
-  const userId = await findUserId(db, email)
+export async function banAccount({ db, auth }: AccountDeps, ref: AccountRef) {
+  const userId = await findUserId(db, ref)
   const context = await auth.$context
   await context.internalAdapter.updateUser(userId, {
     banned: true,

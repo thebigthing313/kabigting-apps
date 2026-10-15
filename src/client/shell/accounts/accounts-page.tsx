@@ -4,6 +4,7 @@ import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useAdminAccounts } from "@/data/admin-accounts"
+import { AccountActionDialog, type ActionTarget } from "@/shell/accounts/account-actions"
 import { AccountsTable } from "@/shell/accounts/accounts-table"
 import { NewAccountDialog } from "@/shell/accounts/new-account-dialog"
 
@@ -14,6 +15,7 @@ export function AccountsPage() {
   const { session } = accountsRoute.useRouteContext()
   const { data: accounts, isPending, isError } = useAdminAccounts()
   const [creating, setCreating] = useState(false)
+  const [target, setTarget] = useState<ActionTarget | null>(null)
 
   return (
     <div className="mx-auto flex max-w-5xl flex-col gap-4">
@@ -35,10 +37,11 @@ export function AccountsPage() {
           The Accounts could not be loaded. Try again shortly.
         </p>
       ) : (
-        <AccountsTable accounts={accounts} selfId={session.user.id} />
+        <AccountsTable accounts={accounts} selfId={session.user.id} onAction={setTarget} />
       )}
 
       <NewAccountDialog open={creating} onClose={() => setCreating(false)} />
+      <AccountActionDialog target={target} onClose={() => setTarget(null)} />
     </div>
   )
 }
