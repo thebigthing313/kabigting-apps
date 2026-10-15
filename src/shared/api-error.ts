@@ -3,6 +3,7 @@ export const API_ERROR_STATUS = {
   unauthenticated: 401,
   password_change_required: 403,
   forbidden_app: 403,
+  forbidden_admin: 403,
   validation_failed: 400,
   not_found: 404,
   conflict: 409,

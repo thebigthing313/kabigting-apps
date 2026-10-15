@@ -3,6 +3,7 @@ import { test as base, expect, type Page } from "@playwright/test"
 import { z } from "zod"
 
 const accountsFile = z.object({
+  admin: z.object({ email: z.string(), password: z.string() }),
   member: z.object({ email: z.string(), password: z.string() }),
   guest: z.object({ email: z.string(), password: z.string() }),
   newcomers: z.record(z.string(), z.object({ email: z.string(), temporaryPassword: z.string() })),

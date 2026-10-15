@@ -1,10 +1,12 @@
 // Account provisioning for the admin scripts. There is no sign-up and no email: the Admin
 // creates Accounts, shares the one-time temporary password out of band, and resets it on request.
 import { randomInt } from "node:crypto"
-import { eq } from "drizzle-orm"
+import { asc, eq } from "drizzle-orm"
 import type { Auth } from "#server/auth/auth.ts"
 import type { Db } from "#server/db/client.ts"
 import { appAccess, auth_user } from "#server/db/schema/index.ts"
+import { isAppKey } from "#shared/apps.ts"
+import type { AdminAccount } from "#shared/schemas/admin.ts"
 
 // createUser works server-side without a session. The admin plugin's setUserPassword, banUser and
 // revokeUserSessions demand an admin session even server-side, so reset and ban go through Better
@@ -43,6 +45,41 @@ async function findUserId(db: Db, email: string): Promise<string> {
     .where(eq(auth_user.email, email.toLowerCase()))
   if (!user) throw new Error(`No Account with email ${email}`)
   return user.id
+}
+
+/** Every Account as the Admin's screen shows it, ordered by email. */
+export async function listAccounts(db: Db): Promise<AdminAccount[]> {
+  const users = await db
+    .select({
+      id: auth_user.id,
+      email: auth_user.email,
+      name: auth_user.name,
+      role: auth_user.role,
+      banned: auth_user.banned,
+      mustChangePassword: auth_user.mustChangePassword,
+    })
+    .from(auth_user)
+    .orderBy(asc(auth_user.email))
+  const grants = await db
+    .select({ userId: appAccess.userId, appKey: appAccess.appKey })
+    .from(appAccess)
+    .orderBy(asc(appAccess.appKey))
+
+  return users.map((user) => ({
+    id: user.id,
+    email: user.email,
+    name: user.name,
+    role: user.role === "admin" ? "admin" : "user",
+    status: user.banned
+      ? "removed"
+      : user.mustChangePassword
+        ? "awaiting_password_change"
+        : "active",
+    apps: grants
+      .filter((grant) => grant.userId === user.id)
+      .map((grant) => grant.appKey)
+      .filter(isAppKey),
+  }))
 }
 
 export async function grantApps(db: Db, userId: string, apps: readonly string[]): Promise<void> {

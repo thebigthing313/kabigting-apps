@@ -6,7 +6,11 @@ import { queryClient } from "@/data/query-client"
 
 export const authClient = createAuthClient({
   basePath: "/api/auth",
-  plugins: [inferAdditionalFields({ user: { mustChangePassword: { type: "boolean" } } })],
+  plugins: [
+    inferAdditionalFields({
+      user: { mustChangePassword: { type: "boolean" }, role: { type: "string", required: false } },
+    }),
+  ],
 })
 
 export type Session = typeof authClient.$Infer.Session
