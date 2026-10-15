@@ -2,7 +2,8 @@ import { eq } from "drizzle-orm"
 import { afterAll, beforeAll, describe, expect, test } from "vitest"
 import { z } from "zod"
 import { auth_user } from "#server/db/schema/index.ts"
-import { createTestServer, type TestServer } from "#server/test/server.ts"
+import { changePassword, session, signIn } from "#server/test/http-auth.ts"
+import { createTestServer, json, type TestServer } from "#server/test/server.ts"
 
 let server: TestServer
 
@@ -19,6 +20,27 @@ const ACCOUNTS = "/api/admin/accounts"
 const listResponse = z.object({
   rows: z.array(z.looseObject({ id: z.string(), email: z.string() })),
 })
+
+const rowResponse = z.object({
+  row: z.looseObject({
+    id: z.string(),
+    email: z.string(),
+    status: z.string(),
+    temporaryPassword: z.string().nullable(),
+  }),
+})
+
+let counter = 0
+
+function uniqueEmail() {
+  counter += 1
+  return `created${counter}@example.com`
+}
+
+/** The Admin creates an Account through the API and gets its row back. */
+async function createViaApi(adminHeaders: Headers, body: unknown) {
+  return server.app.request(ACCOUNTS, json("POST", body, adminHeaders))
+}
 
 /** The Accounts list as the given caller sees it. */
 async function listAccounts(headers: Headers) {
@@ -78,5 +100,96 @@ describe("listing Accounts", () => {
     const response = await server.app.request(ACCOUNTS, { headers })
     expect(response.status).toBe(403)
     expect(await response.json()).toMatchObject({ error: { code: "password_change_required" } })
+  })
+})
+
+describe("creating an Account", () => {
+  test("returns the row with a temporary password the Account signs in with", async () => {
+    const admin = await server.signedInAccount({ role: "admin" })
+    const email = uniqueEmail()
+
+    const response = await createViaApi(admin.headers, {
+      email: `  ${email.toUpperCase()} `,
+      name: "  New Person ",
+      apps: ["skeleton"],
+    })
+    expect(response.status).toBe(201)
+    const { row } = rowResponse.parse(await response.json())
+    expect(row).toMatchObject({
+      email,
+      name: "New Person",
+      role: "user",
+      status: "awaiting_password_change",
+      apps: ["skeleton"],
+    })
+    if (!row.temporaryPassword) throw new Error("No temporary password returned")
+
+    const signedIn = await signIn(server.app, email, row.temporaryPassword)
+    expect(signedIn.status).toBe(200)
+    expect(await session(server.app, signedIn.headers)).toMatchObject({
+      user: { mustChangePassword: true, role: "user" },
+    })
+  })
+
+  test("the password stays on the row until the Account changes it", async () => {
+    const admin = await server.signedInAccount({ role: "admin" })
+    const email = uniqueEmail()
+    const { row } = rowResponse.parse(
+      await (await createViaApi(admin.headers, { email, name: "Later", apps: [] })).json(),
+    )
+    const password = row.temporaryPassword ?? ""
+
+    const listed = (await listAccounts(admin.headers)).find((r) => r.id === row.id)
+    expect(listed).toMatchObject({ temporaryPassword: password })
+
+    const signedIn = await signIn(server.app, email, password)
+    const changed = await changePassword(
+      server.app,
+      signedIn.headers,
+      password,
+      "a-password-of-my-own",
+    )
+    expect(changed.status).toBe(200)
+
+    const after = (await listAccounts(admin.headers)).find((r) => r.id === row.id)
+    expect(after).toMatchObject({ status: "active", temporaryPassword: null })
+  })
+
+  test("a settled Account has no temporary password on its row", async () => {
+    const admin = await server.signedInAccount({ role: "admin" })
+    const member = await server.signedInAccount()
+    const listed = (await listAccounts(admin.headers)).find((r) => r.id === member.user.id)
+    expect(listed).toMatchObject({ temporaryPassword: null })
+  })
+
+  test("an email that already has an Account is a 409 conflict", async () => {
+    const admin = await server.signedInAccount({ role: "admin" })
+    const existing = await server.signedInAccount()
+    const response = await createViaApi(admin.headers, {
+      email: existing.user.email.toUpperCase(),
+      name: "Twin",
+      apps: [],
+    })
+    expect(response.status).toBe(409)
+    expect(await response.json()).toMatchObject({ error: { code: "conflict" } })
+  })
+
+  test.each([
+    ["an unknown App", { email: "x@example.com", name: "X", apps: ["nope"] }],
+    ["a bad email", { email: "not-an-email", name: "X", apps: [] }],
+    ["a blank name", { email: "x@example.com", name: "   ", apps: [] }],
+    ["a name over 100 characters", { email: "x@example.com", name: "n".repeat(101), apps: [] }],
+    ["an unexpected field", { email: "x@example.com", name: "X", apps: [], role: "admin" }],
+  ])("%s is a 400", async (_, body) => {
+    const admin = await server.signedInAccount({ role: "admin" })
+    const response = await createViaApi(admin.headers, body)
+    expect(response.status).toBe(400)
+    expect(await response.json()).toMatchObject({ error: { code: "validation_failed" } })
+  })
+
+  test("a non-Admin cannot create an Account", async () => {
+    const { headers } = await server.signedInAccount()
+    const response = await createViaApi(headers, { email: uniqueEmail(), name: "X", apps: [] })
+    expect(response.status).toBe(403)
   })
 })

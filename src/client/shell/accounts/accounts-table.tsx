@@ -9,6 +9,7 @@ import {
 } from "@/components/ui/table"
 import type { AdminAccount } from "@/data/admin-accounts"
 import { cn } from "@/lib/utils"
+import { TemporaryPassword } from "@/shell/accounts/temporary-password"
 import { appTitle } from "@shared/apps"
 import type { AccountStatus } from "@shared/schemas/admin"
 
@@ -69,6 +70,20 @@ function Identity({ account, isSelf }: { account: AdminAccount; isSelf: boolean 
   )
 }
 
+/** Shown while the Account still signs in with the password the Admin issued. */
+function PendingPassword({ account }: { account: AdminAccount }) {
+  if (account.status !== "awaiting_password_change") return null
+  if (!account.temporaryPassword) {
+    return <p className="text-sm text-muted-foreground">Reset to issue a new password</p>
+  }
+  return (
+    <TemporaryPassword
+      password={account.temporaryPassword}
+      label={`Temporary password for ${account.email}`}
+    />
+  )
+}
+
 const features = tableFeatures({})
 const helper = createColumnHelper<typeof features, AdminAccount>()
 const columns = helper.columns([
@@ -92,6 +107,7 @@ export function AccountsTable({ accounts, selfId }: { accounts: AdminAccount[]; 
               <StatusBadge status={row.original.status} />
               <AppChips apps={row.original.apps} />
             </div>
+            <PendingPassword account={row.original} />
           </li>
         ))}
       </ul>
@@ -101,7 +117,7 @@ export function AccountsTable({ accounts, selfId }: { accounts: AdminAccount[]; 
           <TableHeader>
             <TableRow>
               <TableHead className="pl-4">Account</TableHead>
-              <TableHead className="w-56">Status</TableHead>
+              <TableHead className="w-80">Status</TableHead>
               <TableHead className="w-56">Apps</TableHead>
             </TableRow>
           </TableHeader>
@@ -111,8 +127,11 @@ export function AccountsTable({ accounts, selfId }: { accounts: AdminAccount[]; 
                 <TableCell className="max-w-0 pl-4">
                   <Identity account={row.original} isSelf={row.original.id === selfId} />
                 </TableCell>
-                <TableCell>
-                  <StatusBadge status={row.original.status} />
+                <TableCell className="align-top">
+                  <div className="flex flex-col items-start gap-2">
+                    <StatusBadge status={row.original.status} />
+                    <PendingPassword account={row.original} />
+                  </div>
                 </TableCell>
                 <TableCell>
                   <AppChips apps={row.original.apps} />

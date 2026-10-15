@@ -1,10 +1,10 @@
 // Account provisioning for the admin scripts. There is no sign-up and no email: the Admin
 // creates Accounts, shares the one-time temporary password out of band, and resets it on request.
 import { randomInt } from "node:crypto"
-import { asc, eq } from "drizzle-orm"
+import { asc, eq, inArray, sql, type SQL } from "drizzle-orm"
 import type { Auth } from "#server/auth/auth.ts"
 import type { Db } from "#server/db/client.ts"
-import { appAccess, auth_user } from "#server/db/schema/index.ts"
+import { appAccess, auth_user, temporaryPasswords } from "#server/db/schema/index.ts"
 import { isAppKey } from "#shared/apps.ts"
 import type { AdminAccount } from "#shared/schemas/admin.ts"
 
@@ -38,17 +38,38 @@ export function generateTemporaryPassword(): string {
   return [passwordGroup(), passwordGroup(), passwordGroup(), passwordGroup()].join("-")
 }
 
-async function findUserId(db: Db, email: string): Promise<string> {
+/** The id of the Account with this email (any case), or null. */
+export async function accountIdByEmail(db: Db, email: string): Promise<string | null> {
   const [user] = await db
     .select({ id: auth_user.id })
     .from(auth_user)
     .where(eq(auth_user.email, email.toLowerCase()))
-  if (!user) throw new Error(`No Account with email ${email}`)
-  return user.id
+  return user?.id ?? null
+}
+
+async function findUserId(db: Db, email: string): Promise<string> {
+  const id = await accountIdByEmail(db, email)
+  if (!id) throw new Error(`No Account with email ${email}`)
+  return id
+}
+
+/** Keeps the issued password readable by the Admin until the Account replaces it. */
+async function rememberTemporaryPassword(db: Db, userId: string, password: string) {
+  await db
+    .insert(temporaryPasswords)
+    .values({ userId, password })
+    .onConflictDoUpdate({
+      target: temporaryPasswords.userId,
+      set: { password, createdAt: sql`now()` },
+    })
+}
+
+export async function forgetTemporaryPassword(db: Db, userId: string): Promise<void> {
+  await db.delete(temporaryPasswords).where(eq(temporaryPasswords.userId, userId))
 }
 
 /** Every Account as the Admin's screen shows it, ordered by email. */
-export async function listAccounts(db: Db): Promise<AdminAccount[]> {
+export async function listAccounts(db: Db, where?: SQL): Promise<AdminAccount[]> {
   const users = await db
     .select({
       id: auth_user.id,
@@ -57,12 +78,21 @@ export async function listAccounts(db: Db): Promise<AdminAccount[]> {
       role: auth_user.role,
       banned: auth_user.banned,
       mustChangePassword: auth_user.mustChangePassword,
+      temporaryPassword: temporaryPasswords.password,
     })
     .from(auth_user)
+    .leftJoin(temporaryPasswords, eq(temporaryPasswords.userId, auth_user.id))
+    .where(where)
     .orderBy(asc(auth_user.email))
   const grants = await db
     .select({ userId: appAccess.userId, appKey: appAccess.appKey })
     .from(appAccess)
+    .where(
+      inArray(
+        appAccess.userId,
+        users.map((user) => user.id),
+      ),
+    )
     .orderBy(asc(appAccess.appKey))
 
   return users.map((user) => ({
@@ -79,7 +109,14 @@ export async function listAccounts(db: Db): Promise<AdminAccount[]> {
       .filter((grant) => grant.userId === user.id)
       .map((grant) => grant.appKey)
       .filter(isAppKey),
+    temporaryPassword: user.temporaryPassword,
   }))
+}
+
+/** One Account as the Admin's screen shows it, or null. */
+export async function findAccount(db: Db, userId: string): Promise<AdminAccount | null> {
+  const [account] = await listAccounts(db, eq(auth_user.id, userId))
+  return account ?? null
 }
 
 export async function grantApps(db: Db, userId: string, apps: readonly string[]): Promise<void> {
@@ -105,6 +142,7 @@ export async function createAccount(
     },
   })
   await grantApps(db, user.id, input.apps)
+  await rememberTemporaryPassword(db, user.id, temporaryPassword)
   return { userId: user.id, temporaryPassword }
 }
 
@@ -122,6 +160,7 @@ export async function resetAccount(
   )
   await context.internalAdapter.updateUser(userId, { mustChangePassword: true })
   await context.internalAdapter.deleteUserSessions(userId)
+  await rememberTemporaryPassword(db, userId, temporaryPassword)
   return { temporaryPassword }
 }
 

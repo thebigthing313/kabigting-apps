@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "vitest"
-import { z } from "zod"
 import { banAccount, createAccount, resetAccount } from "#server/auth/accounts.ts"
+import * as http from "#server/test/http-auth.ts"
 import { createTestServer, json, type TestServer } from "#server/test/server.ts"
 
 let server: TestServer
@@ -19,39 +19,16 @@ function uniqueEmail() {
   return `person${counter}@example.com`
 }
 
-/** Signs in over HTTP, as the browser does, and returns the session cookie as request headers. */
-async function signIn(email: string, password: string) {
-  const response = await server.app.request(
-    "/api/auth/sign-in/email",
-    json("POST", { email, password }),
-  )
-  const cookie = response.headers
-    .getSetCookie()
-    .map((c) => c.split(";")[0])
-    .join("; ")
-  return { status: response.status, headers: new Headers(cookie ? { cookie } : {}) }
+function signIn(email: string, password: string) {
+  return http.signIn(server.app, email, password)
 }
 
-const sessionBody = z
-  .object({ user: z.object({ mustChangePassword: z.boolean(), role: z.string() }) })
-  .nullable()
-
-async function session(headers: Headers) {
-  const response = await server.app.request("/api/auth/get-session", { headers })
-  return sessionBody.parse(await response.json())
+function session(headers: Headers) {
+  return http.session(server.app, headers)
 }
 
-async function changePassword(headers: Headers, currentPassword: string, newPassword: string) {
-  const response = await server.app.request(
-    "/api/auth/change-password",
-    json("POST", { currentPassword, newPassword }, headers),
-  )
-  return { status: response.status, headers: mergeCookies(headers, response) }
-}
-
-function mergeCookies(headers: Headers, response: Response) {
-  const set = response.headers.getSetCookie().map((c) => c.split(";")[0])
-  return set.length > 0 ? new Headers({ cookie: set.join("; ") }) : headers
+function changePassword(headers: Headers, currentPassword: string, newPassword: string) {
+  return http.changePassword(server.app, headers, currentPassword, newPassword)
 }
 
 async function notes(headers: Headers) {

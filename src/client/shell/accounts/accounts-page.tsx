@@ -1,7 +1,11 @@
 import { getRouteApi } from "@tanstack/react-router"
+import { UserPlusIcon } from "lucide-react"
+import { useState } from "react"
+import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useAdminAccounts } from "@/data/admin-accounts"
 import { AccountsTable } from "@/shell/accounts/accounts-table"
+import { NewAccountDialog } from "@/shell/accounts/new-account-dialog"
 
 const accountsRoute = getRouteApi("/_app/admin/accounts")
 
@@ -9,11 +13,16 @@ const accountsRoute = getRouteApi("/_app/admin/accounts")
 export function AccountsPage() {
   const { session } = accountsRoute.useRouteContext()
   const { data: accounts, isPending, isError } = useAdminAccounts()
+  const [creating, setCreating] = useState(false)
 
   return (
     <div className="mx-auto flex max-w-5xl flex-col gap-4">
       <div className="flex items-center justify-between gap-4">
         <h1 className="text-2xl font-semibold">Accounts</h1>
+        <Button className="h-11" onClick={() => setCreating(true)}>
+          <UserPlusIcon />
+          New Account
+        </Button>
       </div>
 
       {isPending ? (
@@ -28,6 +37,8 @@ export function AccountsPage() {
       ) : (
         <AccountsTable accounts={accounts} selfId={session.user.id} />
       )}
+
+      <NewAccountDialog open={creating} onClose={() => setCreating(false)} />
     </div>
   )
 }
