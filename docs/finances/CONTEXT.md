@@ -68,7 +68,8 @@ _Avoid_: Type, payee type, budget, subcategory
 **Monthly summary**:
 Actual Transactions in every Wallet for one calendar month, totalled per Category (with an
 Uncategorised row) and as income, spending and net, each set beside the previous month and the
-trailing 12-month average. Transfers and Planned Transactions are not in it.
+trailing 12-month average. A Category counts as income for a month when its Actuals net positive,
+and as spending otherwise. Transfers and Planned Transactions are not in it.
 _Avoid_: Budget, report, spending breakdown
 
 **Balance check**:
