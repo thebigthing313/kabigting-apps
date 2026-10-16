@@ -30,8 +30,15 @@ _Avoid_: Posted, cleared, real
 
 **Schedule**:
 A recurrence that makes Planned Transactions or Transfers, such as rent on the 1st or pay every
-other Friday. An Account may have several Schedules or none.
+other Friday. It repeats every so many weeks or months from its start date until an optional end
+date. An Account may have several Schedules or none.
 _Avoid_: Recurring, bill, Expense, Income
+
+**Occurrence**:
+One date a Schedule falls on, known by its Schedule and that nominal date. It shows up as a Planned
+Transaction or Transfer, which can be given its own amount or date, or skipped, without changing
+the rest of the Schedule.
+_Avoid_: Instance, installment, entry
 
 **Transfer**:
 Money moved between two of the household's Wallets, such as paying a credit card from checking. It
