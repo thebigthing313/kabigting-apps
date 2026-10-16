@@ -59,8 +59,13 @@ function split(date: string): [number, number, number] {
   const [y, m, d] = date.split("-").map(Number)
   return [y ?? 0, m ?? 1, d ?? 1]
 }
+function utc(ms: number): Date {
+  const date = new Date(0)
+  date.setTime(ms)
+  return date
+}
 function join(ms: number): string {
-  return new Date(ms).toISOString().slice(0, 10)
+  return utc(ms).toISOString().slice(0, 10)
 }
 export function addDays(date: string, days: number): string {
   const [y, m, d] = split(date)
@@ -77,7 +82,7 @@ export function daysBetween(from: string, to: string): number {
 }
 export function shortDate(date: string): string {
   const [y, m, d] = split(date)
-  return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString("en-US", {
+  return utc(Date.UTC(y, m - 1, d)).toLocaleDateString("en-US", {
     weekday: "short",
     month: "short",
     day: "numeric",
