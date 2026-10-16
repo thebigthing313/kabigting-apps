@@ -13,6 +13,7 @@ import { Route as AppRouteImport } from './routes/_app'
 import { Route as ChangePasswordRouteImport } from './routes/change-password'
 import { Route as SignInRouteImport } from './routes/sign-in'
 import { Route as AppIndexRouteImport } from './routes/_app/index'
+import { Route as AppFinancesPrototypeRouteImport } from './routes/_app/finances-prototype'
 import { Route as AppSkeletonRouteImport } from './routes/_app/skeleton'
 import { Route as AppAdminAccountsRouteImport } from './routes/_app/admin/accounts'
 
@@ -35,6 +36,11 @@ const AppIndexRoute = AppIndexRouteImport.update({
   path: '/',
   getParentRoute: () => AppRoute,
 } as any)
+const AppFinancesPrototypeRoute = AppFinancesPrototypeRouteImport.update({
+  id: '/finances-prototype',
+  path: '/finances-prototype',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppSkeletonRoute = AppSkeletonRouteImport.update({
   id: '/skeleton',
   path: '/skeleton',
@@ -50,12 +56,14 @@ export interface FileRoutesByFullPath {
   '/': typeof AppIndexRoute
   '/change-password': typeof ChangePasswordRoute
   '/sign-in': typeof SignInRoute
+  '/finances-prototype': typeof AppFinancesPrototypeRoute
   '/skeleton': typeof AppSkeletonRoute
   '/admin/accounts': typeof AppAdminAccountsRoute
 }
 export interface FileRoutesByTo {
   '/change-password': typeof ChangePasswordRoute
   '/sign-in': typeof SignInRoute
+  '/finances-prototype': typeof AppFinancesPrototypeRoute
   '/skeleton': typeof AppSkeletonRoute
   '/': typeof AppIndexRoute
   '/admin/accounts': typeof AppAdminAccountsRoute
@@ -65,6 +73,7 @@ export interface FileRoutesById {
   '/_app': typeof AppRouteWithChildren
   '/change-password': typeof ChangePasswordRoute
   '/sign-in': typeof SignInRoute
+  '/_app/finances-prototype': typeof AppFinancesPrototypeRoute
   '/_app/skeleton': typeof AppSkeletonRoute
   '/_app/': typeof AppIndexRoute
   '/_app/admin/accounts': typeof AppAdminAccountsRoute
@@ -72,14 +81,26 @@ export interface FileRoutesById {
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
-    '/' | '/change-password' | '/sign-in' | '/skeleton' | '/admin/accounts'
+    | '/'
+    | '/change-password'
+    | '/sign-in'
+    | '/finances-prototype'
+    | '/skeleton'
+    | '/admin/accounts'
   fileRoutesByTo: FileRoutesByTo
-  to: '/change-password' | '/sign-in' | '/skeleton' | '/' | '/admin/accounts'
+  to:
+    | '/change-password'
+    | '/sign-in'
+    | '/finances-prototype'
+    | '/skeleton'
+    | '/'
+    | '/admin/accounts'
   id:
     | '__root__'
     | '/_app'
     | '/change-password'
     | '/sign-in'
+    | '/_app/finances-prototype'
     | '/_app/skeleton'
     | '/_app/'
     | '/_app/admin/accounts'
@@ -121,6 +142,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppIndexRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/finances-prototype': {
+      id: '/_app/finances-prototype'
+      path: '/finances-prototype'
+      fullPath: '/finances-prototype'
+      preLoaderRoute: typeof AppFinancesPrototypeRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/skeleton': {
       id: '/_app/skeleton'
       path: '/skeleton'
@@ -139,12 +167,14 @@ declare module '@tanstack/react-router' {
 }
 
 interface AppRouteChildren {
+  AppFinancesPrototypeRoute: typeof AppFinancesPrototypeRoute
   AppSkeletonRoute: typeof AppSkeletonRoute
   AppIndexRoute: typeof AppIndexRoute
   AppAdminAccountsRoute: typeof AppAdminAccountsRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
+  AppFinancesPrototypeRoute: AppFinancesPrototypeRoute,
   AppSkeletonRoute: AppSkeletonRoute,
   AppIndexRoute: AppIndexRoute,
   AppAdminAccountsRoute: AppAdminAccountsRoute,
