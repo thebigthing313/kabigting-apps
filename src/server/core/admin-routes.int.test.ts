@@ -381,6 +381,19 @@ describe("editing App access", () => {
     expect((await setApps(member.headers, admin.user.id, { apps: [] })).status).toBe(403)
     expect((await finances(member.headers)).status).toBe(200)
   })
+
+  test("setting Apps on another Admin is refused: the Admin holds every App", async () => {
+    const admin = await server.signedInAccount({ role: "admin" })
+    const other = await server.signedInAccount({ role: "admin" })
+    for (const apps of [["finances"], []]) {
+      const response = await setApps(admin.headers, other.user.id, { apps })
+      expect(response.status).toBe(400)
+      expect(await response.json()).toMatchObject({
+        error: { code: "validation_failed", message: "The Admin holds every App" },
+      })
+    }
+    expect((await finances(other.headers)).status).toBe(200)
+  })
 })
 
 describe("guards on every route", () => {

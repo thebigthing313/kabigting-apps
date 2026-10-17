@@ -26,8 +26,15 @@
     {
       "idx": 3,
       "version": "7",
-      "when": 1792209301402,
-      "tag": "0003_finances_accounts_categories",
+      "when": 1792208078477,
+      "tag": "0003_admin_holds_every_app",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1792238582614,
+      "tag": "0004_finances_accounts_categories",
       "breakpoints": true
     }
   ]

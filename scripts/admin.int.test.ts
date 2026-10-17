@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from "vitest"
+import { accountIdByEmail, findAccount } from "#server/auth/accounts.ts"
 import { createTestServer, json, type TestServer } from "#server/test/server.ts"
 import { runAdmin } from "./admin.ts"
 
@@ -29,13 +30,21 @@ async function signIn(email: string, password: string) {
 }
 
 describe("admin create", () => {
-  test("creates an Admin with every App and prints the temporary password once", async () => {
+  test("creates an Admin and prints the temporary password once", async () => {
     const output = await run("create", "--email", "owner@example.com", "--name", "Owner")
     const response = await signIn("owner@example.com", passwordIn(output))
     expect(response.status).toBe(200)
     expect(await response.json()).toMatchObject({
       user: { role: "admin", mustChangePassword: true },
     })
+  })
+
+  test("grants the Admin no App access rows: the role holds every App", async () => {
+    const output = await run("create", "--email", "rowless@example.com", "--name", "Rowless")
+    expect(output).toContain("holds every App")
+    const id = await accountIdByEmail(server.db, "rowless@example.com")
+    if (!id) throw new Error("No Account created")
+    expect(await findAccount(server.db, id)).toMatchObject({ role: "admin", apps: [] })
   })
 })
 

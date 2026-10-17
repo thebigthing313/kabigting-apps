@@ -54,9 +54,9 @@ export async function runAdmin(
         email,
         name: required(values.name, "name"),
         role: "admin",
-        apps: APP_KEYS,
+        apps: [],
       })
-      print(`Created Admin ${email} with Apps: ${APP_KEYS.join(", ")}`)
+      print(`Created Admin ${email}; the Admin holds every App`)
       print(`Temporary password: ${temporaryPassword}`)
       return
     }
