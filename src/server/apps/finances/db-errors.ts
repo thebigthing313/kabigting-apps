@@ -12,6 +12,11 @@ export function isUniqueViolation(error: unknown): boolean {
   return postgresCode(error) === "23505"
 }
 
+/** A check constraint refused the write, such as a Transfer Schedule with a Category. */
+export function isCheckViolation(error: unknown): boolean {
+  return postgresCode(error) === "23514"
+}
+
 /** A foreign key refused the write, such as deleting a row something still references. */
 export function isForeignKeyViolation(error: unknown): boolean {
   return postgresCode(error) === "23503"

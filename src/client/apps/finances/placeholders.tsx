@@ -8,10 +8,6 @@ export function SectionPlaceholder({ title }: { title: string }) {
   )
 }
 
-export function SchedulesPage() {
-  return <SectionPlaceholder title="Schedules" />
-}
-
 export function SummaryPage() {
   return <SectionPlaceholder title="Summary" />
 }

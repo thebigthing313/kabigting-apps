@@ -61,3 +61,49 @@ export function fromPickerDate(picked: Date): string {
 export function formatDisplayDate(date: string): string {
   return format(toPickerDate(date), "MMM d, yyyy")
 }
+
+// Calendar arithmetic works on the date's UTC midnight, where no day is ever 23 or 25 hours long,
+// so adding days never drifts across a DST change in any zone.
+const DAY_MS = 86_400_000
+
+function utcDay(date: string): number {
+  const [year, month, day] = parts(date)
+  return Date.UTC(year, month - 1, day)
+}
+
+function fromUtcDay(ms: number): string {
+  return new Date(ms).toISOString().slice(0, 10)
+}
+
+/** The calendar date `days` after `date` (before it when negative). */
+export function addDays(date: string, days: number): string {
+  return fromUtcDay(utcDay(date) + days * DAY_MS)
+}
+
+/** Calendar days from `from` to `to`; negative when `to` is earlier. */
+export function daysBetween(from: string, to: string): number {
+  return Math.round((utcDay(to) - utcDay(from)) / DAY_MS)
+}
+
+/**
+ * The same day `months` later, or that month's last day when it is shorter: Jan 31 + 1 month is
+ * Feb 28 (29 in a leap year), and Feb 29 + 12 months is Feb 28.
+ */
+export function addMonthsClamped(date: string, months: number): string {
+  const [year, month, day] = parts(date)
+  const index = year * 12 + (month - 1) + months
+  const targetYear = Math.floor(index / 12)
+  const targetMonth = index - targetYear * 12
+  const lastDay = new Date(Date.UTC(targetYear, targetMonth + 1, 0)).getUTCDate()
+  return fromUtcDay(Date.UTC(targetYear, targetMonth, Math.min(day, lastDay)))
+}
+
+/** The weekday's name, e.g. "Friday". */
+export function weekdayName(date: string): string {
+  return format(toPickerDate(date), "EEEE")
+}
+
+/** A calendar date's month and day, e.g. "Mar 5". */
+export function formatMonthDay(date: string): string {
+  return format(toPickerDate(date), "MMM d")
+}
