@@ -1,7 +1,8 @@
-import { renderToStaticMarkup } from "react-dom/server"
 import { describe, expect, test } from "vitest"
 import { CategoriesPage, CategoryList } from "@/apps/finances/categories-page"
 import { FinancesHome } from "@/apps/finances/finances-home"
+import { ForecastChart } from "@/apps/finances/home/forecast-chart"
+import { WalletForecast } from "@/apps/finances/home/wallet-forecast"
 import { ScheduleForm } from "@/apps/finances/schedules/schedule-form"
 import { SchedulesPage } from "@/apps/finances/schedules/schedules-page"
 import { WalletForm } from "@/apps/finances/wallets/wallet-form"
@@ -30,6 +31,8 @@ describe("React Compiler", () => {
 
   test.each([
     ["FinancesHome", FinancesHome],
+    ["WalletForecast", WalletForecast],
+    ["ForecastChart", ForecastChart],
     ["NamePicker", NamePicker],
     ["NameDialog", NameDialog],
     ["AccountPicker", AccountPicker],
@@ -45,10 +48,4 @@ describe("React Compiler", () => {
   ])("compiled %s", (_name, component) => {
     expect(isCompiled(component)).toBe(true)
   })
-})
-
-test("the empty Finances home says there is nothing here yet", () => {
-  const html = renderToStaticMarkup(<FinancesHome />)
-  expect(html).toContain("Finances")
-  expect(html).toContain("Nothing here yet")
 })

@@ -260,7 +260,9 @@ These are pure functions, tested with unit tests on made-up data. Dates go throu
     nominal date, its effective date and amount (the override, else the Schedule's) and its
     state:
     - `upcoming`
-    - `overdue` (effective date before today, nothing Reconciled)
+    - `overdue` (effective date before today, nothing Reconciled). The Forecast counts an
+      Overdue Occurrence only when its effective date is after the Wallet's latest Balance check
+      (see `forecast.ts` below).
     - `skipped`
     - `reconciled`
   - A stored override whose effective date falls in range is included even when its nominal date
@@ -279,6 +281,9 @@ These are pure functions, tested with unit tests on made-up data. Dates go throu
   - Today's balance is the check plus the Actuals dated after the check's date.
   - Outstanding Planned Transactions and Transfers (Occurrences and one-offs) land on their
     effective date. Overdue ones land on today.
+  - An Overdue Occurrence counts only when its effective date is after the latest Balance check's
+    date. One dated on or before the check is taken as already in the bank's balance and is left
+    out (decided on PR #67, refining #21's "whatever their date").
   - A Transfer is an outflow from `fromWallet` and an inflow to `toWallet`.
   - It returns `null` when the Wallet has no Balance check.
 - **`reconcile.ts`**:
