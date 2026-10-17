@@ -4,7 +4,7 @@
  * Never `new Date("YYYY-MM-DD")`: it parses as UTC midnight, the wrong day in New York.
  */
 import { TZDate } from "@date-fns/tz"
-import { addMonths, format } from "date-fns"
+import { addDays as addCalendarDays, addMonths, format } from "date-fns"
 
 export const HOUSEHOLD_ZONE = "America/New_York"
 
@@ -55,6 +55,12 @@ export function toPickerDate(date: string): Date {
 /** The calendar date a picker's `Date` stands for (its local year, month and day). */
 export function fromPickerDate(picked: Date): string {
   return format(picked, "yyyy-MM-dd")
+}
+
+/** The calendar date `days` days after `date` (before it when negative). */
+export function addDays(date: string, days: number): string {
+  // Calendar days on a local midnight, so a DST change in the device's zone cannot shift it.
+  return format(addCalendarDays(toPickerDate(date), days), "yyyy-MM-dd")
 }
 
 /** A calendar date for display, e.g. "Nov 1, 2026". */

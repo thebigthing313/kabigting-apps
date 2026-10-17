@@ -1,6 +1,6 @@
 /** Wire schemas for the Finances App's resources. */
 import { z } from "zod"
-import { cents, id, instant } from "../schemas/primitives.ts"
+import { cents, id, instant, isoDate } from "../schemas/primitives.ts"
 import { queryBody, rowsResponse } from "../schemas/query.ts"
 
 /** A unique display name, trimmed; the database enforces uniqueness. */
@@ -104,3 +104,62 @@ export const walletRows = rowsResponse(walletRow)
 
 export type UpdateWallet = z.infer<typeof updateWallet>
 export type WalletRow = z.infer<typeof walletRow>
+
+/**
+ * The fixed set of filters the on-demand resources (Transactions, Transfers, Balance checks)
+ * draw from, beside the base `ids`, `limit` and `after`. Each resource accepts the ones that
+ * apply to it and rejects anything else. Dates are inclusive; `after` is the id of the last row
+ * of the previous page, in the requested order.
+ */
+export const onDemandFilters = {
+  walletId: id,
+  dateFrom: isoDate,
+  dateTo: isoDate,
+  /** null means Uncategorised. */
+  categoryId: id.nullable(),
+  status: z.enum(["planned", "actual"]),
+  /** true keeps only Actuals no one has reviewed yet. */
+  unreviewed: z.boolean(),
+  /** true adds ignored rows, which are left out by default. */
+  includeIgnored: z.boolean(),
+  order: z.enum(["dateAsc", "dateDesc"]),
+}
+
+/** A query an on-demand collection can send: the fixed filters plus paging. */
+export type OnDemandQuery = {
+  [Key in keyof typeof onDemandFilters]?: z.infer<(typeof onDemandFilters)[Key]>
+} & { ids?: string[]; limit?: number; after?: string }
+
+// Balance checks: a Wallet's actual balance on a date, as entered from the bank.
+
+export const createBalanceCheck = z.strictObject({
+  id,
+  walletId: id,
+  date: isoDate,
+  amountCents: cents,
+})
+
+export const updateBalanceCheck = z
+  .strictObject({ date: isoDate, amountCents: cents })
+  .partial()
+  .refine(atLeastOneField, "Change at least one field")
+
+export const balanceCheckRow = z.object({
+  id,
+  walletId: id,
+  date: isoDate,
+  amountCents: cents,
+  createdAt: instant,
+  updatedAt: instant,
+})
+
+export const balanceCheckQuery = queryBody({
+  walletId: onDemandFilters.walletId.optional(),
+  dateFrom: onDemandFilters.dateFrom.optional(),
+  dateTo: onDemandFilters.dateTo.optional(),
+  order: onDemandFilters.order.optional(),
+})
+export const balanceCheckRows = rowsResponse(balanceCheckRow)
+
+export type UpdateBalanceCheck = z.infer<typeof updateBalanceCheck>
+export type BalanceCheckRow = z.infer<typeof balanceCheckRow>

@@ -43,6 +43,13 @@
       "when": 1792239339474,
       "tag": "0005_finances_wallets",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1792240643823,
+      "tag": "0006_finances_balance_checks",
+      "breakpoints": true
     }
   ]
 }

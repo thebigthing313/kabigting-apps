@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url"
 import { playwright } from "@vitest/browser-playwright"
 import { defineConfig } from "vitest/config"
 
@@ -6,6 +7,13 @@ export default defineConfig({
     projects: [
       {
         extends: true,
+        // Client data modules (src/client/data) are unit-tested too, through their aliases.
+        resolve: {
+          alias: {
+            "@": fileURLToPath(new URL("./src/client", import.meta.url)),
+            "@shared": fileURLToPath(new URL("./src/shared", import.meta.url)),
+          },
+        },
         test: {
           name: "unit",
           include: ["src/**/*.test.ts", "scripts/**/*.test.ts"],
