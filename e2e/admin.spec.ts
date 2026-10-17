@@ -162,5 +162,5 @@ test("the Admin manages an Account from creation onwards", async ({ page }, test
   await signOut(page, "Admin")
 
   await signInFresh(page, email, "another-password-of-mine")
-  await expect(page.getByText("No Apps have been shared with you yet.")).toBeVisible()
+  await expect(page.getByText("No Apps yet", { exact: true })).toBeVisible()
 })

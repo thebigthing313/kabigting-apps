@@ -35,7 +35,7 @@ test("a new Account must replace its temporary password before anything else", a
 test("a Guest without the App cannot see or open it", async ({ page }) => {
   const { guest } = accounts()
   await signIn(page, guest.email, guest.password)
-  await expect(page.getByText("No Apps have been shared with you yet.")).toBeVisible()
+  await expect(page.getByText("No Apps yet", { exact: true })).toBeVisible()
   await page.goto("/finances")
   await expect(page.getByRole("heading", { name: "Page not found" })).toBeVisible()
   const response = await page.request.get("/api/finances/ping")

@@ -15,9 +15,10 @@ function AppLauncher() {
     <div className="mx-auto flex max-w-4xl flex-col gap-6">
       <h1 className="text-2xl font-semibold">Hello, {session.user.name}</h1>
       {available.length === 0 ? (
-        <p className="text-muted-foreground">
-          No Apps have been shared with you yet. Ask the Admin for access.
-        </p>
+        <div className="text-muted-foreground">
+          <p className="font-medium text-foreground">No Apps yet</p>
+          <p>Ask the Admin for access.</p>
+        </div>
       ) : (
         <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {available.map((app) => (
