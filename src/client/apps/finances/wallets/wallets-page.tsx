@@ -75,9 +75,9 @@ export function WalletsPage() {
           </DialogHeader>
           <WalletForm
             submitLabel="Add Wallet"
-            onSave={(settings) => {
-              void addWallet(settings)
-              setCreating(false)
+            onSave={async (settings) => {
+              // Stays open if the server refuses it (a taken name), keeping what was typed.
+              if (await addWallet(settings)) setCreating(false)
             }}
           />
         </DialogContent>

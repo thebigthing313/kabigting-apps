@@ -49,7 +49,8 @@ export function WalletForm({
 }: {
   initial?: WalletSettings
   submitLabel: string
-  onSave: (settings: WalletSettings) => void
+  /** May return a promise; the submit button stays disabled until it settles. */
+  onSave: (settings: WalletSettings) => void | Promise<unknown>
 }) {
   const [defaultValues] = useState<WalletFormValues>(() => ({
     name: initial.name,
@@ -61,9 +62,9 @@ export function WalletForm({
   const form = useForm({
     defaultValues,
     validators: { onSubmit: walletFormSchema },
-    onSubmit: ({ value }) => {
+    onSubmit: async ({ value }) => {
       if (value.thresholdShown === null) return
-      onSave({
+      await onSave({
         name: value.name.trim(),
         inForecast: value.inForecast,
         lowBalanceThresholdCents: fromShown(value, value.thresholdShown),
@@ -125,7 +126,18 @@ export function WalletForm({
               <Checkbox
                 id="wallet-shown-as-owed"
                 checked={field.state.value}
-                onCheckedChange={(checked) => field.handleChange(checked)}
+                onCheckedChange={(checked) => {
+                  field.handleChange(checked)
+                  // Only the display flips: the threshold typed so far keeps its stored value.
+                  form.setFieldValue("thresholdShown", (typed) =>
+                    typed === null
+                      ? null
+                      : toShown(
+                          { shownAsOwed: checked },
+                          fromShown({ shownAsOwed: !checked }, typed),
+                        ),
+                  )
+                }}
               />
               <FieldContent>
                 <FieldLabel htmlFor="wallet-shown-as-owed">Shown as owed</FieldLabel>
@@ -146,6 +158,8 @@ export function WalletForm({
                   <Field data-invalid={invalid || undefined}>
                     <FieldLabel htmlFor="wallet-threshold">Low-balance threshold</FieldLabel>
                     <AmountInput
+                      // Remounts on a flip, so the text shows the flipped amount.
+                      key={String(shownAsOwed)}
                       id="wallet-threshold"
                       name={field.name}
                       className="h-11"

@@ -13,7 +13,7 @@ export function toShown(wallet: Shown, cents: number): number {
   return wallet.shownAsOwed ? flip(cents) : cents
 }
 
-/** The Amount to store for what was typed on this Wallet. */
+/** The Amount to store for what was typed on this Wallet. The flip is its own inverse. */
 export function fromShown(wallet: Shown, cents: number): number {
   return wallet.shownAsOwed ? flip(cents) : cents
 }

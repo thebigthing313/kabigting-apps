@@ -89,7 +89,7 @@ function WalletSettingsTab({ wallet }: { wallet: Wallet }) {
       <WalletForm
         initial={wallet}
         submitLabel="Save settings"
-        onSave={(settings) => void save(wallet.id, settings, "Settings saved")}
+        onSave={(settings) => save(wallet.id, settings, "Settings saved")}
       />
 
       <Separator />

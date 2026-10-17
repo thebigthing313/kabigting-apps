@@ -13,6 +13,7 @@ import {
   type WalletRow,
 } from "#shared/finances/schemas.ts"
 import { id } from "#shared/schemas/primitives.ts"
+import { MAX_QUERY_IDS } from "#shared/schemas/query.ts"
 
 type WalletRecord = typeof financesWallets.$inferSelect
 
@@ -63,7 +64,7 @@ export function walletRoutes({ db }: Deps) {
           ),
         )
         .orderBy(asc(financesWallets.id))
-        .limit(limit ?? 5000)
+        .limit(limit ?? MAX_QUERY_IDS)
       return c.json({ rows: wallets.map(toRow) })
     })
     .post("/", validate("json", createWallet), async (c) => {

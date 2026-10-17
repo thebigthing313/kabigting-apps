@@ -41,6 +41,27 @@ describe("WalletForm", () => {
     )
   })
 
+  test("turning on shown as owed flips the shown threshold, not the stored one", async () => {
+    const onSave = vi.fn<(settings: WalletSettings) => void>()
+    const screen = await render(
+      <WalletForm
+        initial={{ ...card, shownAsOwed: false, lowBalanceThresholdCents: 10_000 }}
+        submitLabel="Save"
+        onSave={onSave}
+      />,
+    )
+    await screen.getByText("Shown as owed", { exact: true }).click()
+    await expect.element(screen.getByLabelText("Low-balance threshold")).toHaveValue("-$100.00")
+    await screen.getByRole("button", { name: "Save" }).click()
+    await vi.waitFor(() =>
+      expect(onSave).toHaveBeenCalledWith({
+        ...card,
+        shownAsOwed: true,
+        lowBalanceThresholdCents: 10_000,
+      }),
+    )
+  })
+
   test("an empty name is not saved", async () => {
     const onSave = vi.fn<(settings: WalletSettings) => void>()
     const screen = await render(<WalletForm submitLabel="Add Wallet" onSave={onSave} />)
