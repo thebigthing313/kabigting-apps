@@ -48,7 +48,8 @@ test("signing out leaves no signed-in data behind", async ({ page }) => {
   await signIn(page, member.email, member.password)
   await expect(page.getByRole("heading", { name: "Hello, Member" })).toBeVisible()
   await page.goto("/finances")
-  // The empty Finances home stands in for App data until Finances has records.
+  // The empty Finances home stands in for App data. Once Finances has records, write one here and
+  // check it is gone after sign-out, as this test did before.
   const text = "Nothing here yet"
   await expect(page.getByText(text).filter({ visible: true })).toBeVisible()
 

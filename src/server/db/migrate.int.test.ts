@@ -38,7 +38,7 @@ async function query<Row extends pg.QueryResultRow>(
 }
 
 /** Applies only the migrations before `tag`, from a copy of the folder with a shorter journal. */
-async function migrateUpTo(databaseUrl: string, tag: string): Promise<void> {
+async function migrateBefore(databaseUrl: string, tag: string): Promise<void> {
   const folder = await mkdtemp(join(tmpdir(), "kabigting-migrations-"))
   try {
     await cp(MIGRATIONS_FOLDER, folder, { recursive: true })
@@ -79,6 +79,11 @@ test("running migrations again is a no-op", async () => {
   await expect(runMigrations(url)).resolves.toBeUndefined()
 })
 
+test("the database makes UUIDv7s natively, for client-id column defaults", async () => {
+  const [row] = await query<{ id: string }>(url, "select uuidv7()::text as id")
+  expect(row?.id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-7/)
+})
+
 describe("0002 removes the sample App", () => {
   let earlier: string
 
@@ -91,7 +96,7 @@ describe("0002 removes the sample App", () => {
   })
 
   test("drops skeleton_notes and its app_access rows, keeping other Apps' rows", async () => {
-    await migrateUpTo(earlier, "0002_drop_skeleton")
+    await migrateBefore(earlier, "0002_drop_skeleton")
     await query(
       earlier,
       `insert into auth_user (id, name, email, updated_at) values ('u1', 'Test', 't@example.com', now());
