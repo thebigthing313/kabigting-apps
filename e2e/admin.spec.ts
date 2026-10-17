@@ -10,6 +10,8 @@ test("the Admin sees every Account on the Accounts screen", async ({ page }) => 
   const list = page.getByRole("list", { name: "Accounts" }).or(page.getByRole("table"))
   await expect(list.filter({ visible: true })).toContainText(member.email)
   await expect(list.filter({ visible: true })).toContainText(guest.email)
+  // The Admin holds every App through the role, not through App access rows.
+  await expect(list.filter({ visible: true })).toContainText("All Apps")
 })
 
 test("anyone else is sent Home and never sees the Admin menu", async ({ page }) => {

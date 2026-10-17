@@ -226,6 +226,33 @@ function RemoveAccount({ account, onClose }: { account: AdminAccount; onClose: (
   )
 }
 
+/** An Admin holds every App through the role, so there is nothing to tick. */
+function AdminApps({ account, onClose }: { account: AdminAccount; onClose: () => void }) {
+  return (
+    <Sheet
+      open
+      onOpenChange={(open) => {
+        if (!open) onClose()
+      }}
+    >
+      <SheetContent>
+        <SheetHeader>
+          <SheetTitle>Edit Apps</SheetTitle>
+          <SheetDescription>
+            {account.name} ({account.email}) can open every App.
+          </SheetDescription>
+        </SheetHeader>
+        <p className="px-4 text-sm">The Admin holds every App.</p>
+        <SheetFooter>
+          <Button type="button" variant="outline" className="h-11" onClick={onClose}>
+            Close
+          </Button>
+        </SheetFooter>
+      </SheetContent>
+    </Sheet>
+  )
+}
+
 /** Tick the Apps the Account may open; Save sends the whole set at once. */
 function EditApps({ account, onClose }: { account: AdminAccount; onClose: () => void }) {
   const save = useSetApps()
@@ -295,6 +322,9 @@ export function AccountActionDialog({
   const { action, account } = target
   switch (action) {
     case "apps":
+      if (account.role === "admin") {
+        return <AdminApps key={account.id} account={account} onClose={onClose} />
+      }
       return <EditApps key={account.id} account={account} onClose={onClose} />
     case "reset":
       return <ResetPassword key={account.id} account={account} onClose={onClose} />

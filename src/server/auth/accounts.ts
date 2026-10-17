@@ -4,6 +4,7 @@
 import { randomInt } from "node:crypto"
 import { and, asc, eq, inArray, notInArray, sql } from "drizzle-orm"
 import type { Auth } from "#server/auth/auth.ts"
+import { ApiError } from "#server/core/errors.ts"
 import type { Db } from "#server/db/client.ts"
 import { appAccess, auth_user, temporaryPasswords } from "#server/db/schema/index.ts"
 import { isAppKey } from "#shared/apps.ts"
@@ -129,8 +130,22 @@ export async function findAccount(db: Db, userId: string): Promise<AdminAccount 
   return account ?? null
 }
 
+function adminHoldsEveryApp(): ApiError {
+  return new ApiError("validation_failed", "The Admin holds every App")
+}
+
+/** The Admin holds every App through the role, so App access is never set on an Admin. */
+async function refuseAdmin(db: Db, userId: string): Promise<void> {
+  const [user] = await db
+    .select({ role: auth_user.role })
+    .from(auth_user)
+    .where(eq(auth_user.id, userId))
+  if (user?.role === "admin") throw adminHoldsEveryApp()
+}
+
 export async function grantApps(db: Db, userId: string, apps: readonly string[]): Promise<void> {
   if (apps.length === 0) return
+  await refuseAdmin(db, userId)
   await db
     .insert(appAccess)
     .values(apps.map((appKey) => ({ userId, appKey })))
@@ -142,6 +157,7 @@ export async function grantApps(db: Db, userId: string, apps: readonly string[])
  * not sign the Account out: App routes refuse it from the next request.
  */
 export async function setApps(db: Db, userId: string, apps: readonly string[]): Promise<void> {
+  await refuseAdmin(db, userId)
   await db.transaction(async (tx) => {
     await tx
       .delete(appAccess)
@@ -164,6 +180,8 @@ export async function createAccount(
   { db, auth }: AccountDeps,
   input: { email: string; name: string; apps: readonly string[]; role?: "admin" | "user" },
 ): Promise<{ userId: string; temporaryPassword: string }> {
+  // Refused before the Account exists, so a refusal leaves nothing half made.
+  if (input.role === "admin" && input.apps.length > 0) throw adminHoldsEveryApp()
   const temporaryPassword = generateTemporaryPassword()
   const { user } = await auth.api.createUser({
     body: {

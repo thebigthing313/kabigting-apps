@@ -48,7 +48,9 @@ function StatusBadge({ status }: { status: AccountStatus }) {
   )
 }
 
-function AppChips({ apps }: { apps: AdminAccount["apps"] }) {
+/** The Admin holds every App through the role, whatever rows they have. */
+function AppChips({ account: { role, apps } }: { account: AdminAccount }) {
+  if (role === "admin") return <Pill>All Apps</Pill>
   if (apps.length === 0) return <span className="text-sm text-muted-foreground">No Apps</span>
   return (
     <span className="flex flex-wrap gap-1">
@@ -121,7 +123,7 @@ export function AccountsTable({
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <StatusBadge status={row.original.status} />
-              <AppChips apps={row.original.apps} />
+              <AppChips account={row.original} />
             </div>
             <PendingPassword account={row.original} />
           </li>
@@ -153,7 +155,7 @@ export function AccountsTable({
                   </div>
                 </TableCell>
                 <TableCell>
-                  <AppChips apps={row.original.apps} />
+                  <AppChips account={row.original} />
                 </TableCell>
                 <TableCell className="text-right">
                   {row.original.id === selfId ? null : (
