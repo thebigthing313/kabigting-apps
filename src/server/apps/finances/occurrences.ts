@@ -24,7 +24,7 @@ import { MAX_QUERY_IDS } from "#shared/schemas/query.ts"
 type OccurrenceRecord = typeof financesOccurrences.$inferSelect
 type ScheduleRecord = typeof financesSchedules.$inferSelect
 
-function toRow(occurrence: OccurrenceRecord): OccurrenceRow {
+export function occurrenceToRow(occurrence: OccurrenceRecord): OccurrenceRow {
   return {
     id: occurrence.id,
     scheduleId: occurrence.scheduleId,
@@ -50,7 +50,7 @@ function reconciledConflict(): never {
 }
 
 /** Neither Reconcile link is set. */
-const notReconciled = sql`${financesOccurrences.reconciledTransactionId} is null and ${financesOccurrences.reconciledTransferId} is null`
+export const notReconciled = sql`${financesOccurrences.reconciledTransactionId} is null and ${financesOccurrences.reconciledTransferId} is null`
 
 /** One Reconcile link or the other is set. */
 export const reconciledOccurrence = not(notReconciled)
@@ -96,7 +96,7 @@ export function occurrenceRoutes(db: Db) {
         )
         .orderBy(asc(financesOccurrences.id))
         .limit(limit ?? MAX_QUERY_IDS)
-      return c.json({ rows: occurrences.map(toRow) })
+      return c.json({ rows: occurrences.map(occurrenceToRow) })
     })
     .post("/", validate("json", createOccurrence), async (c) => {
       const input = c.req.valid("json")
@@ -126,7 +126,7 @@ export function occurrenceRoutes(db: Db) {
           throw error
         })
       if (!occurrence) throw new ApiError("conflict", "An Occurrence with this id already exists")
-      return c.json(toRow(occurrence), 201)
+      return c.json(occurrenceToRow(occurrence), 201)
     })
     .patch("/:id", validate("param", params), validate("json", updateOccurrence), async (c) => {
       const occurrenceId = c.req.valid("param").id
@@ -149,7 +149,7 @@ export function occurrenceRoutes(db: Db) {
           throw error
         })
       // Reconciled in the moment between the read and the write.
-      return occurrence ? c.json(toRow(occurrence)) : reconciledConflict()
+      return occurrence ? c.json(occurrenceToRow(occurrence)) : reconciledConflict()
     })
     .delete("/:id", validate("param", params), async (c) => {
       const occurrenceId = c.req.valid("param").id
@@ -157,7 +157,7 @@ export function occurrenceRoutes(db: Db) {
         .delete(financesOccurrences)
         .where(and(eq(financesOccurrences.id, occurrenceId), notReconciled))
         .returning()
-      if (occurrence) return c.json(toRow(occurrence))
+      if (occurrence) return c.json(occurrenceToRow(occurrence))
       const [kept] = await db
         .select({ id: financesOccurrences.id })
         .from(financesOccurrences)
