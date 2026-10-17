@@ -2,11 +2,12 @@ import { and, asc, eq, gt, inArray, sql } from "drizzle-orm"
 import { Hono } from "hono"
 import { z } from "zod"
 import { isForeignKeyViolation, violatedCheck } from "#server/apps/finances/db-errors.ts"
+import { reconciledOccurrence } from "#server/apps/finances/occurrences.ts"
 import type { AppEnv } from "#server/core/context.ts"
 import { ApiError } from "#server/core/errors.ts"
 import { validate } from "#server/core/validate.ts"
 import type { Db } from "#server/db/client.ts"
-import { financesSchedules } from "#server/db/schema/index.ts"
+import { financesOccurrences, financesSchedules } from "#server/db/schema/index.ts"
 import {
   createSchedule,
   scheduleQuery,
@@ -100,11 +101,25 @@ export function scheduleRoutes(db: Db) {
       return schedule ? c.json(toRow(schedule)) : notFound()
     })
     .delete("/:id", validate("param", params), async (c) => {
-      // Nothing can be Reconciled to a Schedule yet; once it can, that refuses the delete.
-      const [schedule] = await db
-        .delete(financesSchedules)
-        .where(eq(financesSchedules.id, c.req.valid("param").id))
-        .returning()
+      const scheduleId = c.req.valid("param").id
+      // Its overrides and skips go with it, unless something is Reconciled to it.
+      const schedule = await db
+        .transaction(async (tx) => {
+          const [reconciled] = await tx
+            .select({ id: financesOccurrences.id })
+            .from(financesOccurrences)
+            .where(and(eq(financesOccurrences.scheduleId, scheduleId), reconciledOccurrence))
+            .limit(1)
+          if (reconciled) {
+            throw new ApiError("conflict", "Something is Reconciled to this Schedule")
+          }
+          await tx.delete(financesOccurrences).where(eq(financesOccurrences.scheduleId, scheduleId))
+          const [deleted] = await tx
+            .delete(financesSchedules)
+            .where(eq(financesSchedules.id, scheduleId))
+            .returning()
+          return deleted
+        })
         .catch((error: unknown) => {
           if (isForeignKeyViolation(error)) {
             throw new ApiError("conflict", "A later Schedule continues this one")

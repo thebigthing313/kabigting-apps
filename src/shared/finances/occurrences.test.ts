@@ -2,7 +2,10 @@ import { describe, expect, test } from "vitest"
 import {
   describeTerms,
   expandSchedule,
+  isOccurrenceDate,
   nextOccurrence,
+  occurrencesAround,
+  overrideFor,
   type ScheduleTerms,
   type StoredOccurrence,
 } from "./occurrences.ts"
@@ -294,5 +297,75 @@ describe("nextOccurrence", () => {
 
   test("is null once the Schedule has ended", () => {
     expect(nextOccurrence(schedule({ endDate: "2026-02-28" }), [], "2026-03-02")).toBeNull()
+  })
+})
+
+describe("occurrencesAround", () => {
+  test("keeps an Occurrence moved out of the range, on its new date, once", () => {
+    const occurrences = occurrencesAround(
+      schedule({ startDate: "2026-01-01" }),
+      [stored("2026-03-01", { overrideDate: "2026-04-15" })],
+      MARCH,
+      FAR_PAST,
+    )
+    expect(occurrences.map((o) => [o.nominalDate, o.date])).toEqual([["2026-03-01", "2026-04-15"]])
+  })
+
+  test("also has those moved into the range, in date order", () => {
+    const occurrences = occurrencesAround(
+      schedule({ startDate: "2026-01-01" }),
+      [
+        stored("2026-03-01", { overrideDate: "2026-02-20" }),
+        stored("2026-04-01", { overrideDate: "2026-03-20" }),
+      ],
+      MARCH,
+      FAR_PAST,
+    )
+    expect(occurrences.map((o) => [o.nominalDate, o.date])).toEqual([
+      ["2026-03-01", "2026-02-20"],
+      ["2026-04-01", "2026-03-20"],
+    ])
+  })
+})
+
+describe("isOccurrenceDate", () => {
+  test("is true for a date the terms put an Occurrence on, within start and end", () => {
+    const terms = schedule({ startDate: "2026-01-31", endDate: "2026-06-30" })
+    expect(isOccurrenceDate(terms, "2026-02-28")).toBe(true)
+    expect(isOccurrenceDate(terms, "2026-03-31")).toBe(true)
+  })
+
+  test("is false off the cadence, before the start or after the end", () => {
+    const terms = schedule({ startDate: "2026-01-31", endDate: "2026-06-30" })
+    expect(isOccurrenceDate(terms, "2026-03-30")).toBe(false)
+    expect(isOccurrenceDate(terms, "2025-12-31")).toBe(false)
+    expect(isOccurrenceDate(terms, "2026-07-31")).toBe(false)
+  })
+})
+
+describe("overrideFor", () => {
+  const rent = schedule({ startDate: "2026-01-01", amountCents: -150_000 })
+
+  test("keeps only what differs from the Schedule's terms", () => {
+    expect(
+      overrideFor(rent, "2026-03-01", {
+        amountCents: -160_000,
+        date: "2026-03-01",
+        skipped: false,
+      }),
+    ).toEqual({ overrideAmountCents: -160_000, overrideDate: null, skipped: false })
+    expect(
+      overrideFor(rent, "2026-03-01", { amountCents: -150_000, date: "2026-03-04", skipped: true }),
+    ).toEqual({ overrideAmountCents: null, overrideDate: "2026-03-04", skipped: true })
+  })
+
+  test("is null when the edit puts the Occurrence back on the Schedule's terms", () => {
+    expect(
+      overrideFor(rent, "2026-03-01", {
+        amountCents: -150_000,
+        date: "2026-03-01",
+        skipped: false,
+      }),
+    ).toBeNull()
   })
 })

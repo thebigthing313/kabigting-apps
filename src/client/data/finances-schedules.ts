@@ -1,4 +1,4 @@
-import { useLiveQuery } from "@tanstack/react-db"
+import { eq, useLiveQuery } from "@tanstack/react-db"
 import { api } from "@/data/api"
 import { defineRestCollection } from "@/data/collection-factory"
 import { readJson } from "@/data/error-handler"
@@ -52,6 +52,16 @@ const financesSchedules = defineRestCollection<ScheduleRow>({
 export function useSchedules() {
   const schedules = financesSchedules()
   return useLiveQuery((q) => q.from({ schedule: schedules }), [schedules])
+}
+
+/** One Schedule, live; `schedule` is undefined while loading or when there is no such Schedule. */
+export function useSchedule(id: string) {
+  const schedules = financesSchedules()
+  const { data, isLoading } = useLiveQuery(
+    (q) => q.from({ schedule: schedules }).where(({ schedule }) => eq(schedule.id, id)),
+    [schedules, id],
+  )
+  return { schedule: data[0], isLoading }
 }
 
 /** Shows the Schedule at once; resolves false after a refusal rolled it back (with a toast). */
