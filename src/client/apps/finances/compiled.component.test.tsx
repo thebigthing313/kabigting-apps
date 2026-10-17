@@ -1,9 +1,13 @@
 import { renderToStaticMarkup } from "react-dom/server"
 import { describe, expect, test } from "vitest"
+import { CategoriesPage, CategoryList } from "@/apps/finances/categories-page"
 import { FinancesHome } from "@/apps/finances/finances-home"
 import { WalletForm } from "@/apps/finances/wallets/wallet-form"
 import { WalletPage } from "@/apps/finances/wallets/wallet-page"
 import { WalletsPage } from "@/apps/finances/wallets/wallets-page"
+import { NameDialog } from "@/apps/finances/name-dialog"
+import { NamePicker } from "@/apps/finances/name-picker"
+import { AccountPicker, CategoryPicker } from "@/apps/finances/pickers"
 import { AmountInput } from "@/components/amount-input"
 
 // React Compiler rewrites a component to keep values in a memo cache (`$[0] = ...`). A component
@@ -24,6 +28,12 @@ describe("React Compiler", () => {
 
   test.each([
     ["FinancesHome", FinancesHome],
+    ["NamePicker", NamePicker],
+    ["NameDialog", NameDialog],
+    ["AccountPicker", AccountPicker],
+    ["CategoryPicker", CategoryPicker],
+    ["CategoriesPage", CategoriesPage],
+    ["CategoryList", CategoryList],
     ["AmountInput", AmountInput],
     ["WalletsPage", WalletsPage],
     ["WalletPage", WalletPage],

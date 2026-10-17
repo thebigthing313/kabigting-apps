@@ -1,10 +1,11 @@
 import { asc, eq, gt, inArray, and, sql } from "drizzle-orm"
 import { Hono } from "hono"
 import { z } from "zod"
-import type { AppEnv, Deps } from "#server/core/context.ts"
+import { isUniqueViolation } from "#server/apps/finances/db-errors.ts"
+import type { AppEnv } from "#server/core/context.ts"
 import { ApiError } from "#server/core/errors.ts"
-import { uniqueViolation } from "#server/core/unique-violation.ts"
 import { validate } from "#server/core/validate.ts"
+import type { Db } from "#server/db/client.ts"
 import { financesWallets } from "#server/db/schema/index.ts"
 import {
   createWallet,
@@ -37,12 +38,15 @@ function notFound(): never {
   throw new ApiError("not_found", "No such Wallet")
 }
 
-/** A taken name is the caller's to fix, not a server fault. */
+/**
+ * A taken name is the caller's to fix, not a server fault. The id conflict is handled by the
+ * insert, and only uploads set the bank account hash, so the name is the one unique left.
+ */
 async function namedUniquely<T>(write: Promise<T>): Promise<T> {
   try {
     return await write
   } catch (error) {
-    if (uniqueViolation(error, "finances_wallets_name_unique")) {
+    if (isUniqueViolation(error)) {
       throw new ApiError("conflict", "A Wallet with this name already exists")
     }
     throw error
@@ -50,7 +54,7 @@ async function namedUniquely<T>(write: Promise<T>): Promise<T> {
 }
 
 /** Mounted under the Finances router, which has already checked the session and App access. */
-export function walletRoutes({ db }: Deps) {
+export function walletRoutes(db: Db) {
   return new Hono<AppEnv>()
     .post("/query", validate("json", walletQuery), async (c) => {
       const { ids, limit, after } = c.req.valid("json")

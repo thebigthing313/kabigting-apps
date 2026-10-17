@@ -33,7 +33,14 @@
     {
       "idx": 4,
       "version": "7",
-      "when": 1792238618853,
+      "when": 1792238582614,
+      "tag": "0004_finances_accounts_categories",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1792239339474,
       "tag": "0005_finances_wallets",
       "breakpoints": true
     }

@@ -71,6 +71,8 @@ test("migrations apply to an empty database and create every table", async () =>
     "auth_session",
     "auth_user",
     "auth_verification",
+    "finances_accounts",
+    "finances_categories",
     "finances_wallets",
     "temporary_password",
   ])

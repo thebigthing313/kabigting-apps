@@ -17,6 +17,7 @@ import { Route as AppFinancesRouteRouteImport } from './routes/_app/finances/rou
 import { Route as AppAdminAccountsRouteImport } from './routes/_app/admin/accounts'
 import { Route as AppFinancesIndexRouteImport } from './routes/_app/finances/index'
 import { Route as AppFinancesSummaryRouteImport } from './routes/_app/finances/summary'
+import { Route as AppFinancesCategoriesIndexRouteImport } from './routes/_app/finances/categories/index'
 import { Route as AppFinancesSchedulesIndexRouteImport } from './routes/_app/finances/schedules/index'
 import { Route as AppFinancesWalletsIndexRouteImport } from './routes/_app/finances/wallets/index'
 import { Route as AppFinancesWalletsWalletIdRouteImport } from './routes/_app/finances/wallets/$walletId'
@@ -60,6 +61,12 @@ const AppFinancesSummaryRoute = AppFinancesSummaryRouteImport.update({
   path: '/summary',
   getParentRoute: () => AppFinancesRouteRoute,
 } as any)
+const AppFinancesCategoriesIndexRoute =
+  AppFinancesCategoriesIndexRouteImport.update({
+    id: '/categories/',
+    path: '/categories/',
+    getParentRoute: () => AppFinancesRouteRoute,
+  } as any)
 const AppFinancesSchedulesIndexRoute =
   AppFinancesSchedulesIndexRouteImport.update({
     id: '/schedules/',
@@ -87,6 +94,7 @@ export interface FileRoutesByFullPath {
   '/finances/summary': typeof AppFinancesSummaryRoute
   '/finances/': typeof AppFinancesIndexRoute
   '/finances/wallets/$walletId': typeof AppFinancesWalletsWalletIdRoute
+  '/finances/categories/': typeof AppFinancesCategoriesIndexRoute
   '/finances/schedules/': typeof AppFinancesSchedulesIndexRoute
   '/finances/wallets/': typeof AppFinancesWalletsIndexRoute
 }
@@ -98,6 +106,7 @@ export interface FileRoutesByTo {
   '/finances/summary': typeof AppFinancesSummaryRoute
   '/finances': typeof AppFinancesIndexRoute
   '/finances/wallets/$walletId': typeof AppFinancesWalletsWalletIdRoute
+  '/finances/categories': typeof AppFinancesCategoriesIndexRoute
   '/finances/schedules': typeof AppFinancesSchedulesIndexRoute
   '/finances/wallets': typeof AppFinancesWalletsIndexRoute
 }
@@ -112,6 +121,7 @@ export interface FileRoutesById {
   '/_app/finances/summary': typeof AppFinancesSummaryRoute
   '/_app/finances/': typeof AppFinancesIndexRoute
   '/_app/finances/wallets/$walletId': typeof AppFinancesWalletsWalletIdRoute
+  '/_app/finances/categories/': typeof AppFinancesCategoriesIndexRoute
   '/_app/finances/schedules/': typeof AppFinancesSchedulesIndexRoute
   '/_app/finances/wallets/': typeof AppFinancesWalletsIndexRoute
 }
@@ -126,6 +136,7 @@ export interface FileRouteTypes {
     | '/finances/summary'
     | '/finances/'
     | '/finances/wallets/$walletId'
+    | '/finances/categories/'
     | '/finances/schedules/'
     | '/finances/wallets/'
   fileRoutesByTo: FileRoutesByTo
@@ -137,6 +148,7 @@ export interface FileRouteTypes {
     | '/finances/summary'
     | '/finances'
     | '/finances/wallets/$walletId'
+    | '/finances/categories'
     | '/finances/schedules'
     | '/finances/wallets'
   id:
@@ -150,6 +162,7 @@ export interface FileRouteTypes {
     | '/_app/finances/summary'
     | '/_app/finances/'
     | '/_app/finances/wallets/$walletId'
+    | '/_app/finances/categories/'
     | '/_app/finances/schedules/'
     | '/_app/finances/wallets/'
   fileRoutesById: FileRoutesById
@@ -218,6 +231,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppFinancesSummaryRouteImport
       parentRoute: typeof AppFinancesRouteRoute
     }
+    '/_app/finances/categories/': {
+      id: '/_app/finances/categories/'
+      path: '/categories'
+      fullPath: '/finances/categories/'
+      preLoaderRoute: typeof AppFinancesCategoriesIndexRouteImport
+      parentRoute: typeof AppFinancesRouteRoute
+    }
     '/_app/finances/schedules/': {
       id: '/_app/finances/schedules/'
       path: '/schedules'
@@ -246,6 +266,7 @@ interface AppFinancesRouteRouteChildren {
   AppFinancesSummaryRoute: typeof AppFinancesSummaryRoute
   AppFinancesIndexRoute: typeof AppFinancesIndexRoute
   AppFinancesWalletsWalletIdRoute: typeof AppFinancesWalletsWalletIdRoute
+  AppFinancesCategoriesIndexRoute: typeof AppFinancesCategoriesIndexRoute
   AppFinancesSchedulesIndexRoute: typeof AppFinancesSchedulesIndexRoute
   AppFinancesWalletsIndexRoute: typeof AppFinancesWalletsIndexRoute
 }
@@ -254,6 +275,7 @@ const AppFinancesRouteRouteChildren: AppFinancesRouteRouteChildren = {
   AppFinancesSummaryRoute: AppFinancesSummaryRoute,
   AppFinancesIndexRoute: AppFinancesIndexRoute,
   AppFinancesWalletsWalletIdRoute: AppFinancesWalletsWalletIdRoute,
+  AppFinancesCategoriesIndexRoute: AppFinancesCategoriesIndexRoute,
   AppFinancesSchedulesIndexRoute: AppFinancesSchedulesIndexRoute,
   AppFinancesWalletsIndexRoute: AppFinancesWalletsIndexRoute,
 }

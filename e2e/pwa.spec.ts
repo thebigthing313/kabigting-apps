@@ -96,7 +96,8 @@ test.describe("PWA", () => {
     const sw = await (await request.get("/sw.js")).text()
     const urls = [...sw.matchAll(/url:"([^"]+)"/g)].map((match) => match[1] ?? "")
     expect(urls).toContain("index.html")
-    expect(urls.filter((url) => url.includes("api") || url.endsWith(".map"))).toEqual([])
+    // No API responses or source maps. A built chunk may be named after the client's api.ts.
+    expect(urls.filter((url) => /^\/?api\//.test(url) || url.endsWith(".map"))).toEqual([])
     expect(sw).toContain("denylist:[/^\\/api\\//]")
   })
 })
