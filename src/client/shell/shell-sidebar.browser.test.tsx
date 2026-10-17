@@ -10,11 +10,11 @@ import { page } from "vitest/browser"
 import { render } from "vitest-browser-react"
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar"
 import { TooltipProvider } from "@/components/ui/tooltip"
-import { ShellSidebar, type SidebarUser } from "@/shell/app-shell"
+import { ShellSidebar, type SidebarAccount } from "@/shell/app-shell"
 import type { AppKey } from "@shared/apps"
 
-const member: SidebarUser = { name: "Member", email: "member@example.com", role: "user" }
-const admin: SidebarUser = { name: "Admin", email: "admin@example.com", role: "admin" }
+const someone: SidebarAccount = { name: "Member", email: "someone@example.com", role: "user" }
+const admin: SidebarAccount = { name: "Admin", email: "admin@example.com", role: "admin" }
 
 // Wide enough for the desktop sidebar; a phone gets the drawer instead.
 beforeEach(async () => {
@@ -22,13 +22,13 @@ beforeEach(async () => {
 })
 
 /** Renders the sidebar alone at `path`, as the Shell would for this Account. */
-async function renderAt(path: string, user: SidebarUser, apps: AppKey[]) {
+async function renderAt(path: string, account: SidebarAccount, apps: AppKey[]) {
   const rootRoute = createRootRoute({
     component: () => (
       <TooltipProvider>
         <SidebarProvider>
           <SidebarTrigger />
-          <ShellSidebar user={user} apps={apps} />
+          <ShellSidebar account={account} apps={apps} />
         </SidebarProvider>
       </TooltipProvider>
     ),
@@ -44,7 +44,7 @@ async function renderAt(path: string, user: SidebarUser, apps: AppKey[]) {
 
 describe("at Home and on Admin pages", () => {
   test("lists Home and the Apps, with no App switcher", async () => {
-    const { screen } = await renderAt("/", member, ["finances"])
+    const { screen } = await renderAt("/", someone, ["finances"])
     await expect.element(screen.getByRole("link", { name: "Home" })).toBeVisible()
     await expect.element(screen.getByRole("link", { name: "Finances" })).toBeVisible()
     await expect
@@ -85,7 +85,7 @@ describe("inside an App", () => {
   })
 
   test("keeps a section active on its child pages, and Home not", async () => {
-    const { screen } = await renderAt("/finances/schedules/some-schedule", member, ["finances"])
+    const { screen } = await renderAt("/finances/schedules/some-schedule", someone, ["finances"])
     await expect
       .element(screen.getByRole("link", { name: "Schedules" }))
       .toHaveAttribute("data-active")
@@ -98,7 +98,7 @@ describe("inside an App", () => {
   })
 
   test("the App switcher lists Home and the Account's Apps, and goes there", async () => {
-    const { screen, router } = await renderAt("/finances/wallets", member, ["finances"])
+    const { screen, router } = await renderAt("/finances/wallets", someone, ["finances"])
     await screen.getByRole("button", { name: /App switcher/ }).click()
     const menu = screen.getByRole("menu")
     await expect.element(menu.getByRole("menuitem", { name: "Finances" })).toBeVisible()
@@ -110,7 +110,7 @@ describe("inside an App", () => {
   })
 
   test("the App switcher says there are no Apps when there are none", async () => {
-    const { screen } = await renderAt("/finances", member, [])
+    const { screen } = await renderAt("/finances", someone, [])
     await screen.getByRole("button", { name: /App switcher/ }).click()
     await expect.element(screen.getByRole("menu").getByText("No Apps yet")).toBeVisible()
   })
@@ -119,7 +119,7 @@ describe("inside an App", () => {
 describe("on a phone", () => {
   test("choosing a sidebar item closes the drawer", async () => {
     await page.viewport(390, 800)
-    const { screen, router } = await renderAt("/finances", member, ["finances"])
+    const { screen, router } = await renderAt("/finances", someone, ["finances"])
     await screen.getByRole("button", { name: "Toggle Sidebar" }).click()
     await screen.getByRole("link", { name: "Wallets" }).click()
     await expect.poll(() => router.state.location.pathname).toBe("/finances/wallets")

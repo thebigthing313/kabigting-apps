@@ -39,9 +39,14 @@ export const APPS: readonly AppEntry[] = SHARED_APPS.map((app) => ({
   ...CLIENT_APPS[app.key],
 }))
 
+/** `pathname` without a trailing slash, so `/finances/` and `/finances` compare equal. */
+function trimSlash(pathname: string): string {
+  return pathname.length > 1 ? pathname.replace(/\/+$/, "") : pathname
+}
+
 /** True when `pathname` is `to` itself or one of its child pages. */
 export function isWithin(pathname: string, to: string): boolean {
-  const path = pathname.length > 1 ? pathname.replace(/\/+$/, "") : pathname
+  const path = trimSlash(pathname)
   return path === to || path.startsWith(`${to}/`)
 }
 
@@ -51,10 +56,9 @@ export function appAt(pathname: string): AppEntry | undefined {
 }
 
 /**
- * Whether a sidebar link to `to` is the current page. The App's or Shell's home matches only
- * itself; any other item stays active on its child pages.
+ * Whether an App's sidebar item is the current page. The App's home matches only itself; any
+ * other section stays active on its child pages.
  */
-export function isActiveLink(pathname: string, to: string, home: string): boolean {
-  if (to === home) return pathname === home || pathname === `${home}/`
-  return isWithin(pathname, to)
+export function isSectionActive(pathname: string, item: SidebarItem, app: AppEntry): boolean {
+  return item.to === app.to ? trimSlash(pathname) === app.to : isWithin(pathname, item.to)
 }

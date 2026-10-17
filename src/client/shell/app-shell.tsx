@@ -27,21 +27,21 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar"
 import { signOut } from "@/data/session"
-import { appAt, APPS, isActiveLink, isWithin, type AppEntry } from "@/shell/apps"
+import { appAt, APPS, isSectionActive, isWithin, type AppEntry } from "@/shell/apps"
 import { InstallMenuItem } from "@/shell/install-menu"
 import { ThemeMenu } from "@/shell/theme-menu"
 
 const appRoute = getRouteApi("/_app")
 
 /** The signed-in Account as the sidebar shows it. */
-export type SidebarUser = { name: string; email: string; role?: string | null }
+export type SidebarAccount = { name: string; email: string; role?: string | null }
 
 /** The Shell: a collapsible sidebar on desktop, a drawer on mobile, around the current App. */
 export function AppShell() {
   const { session, apps } = appRoute.useRouteContext()
   return (
     <SidebarProvider>
-      <ShellSidebar user={session.user} apps={apps} />
+      <ShellSidebar account={session.user} apps={apps} />
       <SidebarInset>
         <header className="sticky top-0 z-10 flex h-14 shrink-0 items-center gap-2 border-b bg-background/95 px-3 pt-[env(safe-area-inset-top)] backdrop-blur supports-[height:100dvh]:h-[calc(3.5rem+env(safe-area-inset-top))]">
           <SidebarTrigger className="size-11" />
@@ -59,7 +59,13 @@ export function AppShell() {
  * Inside an App, the sidebar lists that App's sections under the App switcher. At Home and on
  * the Admin pages it lists the Apps and, for the Admin, the Admin group.
  */
-export function ShellSidebar({ user, apps }: { user: SidebarUser; apps: readonly string[] }) {
+export function ShellSidebar({
+  account,
+  apps,
+}: {
+  account: SidebarAccount
+  apps: readonly string[]
+}) {
   const pathname = useLocation({ select: (location) => location.pathname })
   const { setOpenMobile } = useSidebar()
   const available = APPS.filter((app) => apps.includes(app.key))
@@ -96,7 +102,7 @@ export function ShellSidebar({ user, apps }: { user: SidebarUser; apps: readonly
                     <SidebarMenuButton
                       size="lg"
                       tooltip={item.title}
-                      isActive={isActiveLink(pathname, item.to, current.to)}
+                      isActive={isSectionActive(pathname, item, current)}
                       render={
                         <Link
                           to={item.to}
@@ -123,7 +129,7 @@ export function ShellSidebar({ user, apps }: { user: SidebarUser; apps: readonly
                     <SidebarMenuButton
                       size="lg"
                       tooltip="Home"
-                      isActive={isActiveLink(pathname, "/", "/")}
+                      isActive={pathname === "/"}
                       render={<Link to="/" activeOptions={{ exact: true }} onClick={closeDrawer} />}
                     >
                       <HouseIcon />
@@ -145,7 +151,7 @@ export function ShellSidebar({ user, apps }: { user: SidebarUser; apps: readonly
                 </SidebarMenu>
               </SidebarGroupContent>
             </SidebarGroup>
-            {user.role === "admin" && (
+            {account.role === "admin" && (
               <SidebarGroup>
                 <SidebarGroupLabel>Admin</SidebarGroupLabel>
                 <SidebarGroupContent>
@@ -169,7 +175,7 @@ export function ShellSidebar({ user, apps }: { user: SidebarUser; apps: readonly
         )}
       </SidebarContent>
       <SidebarFooter className="pb-[max(0.5rem,env(safe-area-inset-bottom))]">
-        <AccountMenu user={user} />
+        <AccountMenu account={account} />
       </SidebarFooter>
       <SidebarRail />
     </Sidebar>
@@ -228,7 +234,7 @@ function AppSwitcher({
 }
 
 /** The footer menu: theme, install, password and sign-out. */
-function AccountMenu({ user }: { user: SidebarUser }) {
+function AccountMenu({ account }: { account: SidebarAccount }) {
   const navigate = useNavigate()
   return (
     <SidebarMenu>
@@ -236,11 +242,11 @@ function AccountMenu({ user }: { user: SidebarUser }) {
         <DropdownMenu>
           <DropdownMenuTrigger render={<SidebarMenuButton size="lg" />}>
             <span className="flex size-8 items-center justify-center rounded-md bg-muted font-medium">
-              {user.name.slice(0, 1).toUpperCase()}
+              {account.name.slice(0, 1).toUpperCase()}
             </span>
             <span className="flex min-w-0 flex-col text-left text-sm leading-tight">
-              <span className="truncate font-medium">{user.name}</span>
-              <span className="truncate text-xs text-muted-foreground">{user.email}</span>
+              <span className="truncate font-medium">{account.name}</span>
+              <span className="truncate text-xs text-muted-foreground">{account.email}</span>
             </span>
             <ChevronsUpDownIcon className="ml-auto" />
           </DropdownMenuTrigger>
