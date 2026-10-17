@@ -6,11 +6,13 @@ import { createTestServer, json, type TestServer } from "#server/test/server.ts"
 let server: TestServer
 let headers: Headers
 let noAccessHeaders: Headers
+let adminHeaders: Headers
 
 beforeAll(async () => {
   server = await createTestServer()
   headers = (await server.signedInAccount({ apps: ["finances"] })).headers
   noAccessHeaders = (await server.signedInAccount()).headers
+  adminHeaders = (await server.signedInAccount({ role: "admin" })).headers
 })
 
 afterAll(async () => {
@@ -39,10 +41,10 @@ async function patch(categoryId: string, body: unknown) {
   return server.app.request(`/api/finances/categories/${categoryId}`, json("PATCH", body, headers))
 }
 
-async function query(body: unknown = {}) {
+async function query(body: unknown = {}, as = headers) {
   const response = await server.app.request(
     "/api/finances/categories/query",
-    json("POST", body, headers),
+    json("POST", body, as),
   )
   expect(response.status).toBe(200)
   return categoryRows.parse(await response.json()).rows
@@ -51,6 +53,12 @@ async function query(body: unknown = {}) {
 test("an Account without Finances access is refused", async () => {
   const response = await create(category(), noAccessHeaders)
   expect(response.status).toBe(403)
+})
+
+test("the Admin, with no access row, adds and reads Categories", async () => {
+  const input = category()
+  expect((await create(input, adminHeaders)).status).toBe(201)
+  expect((await query({ ids: [input.id] }, adminHeaders)).map((row) => row.id)).toEqual([input.id])
 })
 
 describe("create", () => {

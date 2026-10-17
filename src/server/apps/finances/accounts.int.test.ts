@@ -7,12 +7,14 @@ let server: TestServer
 let headers: Headers
 let otherHeaders: Headers
 let noAccessHeaders: Headers
+let adminHeaders: Headers
 
 beforeAll(async () => {
   server = await createTestServer()
   headers = (await server.signedInAccount({ apps: ["finances"] })).headers
   otherHeaders = (await server.signedInAccount({ apps: ["finances"] })).headers
   noAccessHeaders = (await server.signedInAccount()).headers
+  adminHeaders = (await server.signedInAccount({ role: "admin" })).headers
 })
 
 afterAll(async () => {
@@ -52,6 +54,14 @@ describe("access", () => {
     const response = await create(account(), noAccessHeaders)
     expect(response.status).toBe(403)
     expect(await response.json()).toMatchObject({ error: { code: "forbidden_app" } })
+  })
+
+  test("the Admin, with no access row, adds and reads Accounts", async () => {
+    const input = account()
+    expect((await create(input, adminHeaders)).status).toBe(201)
+    expect((await query({ ids: [input.id] }, adminHeaders)).map((row) => row.id)).toEqual([
+      input.id,
+    ])
   })
 })
 
