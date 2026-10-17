@@ -78,6 +78,8 @@ export function WalletForecast({
   const shown = (cents: number) => formatShown(wallet, cents)
   const { low, firstUnderThreshold, firstUnderZero } = result
   const threshold = wallet.lowBalanceThresholdCents
+  // A $0 threshold is the $0 warning already; it is not said twice.
+  const underThreshold = threshold === 0 ? null : firstUnderThreshold
   const listed = result.days.filter((day, index) => index === 0 || day.items.length > 0)
 
   return (
@@ -107,11 +109,11 @@ export function WalletForecast({
         description={`End-of-day balance over the next ${days} days, lowest ${shown(low.balanceCents)} on ${formatDisplayDate(low.date)}`}
       />
 
-      {firstUnderZero || (firstUnderThreshold && threshold !== 0) ? (
+      {firstUnderZero || underThreshold ? (
         <div role="status" className="flex flex-col gap-1">
-          {firstUnderThreshold && threshold !== 0 ? (
+          {underThreshold ? (
             <Warning tone="warn">
-              Under the {shown(threshold)} threshold on {formatDisplayDate(firstUnderThreshold)}
+              Under the {shown(threshold)} threshold on {formatDisplayDate(underThreshold)}
             </Warning>
           ) : null}
           {firstUnderZero ? (

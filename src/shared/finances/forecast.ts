@@ -98,7 +98,7 @@ const BEGINNING = "1900-01-01"
  * 0 when it does not touch this Wallet. A Transaction's amount is already signed; a Transfer's
  * is positive, as money moved from `walletId` to `toWalletId`.
  */
-function transferSign(walletId: string, toWalletId: string | null, thisWallet: string) {
+function signOn(walletId: string, toWalletId: string | null, thisWallet: string) {
   if (walletId === thisWallet) return toWalletId === null ? 1 : -1
   return toWalletId === thisWallet ? 1 : 0
 }
@@ -109,7 +109,7 @@ function occurrenceItems(input: ForecastInput, to: string): ForecastItem[] {
   const items: ForecastItem[] = []
   for (const schedule of input.schedules) {
     // A Transfer moves money out of its from Wallet and into its to Wallet.
-    const sign = transferSign(schedule.walletId, schedule.toWalletId, wallet.id)
+    const sign = signOn(schedule.walletId, schedule.toWalletId, wallet.id)
     if (sign === 0) continue
     const stored = input.occurrences.filter((row) => row.scheduleId === schedule.id)
     for (const occurrence of expandSchedule(schedule, stored, { from: BEGINNING, to }, today)) {
@@ -139,7 +139,7 @@ function oneOffItems(input: ForecastInput, to: string): ForecastItem[] {
     items.push({ kind: "planned", id, date, amountCents, overdue: date < today })
   }
   for (const row of input.plannedTransfers) {
-    const sign = transferSign(row.fromWalletId, row.toWalletId, wallet.id)
+    const sign = signOn(row.fromWalletId, row.toWalletId, wallet.id)
     if (sign === 0 || !outstanding(row)) continue
     const { id, date } = row
     const amountCents = sign * row.amountCents
