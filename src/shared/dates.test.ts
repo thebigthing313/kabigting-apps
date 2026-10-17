@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest"
 import {
   addDays,
+  addMonthsClamped,
+  daysBetween,
   formatDisplayDate,
   fromPickerDate,
   HOUSEHOLD_ZONE,
@@ -9,6 +11,7 @@ import {
   nowInstant,
   toPickerDate,
   today,
+  weekdayName,
 } from "./dates.ts"
 
 describe("addDays", () => {
@@ -113,4 +116,37 @@ describe("date picker conversion", () => {
 
 test("formatDisplayDate shows a calendar date without shifting it", () => {
   expect(formatDisplayDate("2026-11-01")).toBe("Nov 1, 2026")
+})
+
+describe("calendar arithmetic", () => {
+  test("addDays crosses months, years and both DST changes without drifting", () => {
+    expect(addDays("2026-03-07", 1)).toBe("2026-03-08")
+    expect(addDays("2026-03-08", 1)).toBe("2026-03-09")
+    expect(addDays("2026-10-31", 1)).toBe("2026-11-01")
+    expect(addDays("2026-11-01", 14)).toBe("2026-11-15")
+    expect(addDays("2026-12-25", 14)).toBe("2027-01-08")
+    expect(addDays("2026-01-10", -14)).toBe("2025-12-27")
+  })
+
+  test("addMonthsClamped lands on the month's last day when the day is missing", () => {
+    expect(addMonthsClamped("2026-01-31", 1)).toBe("2026-02-28")
+    expect(addMonthsClamped("2028-01-31", 1)).toBe("2028-02-29")
+    expect(addMonthsClamped("2026-01-31", 3)).toBe("2026-04-30")
+    expect(addMonthsClamped("2026-01-15", 1)).toBe("2026-02-15")
+    expect(addMonthsClamped("2026-11-30", 2)).toBe("2027-01-30")
+    expect(addMonthsClamped("2028-02-29", 12)).toBe("2029-02-28")
+    expect(addMonthsClamped("2026-03-31", -1)).toBe("2026-02-28")
+  })
+
+  test("daysBetween counts calendar days, negative when the second is earlier", () => {
+    expect(daysBetween("2026-03-01", "2026-03-15")).toBe(14)
+    expect(daysBetween("2026-10-25", "2026-11-08")).toBe(14)
+    expect(daysBetween("2026-12-31", "2026-01-01")).toBe(-364)
+    expect(daysBetween("2028-02-28", "2028-03-01")).toBe(2)
+  })
+
+  test("weekdayName names the calendar date's day", () => {
+    expect(weekdayName("2026-10-16")).toBe("Friday")
+    expect(weekdayName("2026-11-01")).toBe("Sunday")
+  })
 })

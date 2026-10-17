@@ -163,3 +163,92 @@ export const balanceCheckRows = rowsResponse(balanceCheckRow)
 
 export type UpdateBalanceCheck = z.infer<typeof updateBalanceCheck>
 export type BalanceCheckRow = z.infer<typeof balanceCheckRow>
+
+// Schedules: recurrences that make Planned Transactions or Transfers.
+
+export const scheduleUnit = z.enum(["week", "month"])
+
+const scheduleFields = {
+  /** The Wallet it draws on, or a Transfer's from Wallet. */
+  walletId: id,
+  /** Set only for a Transfer Schedule: the Wallet the money moves to. */
+  toWalletId: id.nullable(),
+  accountId: id.nullable(),
+  /** Signed for a Transaction; positive for a Transfer, as money moved out of `walletId`. */
+  amountCents: cents,
+  unit: scheduleUnit,
+  every: z.int().min(1).max(999),
+  startDate: isoDate,
+  /** The last day an Occurrence may fall on, inclusive. */
+  endDate: isoDate.nullable(),
+  categoryId: id.nullable(),
+}
+
+type ScheduleShape = {
+  walletId: string
+  toWalletId: string | null
+  amountCents: number
+  startDate: string
+  endDate: string | null
+  categoryId: string | null
+}
+
+/** The rules a whole Schedule keeps. The database checks them again on every write. */
+function scheduleRules(schedule: ScheduleShape, context: z.RefinementCtx) {
+  const issue = (path: string, message: string) =>
+    context.addIssue({ code: "custom", path: [path], message })
+  if (schedule.toWalletId === schedule.walletId) {
+    issue("toWalletId", "A Transfer goes to a different Wallet")
+  }
+  if (schedule.toWalletId !== null && schedule.categoryId !== null) {
+    issue("categoryId", "A Transfer has no Category")
+  }
+  if (schedule.toWalletId !== null && schedule.amountCents <= 0) {
+    issue("amountCents", "A Transfer moves a positive amount")
+  }
+  if (schedule.endDate !== null && schedule.endDate < schedule.startDate) {
+    issue("endDate", "The end date can't be before the start date")
+  }
+}
+
+export const createSchedule = z
+  .strictObject({
+    id,
+    ...scheduleFields,
+    toWalletId: scheduleFields.toWalletId.default(null),
+    accountId: scheduleFields.accountId.default(null),
+    endDate: scheduleFields.endDate.default(null),
+    categoryId: scheduleFields.categoryId.default(null),
+    note: note.default(""),
+  })
+  .superRefine(scheduleRules)
+
+/**
+ * Only the labels change in place. Terms change from a date, which ends the Schedule and starts a
+ * successor, so its history stays true.
+ */
+export const updateSchedule = z
+  .strictObject({
+    accountId: scheduleFields.accountId,
+    categoryId: scheduleFields.categoryId,
+    note,
+  })
+  .partial()
+  .refine(atLeastOneField, "Change at least one field")
+
+export const scheduleRow = z.object({
+  id,
+  ...scheduleFields,
+  note: z.string(),
+  /** The Schedule this one continues, after a change from a date. */
+  predecessorId: id.nullable(),
+  createdAt: instant,
+  updatedAt: instant,
+})
+
+export const scheduleQuery = queryBody({})
+export const scheduleRows = rowsResponse(scheduleRow)
+
+export type CreateSchedule = z.input<typeof createSchedule>
+export type UpdateSchedule = z.infer<typeof updateSchedule>
+export type ScheduleRow = z.infer<typeof scheduleRow>

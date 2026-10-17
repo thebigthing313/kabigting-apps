@@ -50,6 +50,13 @@
       "when": 1792240643823,
       "tag": "0006_finances_balance_checks",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1792247168806,
+      "tag": "0007_finances_schedules",
+      "breakpoints": true
     }
   ]
 }

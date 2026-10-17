@@ -4,7 +4,9 @@ import {
   type AnyPgColumn,
   bigint,
   boolean,
+  check,
   date,
+  integer,
   pgTable,
   text,
   timestamp,
@@ -86,5 +88,45 @@ export const financesBalanceChecks = pgTable(
   },
   (table) => [
     uniqueIndex("finances_balance_checks_wallet_date_unique").on(table.walletId, table.date),
+  ],
+)
+
+/** A recurrence that makes Planned Transactions, or Transfers when `toWalletId` is set. */
+export const financesSchedules = pgTable(
+  "finances_schedules",
+  {
+    id: idColumn(),
+    accountId: uuid().references(() => financesAccounts.id),
+    /** The Wallet it draws on, or a Transfer's from Wallet. */
+    walletId: uuid()
+      .notNull()
+      .references(() => financesWallets.id),
+    toWalletId: uuid().references(() => financesWallets.id),
+    /** Signed for a Transaction; positive for a Transfer, moved from `walletId` to `toWalletId`. */
+    amountCents: bigint({ mode: "number" }).notNull(),
+    unit: text({ enum: ["week", "month"] }).notNull(),
+    every: integer().notNull(),
+    startDate: date({ mode: "string" }).notNull(),
+    /** Inclusive; null while the Schedule runs on. */
+    endDate: date({ mode: "string" }),
+    categoryId: uuid().references(() => financesCategories.id),
+    note: text().notNull().default(""),
+    predecessorId: uuid().references((): AnyPgColumn => financesSchedules.id),
+    ...timestamps(),
+  },
+  (table) => [
+    check("finances_schedules_unit", sql`${table.unit} in ('week', 'month')`),
+    check("finances_schedules_every", sql`${table.every} >= 1`),
+    check("finances_schedules_transfer_wallets", sql`${table.toWalletId} <> ${table.walletId}`),
+    check("finances_schedules_end_after_start", sql`${table.endDate} >= ${table.startDate}`),
+    // A Transfer never counts as spending or income, so it has no Category.
+    check(
+      "finances_schedules_transfer_no_category",
+      sql`${table.toWalletId} is null or ${table.categoryId} is null`,
+    ),
+    check(
+      "finances_schedules_transfer_positive",
+      sql`${table.toWalletId} is null or ${table.amountCents} > 0`,
+    ),
   ],
 )

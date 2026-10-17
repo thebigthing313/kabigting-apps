@@ -1,6 +1,7 @@
 import { accountRoutes } from "#server/apps/finances/accounts.ts"
 import { balanceCheckRoutes } from "#server/apps/finances/balance-checks.ts"
 import { categoryRoutes } from "#server/apps/finances/categories.ts"
+import { scheduleRoutes } from "#server/apps/finances/schedules.ts"
 import type { Deps } from "#server/core/context.ts"
 import { createAppRouter } from "#server/core/create-app-router.ts"
 import { walletRoutes } from "#server/apps/finances/wallets.ts"
@@ -12,4 +13,5 @@ export function financesRoutes(deps: Deps) {
     .route("/categories", categoryRoutes(deps.db))
     .route("/wallets", walletRoutes(deps.db))
     .route("/balance-checks", balanceCheckRoutes(deps.db))
+    .route("/schedules", scheduleRoutes(deps.db))
 }

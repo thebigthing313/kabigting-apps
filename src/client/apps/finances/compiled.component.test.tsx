@@ -2,6 +2,8 @@ import { renderToStaticMarkup } from "react-dom/server"
 import { describe, expect, test } from "vitest"
 import { CategoriesPage, CategoryList } from "@/apps/finances/categories-page"
 import { FinancesHome } from "@/apps/finances/finances-home"
+import { ScheduleForm } from "@/apps/finances/schedules/schedule-form"
+import { SchedulesPage } from "@/apps/finances/schedules/schedules-page"
 import { WalletForm } from "@/apps/finances/wallets/wallet-form"
 import { WalletPage } from "@/apps/finances/wallets/wallet-page"
 import { WalletsPage } from "@/apps/finances/wallets/wallets-page"
@@ -38,6 +40,8 @@ describe("React Compiler", () => {
     ["WalletsPage", WalletsPage],
     ["WalletPage", WalletPage],
     ["WalletForm", WalletForm],
+    ["SchedulesPage", SchedulesPage],
+    ["ScheduleForm", ScheduleForm],
   ])("compiled %s", (_name, component) => {
     expect(isCompiled(component)).toBe(true)
   })
