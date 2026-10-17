@@ -1,7 +1,7 @@
 import { and, asc, eq, gt, inArray, sql } from "drizzle-orm"
 import { Hono } from "hono"
 import { z } from "zod"
-import { isCheckViolation, isForeignKeyViolation } from "#server/apps/finances/db-errors.ts"
+import { isForeignKeyViolation, violatedCheck } from "#server/apps/finances/db-errors.ts"
 import type { AppEnv } from "#server/core/context.ts"
 import { ApiError } from "#server/core/errors.ts"
 import { validate } from "#server/core/validate.ts"
@@ -48,8 +48,12 @@ function notFound(): never {
  * refers to, so a write it refuses is the caller's mistake, not a server fault.
  */
 function refused(error: unknown): never {
-  if (isCheckViolation(error)) {
+  const check = violatedCheck(error)
+  if (check === "finances_schedules_transfer_no_category") {
     throw new ApiError("validation_failed", "A Transfer Schedule can't have a Category")
+  }
+  if (check !== undefined) {
+    throw new ApiError("validation_failed", "That Schedule breaks one of its rules")
   }
   if (isForeignKeyViolation(error)) {
     throw new ApiError("validation_failed", "No such Wallet, Account or Category")

@@ -5,6 +5,7 @@
 import {
   addDays,
   addMonthsClamped,
+  dayOfMonth,
   daysBetween,
   formatMonthDay,
   today as householdToday,
@@ -131,12 +132,12 @@ export function nextOccurrence(
   today: string = householdToday(),
 ): Occurrence | null {
   // Walk forward a few periods at a time; stored rows are finite, so an unstored one comes soon.
-  const span = (from: string) =>
+  const fourPeriodsFrom = (from: string) =>
     schedule.unit === "week"
       ? addDays(from, schedule.every * 7 * 4)
       : addMonthsClamped(from, schedule.every * 4)
   let from = today
-  let to = span(schedule.startDate > today ? schedule.startDate : today)
+  let to = fourPeriodsFrom(schedule.startDate > today ? schedule.startDate : today)
   const lastDate = [schedule.endDate, ...stored.map((row) => row.overrideDate)]
     .filter((date) => date !== null)
     .reduce((latest, date) => (date > latest ? date : latest), "")
@@ -147,7 +148,7 @@ export function nextOccurrence(
     if (next) return next
     if (schedule.endDate !== null && to >= lastDate) return null
     from = addDays(to, 1)
-    to = span(from)
+    to = fourPeriodsFrom(from)
   }
 }
 
@@ -169,6 +170,6 @@ export function describeTerms(schedule: Pick<ScheduleTerms, "unit" | "every" | "
     const day = formatMonthDay(startDate)
     return years === 1 ? `Yearly on ${day}` : `Every ${years} years on ${day}`
   }
-  const day = `the ${ordinal(Number(startDate.slice(8, 10)))}`
+  const day = `the ${ordinal(dayOfMonth(startDate))}`
   return every === 1 ? `Monthly on ${day}` : `Every ${every} months on ${day}`
 }

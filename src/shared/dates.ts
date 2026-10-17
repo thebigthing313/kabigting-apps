@@ -98,6 +98,11 @@ export function addMonthsClamped(date: string, months: number): string {
   return fromUtcDay(Date.UTC(targetYear, targetMonth, Math.min(day, lastDay)))
 }
 
+/** The day of the month, 1 to 31. */
+export function dayOfMonth(date: string): number {
+  return parts(date)[2]
+}
+
 /** The weekday's name, e.g. "Friday". */
 export function weekdayName(date: string): string {
   return format(toPickerDate(date), "EEEE")

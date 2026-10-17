@@ -100,6 +100,41 @@ function toSchedule(values: ScheduleFormValues): NewSchedule {
 const selectClass =
   "h-11 w-full min-w-0 rounded-lg border border-input bg-transparent px-2.5 text-base outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 aria-invalid:border-destructive md:text-sm dark:bg-input/30"
 
+/** Picks one of the Wallets by id; "" while none is picked. */
+function WalletSelect({
+  id,
+  wallets,
+  value,
+  invalid,
+  onBlur,
+  onChange,
+}: {
+  id: string
+  wallets: readonly WalletOption[]
+  value: string
+  invalid: boolean
+  onBlur: () => void
+  onChange: (walletId: string) => void
+}) {
+  return (
+    <select
+      id={id}
+      className={selectClass}
+      value={value}
+      onBlur={onBlur}
+      onChange={(event) => onChange(event.target.value)}
+      aria-invalid={invalid || undefined}
+    >
+      <option value="">Pick a Wallet</option>
+      {wallets.map((wallet) => (
+        <option key={wallet.id} value={wallet.id}>
+          {wallet.name}
+        </option>
+      ))}
+    </select>
+  )
+}
+
 /** Two or more choices shown side by side, one picked. */
 function Choice<Value extends string>({
   legend,
@@ -192,21 +227,14 @@ export function ScheduleForm({
             return (
               <Field data-invalid={invalid || undefined}>
                 <FieldLabel htmlFor="schedule-wallet">Wallet</FieldLabel>
-                <select
+                <WalletSelect
                   id="schedule-wallet"
-                  className={selectClass}
+                  wallets={wallets}
                   value={field.state.value}
                   onBlur={field.handleBlur}
-                  onChange={(event) => field.handleChange(event.target.value)}
-                  aria-invalid={invalid || undefined}
-                >
-                  <option value="">Pick a Wallet</option>
-                  {wallets.map((wallet) => (
-                    <option key={wallet.id} value={wallet.id}>
-                      {wallet.name}
-                    </option>
-                  ))}
-                </select>
+                  onChange={field.handleChange}
+                  invalid={invalid}
+                />
                 {invalid ? <FieldError errors={field.state.meta.errors} /> : null}
               </Field>
             )
@@ -237,21 +265,14 @@ export function ScheduleForm({
                   return (
                     <Field data-invalid={invalid || undefined}>
                       <FieldLabel htmlFor="schedule-to-wallet">Transfer to</FieldLabel>
-                      <select
+                      <WalletSelect
                         id="schedule-to-wallet"
-                        className={selectClass}
+                        wallets={wallets}
                         value={field.state.value}
                         onBlur={field.handleBlur}
-                        onChange={(event) => field.handleChange(event.target.value)}
-                        aria-invalid={invalid || undefined}
-                      >
-                        <option value="">Pick a Wallet</option>
-                        {wallets.map((wallet) => (
-                          <option key={wallet.id} value={wallet.id}>
-                            {wallet.name}
-                          </option>
-                        ))}
-                      </select>
+                        onChange={field.handleChange}
+                        invalid={invalid}
+                      />
                       {invalid ? <FieldError errors={field.state.meta.errors} /> : null}
                     </Field>
                   )
