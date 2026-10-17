@@ -13,7 +13,7 @@ afterAll(async () => {
   await server.close()
 })
 
-const QUERY = "/api/skeleton/notes/query"
+const PING = "/api/finances/ping"
 
 test("health answers 200 when the database answers", async () => {
   const response = await server.app.request("/api/health")
@@ -22,7 +22,7 @@ test("health answers 200 when the database answers", async () => {
 })
 
 test("an App route without a session is 401 unauthenticated", async () => {
-  const response = await server.app.request(QUERY, json("POST", {}))
+  const response = await server.app.request(PING)
   expect(response.status).toBe(401)
   expect(await response.json()).toMatchObject({ error: { code: "unauthenticated" } })
 })
@@ -31,9 +31,9 @@ describe("an Account that must change its password", () => {
   test("gets 403 password_change_required from App routes", async () => {
     const { headers } = await server.signedInAccount({
       mustChangePassword: true,
-      apps: ["skeleton"],
+      apps: ["finances"],
     })
-    const response = await server.app.request(QUERY, json("POST", {}, headers))
+    const response = await server.app.request(PING, { headers })
     expect(response.status).toBe(403)
     expect(await response.json()).toMatchObject({ error: { code: "password_change_required" } })
   })
@@ -57,16 +57,16 @@ describe("an Account that must change its password", () => {
 
 test("an Account without app_access for the App gets 403 forbidden_app", async () => {
   const { headers } = await server.signedInAccount({ apps: [] })
-  const response = await server.app.request(QUERY, json("POST", {}, headers))
+  const response = await server.app.request(PING, { headers })
   expect(response.status).toBe(403)
   expect(await response.json()).toMatchObject({ error: { code: "forbidden_app" } })
 })
 
 test("an Account with app_access reaches the route", async () => {
-  const { headers } = await server.signedInAccount({ apps: ["skeleton"] })
-  const response = await server.app.request(QUERY, json("POST", {}, headers))
+  const { headers } = await server.signedInAccount({ apps: ["finances"] })
+  const response = await server.app.request(PING, { headers })
   expect(response.status).toBe(200)
-  expect(await response.json()).toEqual({ rows: [] })
+  expect(await response.json()).toEqual({ ok: true })
 })
 
 test("an unknown API path is a 404 envelope, never the SPA", async () => {
@@ -85,10 +85,10 @@ test("health answers 503 when the database does not answer", async () => {
 
 describe("GET /api/access", () => {
   test("lists the Apps the Account may open", async () => {
-    const { headers } = await server.signedInAccount({ apps: ["skeleton"] })
+    const { headers } = await server.signedInAccount({ apps: ["finances"] })
     const response = await server.app.request("/api/access", { headers })
     expect(response.status).toBe(200)
-    expect(await response.json()).toEqual({ apps: ["skeleton"] })
+    expect(await response.json()).toEqual({ apps: ["finances"] })
   })
 
   test("is empty for a Guest without Apps", async () => {
@@ -102,7 +102,7 @@ describe("GET /api/access", () => {
     expect((await server.app.request("/api/access")).status).toBe(401)
     const { headers } = await server.signedInAccount({
       mustChangePassword: true,
-      apps: ["skeleton"],
+      apps: ["finances"],
     })
     expect((await server.app.request("/api/access", { headers })).status).toBe(403)
   })

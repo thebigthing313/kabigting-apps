@@ -1,7 +1,7 @@
 // Account administration from the command line, beside the Admin's Accounts screen. Use it to
 // seed the first Admin and to recover if the Admin is locked out:
 //   pnpm admin:create --email <email> --name <name>
-//   pnpm admin:create-account --email <email> --name <name> --apps skeleton,...
+//   pnpm admin:create-account --email <email> --name <name> --apps finances,...
 //   pnpm admin:reset --email <email>
 //   pnpm admin:ban --email <email>
 // Temporary passwords are printed once; share them out of band.

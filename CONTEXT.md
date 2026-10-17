@@ -33,7 +33,7 @@ An Account the Admin has blocked from signing in and signed out everywhere; its 
 _Avoid_: Deleted, revoked, disabled
 
 **Walking skeleton**:
-The thinnest deployed end-to-end slice: sign in, read one record through the client cache from Postgres, installable on the Railway URL.
+The thinnest deployed end-to-end slice: sign in, read one record through the client cache from Postgres, installable on the Railway URL. Its sample App has since been replaced by Finances.
 _Avoid_: Boilerplate, starter, MVP
 
 **Amount**:

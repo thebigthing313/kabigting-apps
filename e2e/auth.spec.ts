@@ -17,7 +17,7 @@ test("a new Account must replace its temporary password before anything else", a
   await expect(page.getByText("Choose your password")).toBeVisible()
 
   // The App routes stay closed until the password is changed.
-  await page.goto("/skeleton")
+  await page.goto("/finances")
   await expect(page).toHaveURL(/\/change-password/)
 
   await page.getByLabel("Temporary password").fill(newcomer.temporaryPassword)
@@ -36,9 +36,9 @@ test("a Guest without the App cannot see or open it", async ({ page }) => {
   const { guest } = accounts()
   await signIn(page, guest.email, guest.password)
   await expect(page.getByText("No Apps have been shared with you yet.")).toBeVisible()
-  await page.goto("/skeleton")
+  await page.goto("/finances")
   await expect(page.getByRole("heading", { name: "Page not found" })).toBeVisible()
-  const response = await page.request.post("/api/skeleton/notes/query", { data: {} })
+  const response = await page.request.get("/api/finances/ping")
   expect(response.status()).toBe(403)
   expect(await response.json()).toMatchObject({ error: { code: "forbidden_app" } })
 })
@@ -47,13 +47,11 @@ test("signing out leaves no signed-in data behind", async ({ page }) => {
   const { member } = accounts()
   await signIn(page, member.email, member.password)
   await expect(page.getByRole("heading", { name: "Hello, Member" })).toBeVisible()
-  await page.goto("/skeleton")
-  const text = `sign-out check ${test.info().project.name} ${Date.now()}`
-  await page.getByRole("button", { name: "New note" }).click()
-  await page.getByLabel("Note", { exact: true }).fill(text)
-  await page.getByLabel("Amount").fill("12.34")
-  await page.getByRole("button", { name: "Add note" }).click()
-  await expect(page.getByText(text, { exact: true }).filter({ visible: true })).toBeVisible()
+  await page.goto("/finances")
+  // The empty Finances home stands in for App data. Once Finances has records, write one here and
+  // check it is gone after sign-out, as this test did before.
+  const text = "Nothing here yet"
+  await expect(page.getByText(text).filter({ visible: true })).toBeVisible()
 
   await openAccountMenu(page, "Member")
   // Sign-out ends with a full page load, so nothing from the session stays in memory.
@@ -69,9 +67,9 @@ test("signing out leaves no signed-in data behind", async ({ page }) => {
       .flatMap((store) => Object.keys(store).map((key) => `${key}=${store.getItem(key)}`))
       .join("\n"),
   )
-  expect(stored).not.toContain(text)
+  expect(stored).not.toContain(member.email)
   await page.goBack()
   await expect(page).toHaveURL(/\/sign-in/)
   await expect(page.getByText(text)).toHaveCount(0)
-  expect((await page.request.post("/api/skeleton/notes/query", { data: {} })).status()).toBe(401)
+  expect((await page.request.get("/api/finances/ping")).status()).toBe(401)
 })

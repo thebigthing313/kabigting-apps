@@ -49,7 +49,7 @@ lost. The app is unavailable while Postgres restarts.
 4. Review the staged change under **Details**, then **Deploy**.
 5. When Postgres is running again, check the app:
    - `https://<domain>/api/health` returns `{"ok":true}`;
-   - sign in and open Notes (or the App whose data mattered) and spot-check recent entries.
+   - sign in and open Finances (or the App whose data mattered) and spot-check recent entries.
 6. If the restored data is wrong, restore a different backup the same way. The previous volume
    is still in the project until deleted by hand.
 

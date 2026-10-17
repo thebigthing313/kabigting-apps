@@ -36,7 +36,7 @@ describe("API responses", () => {
 })
 
 describe("the built SPA", () => {
-  test.each(["/", "/skeleton", "/sign-in?next=%2F"])(
+  test.each(["/", "/finances", "/sign-in?next=%2F"])(
     "%s serves index.html with no-cache",
     async (path) => {
       const response = await server.app.request(path)
