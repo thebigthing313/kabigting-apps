@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import {
-  storedEdit,
+  overrideFor,
   type Occurrence,
   type OccurrenceOverride,
   type ScheduleTerms,
@@ -70,7 +70,7 @@ export function OccurrenceEditor({
   const skipped = occurrence.state === "skipped"
 
   const store = (amountCents: number, date: string, skip: boolean) =>
-    onSave(storedEdit(schedule, occurrence.nominalDate, { amountCents, date, skipped: skip }))
+    onSave(overrideFor(schedule, occurrence.nominalDate, { amountCents, date, skipped: skip }))
 
   const defaultValues: { amount: number | null; date: string } = {
     amount: Math.abs(occurrence.amountCents),
@@ -163,7 +163,12 @@ export function OccurrenceEditor({
                   variant="outline"
                   className="h-11"
                   disabled={isSubmitting}
-                  onClick={() => void onSave(null)}
+                  // Drops the override; a skip stays until Unskip.
+                  onClick={() =>
+                    void onSave(
+                      skipped ? { overrideAmountCents: null, overrideDate: null, skipped } : null,
+                    )
+                  }
                 >
                   Back to schedule
                 </Button>

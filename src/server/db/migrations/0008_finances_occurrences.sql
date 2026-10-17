@@ -11,6 +11,7 @@ CREATE TABLE "finances_occurrences" (
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "finances_occurrences_reconciled_transaction_unique" UNIQUE("reconciled_transaction_id"),
 	CONSTRAINT "finances_occurrences_reconciled_transfer_unique" UNIQUE("reconciled_transfer_id"),
+	CONSTRAINT "finances_occurrences_touched" CHECK ("finances_occurrences"."override_amount_cents" is not null or "finances_occurrences"."override_date" is not null or "finances_occurrences"."skipped" or "finances_occurrences"."reconciled_transaction_id" is not null or "finances_occurrences"."reconciled_transfer_id" is not null),
 	CONSTRAINT "finances_occurrences_one_link" CHECK ("finances_occurrences"."reconciled_transaction_id" is null or "finances_occurrences"."reconciled_transfer_id" is null)
 );
 --> statement-breakpoint

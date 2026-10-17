@@ -1,7 +1,11 @@
-import { and, asc, eq, gt, inArray, isNull, sql } from "drizzle-orm"
+import { and, asc, eq, gt, inArray, not, sql } from "drizzle-orm"
 import { Hono } from "hono"
 import { z } from "zod"
-import { isForeignKeyViolation, isUniqueViolation } from "#server/apps/finances/db-errors.ts"
+import {
+  isForeignKeyViolation,
+  isUniqueViolation,
+  violatedCheck,
+} from "#server/apps/finances/db-errors.ts"
 import type { AppEnv } from "#server/core/context.ts"
 import { ApiError } from "#server/core/errors.ts"
 import { validate } from "#server/core/validate.ts"
@@ -46,13 +50,23 @@ function reconciledConflict(): never {
 }
 
 /** Neither Reconcile link is set. */
-const notReconciled = and(
-  isNull(financesOccurrences.reconciledTransactionId),
-  isNull(financesOccurrences.reconciledTransferId),
-)
+const notReconciled = sql`${financesOccurrences.reconciledTransactionId} is null and ${financesOccurrences.reconciledTransferId} is null`
+
+/** One Reconcile link or the other is set. */
+export const reconciledOccurrence = not(notReconciled)
 
 function isReconciled(occurrence: OccurrenceRecord): boolean {
   return occurrence.reconciledTransactionId !== null || occurrence.reconciledTransferId !== null
+}
+
+/** The database refuses to store an untouched Occurrence: it is computed instead. */
+function refusedUntouched(error: unknown) {
+  if (violatedCheck(error) === "finances_occurrences_touched") {
+    throw new ApiError(
+      "validation_failed",
+      "Nothing to store: delete it to put it back on its Schedule",
+    )
+  }
 }
 
 /** A Transfer moves a positive amount, so its override (a card's statement balance) does too. */
@@ -102,6 +116,7 @@ export function occurrenceRoutes(db: Db) {
         .onConflictDoNothing({ target: financesOccurrences.id })
         .returning()
         .catch((error: unknown) => {
+          refusedUntouched(error)
           if (isUniqueViolation(error)) {
             throw new ApiError("conflict", "That Occurrence is already stored")
           }
@@ -117,18 +132,22 @@ export function occurrenceRoutes(db: Db) {
       const occurrenceId = c.req.valid("param").id
       const changes = c.req.valid("json")
       const [found] = await db
-        .select()
+        .select({ occurrence: financesOccurrences, schedule: financesSchedules })
         .from(financesOccurrences)
         .innerJoin(financesSchedules, eq(financesOccurrences.scheduleId, financesSchedules.id))
         .where(eq(financesOccurrences.id, occurrenceId))
       if (!found) notFound()
-      if (isReconciled(found.finances_occurrences)) reconciledConflict()
-      checkAmount(found.finances_schedules, changes.overrideAmountCents)
+      if (isReconciled(found.occurrence)) reconciledConflict()
+      checkAmount(found.schedule, changes.overrideAmountCents)
       const [occurrence] = await db
         .update(financesOccurrences)
         .set({ ...changes, updatedAt: sql`now()` })
         .where(and(eq(financesOccurrences.id, occurrenceId), notReconciled))
         .returning()
+        .catch((error: unknown) => {
+          refusedUntouched(error)
+          throw error
+        })
       // Reconciled in the moment between the read and the write.
       return occurrence ? c.json(toRow(occurrence)) : reconciledConflict()
     })

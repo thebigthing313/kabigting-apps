@@ -157,6 +157,11 @@ export const financesOccurrences = pgTable(
       table.scheduleId,
       table.nominalDate,
     ),
+    // An untouched Occurrence is computed, never stored.
+    check(
+      "finances_occurrences_touched",
+      sql`${table.overrideAmountCents} is not null or ${table.overrideDate} is not null or ${table.skipped} or ${table.reconciledTransactionId} is not null or ${table.reconciledTransferId} is not null`,
+    ),
     check(
       "finances_occurrences_one_link",
       sql`${table.reconciledTransactionId} is null or ${table.reconciledTransferId} is null`,

@@ -10,7 +10,7 @@ import { saveOccurrence, useStoredOccurrences } from "@/data/finances-occurrence
 import { useSchedule, type Schedule } from "@/data/finances-schedules"
 import { useWallets, type Wallet } from "@/data/finances-wallets"
 import { addMonthsClamped, formatDisplayDate, today } from "@shared/dates"
-import { describeTerms, expandSchedule, type Occurrence } from "@shared/finances/occurrences"
+import { describeTerms, occurrencesAround, type Occurrence } from "@shared/finances/occurrences"
 import type { OccurrenceRow } from "@shared/finances/schemas"
 import { format } from "@shared/money"
 import { cn } from "cn"
@@ -69,7 +69,7 @@ function ScheduleDetail({
   const stored = allStored.filter((row) => row.scheduleId === schedule.id)
 
   const now = today()
-  const occurrences = expandSchedule(
+  const occurrences = occurrencesAround(
     schedule,
     stored,
     { from: addMonthsClamped(now, -MONTHS_BACK), to: addMonthsClamped(now, MONTHS_AHEAD) },

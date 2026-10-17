@@ -99,7 +99,7 @@ export type OccurrenceOverride = Pick<
  * What to store for an edited Occurrence: only what differs from the Schedule's terms. Null when
  * the edit leaves it on those terms, so nothing need be stored.
  */
-export function storedEdit(
+export function overrideFor(
   schedule: ScheduleTerms,
   nominalDate: string,
   edit: OccurrenceEdit,
@@ -146,6 +146,31 @@ export function expandSchedule(
     })
   }
   return occurrences.toSorted(
+    (a, b) => a.date.localeCompare(b.date) || a.nominalDate.localeCompare(b.nominalDate),
+  )
+}
+
+/**
+ * As `expandSchedule`, plus every Occurrence whose nominal date is in the range but whose
+ * override moved it out, on its new date. A Schedule's page lists these so a moved Occurrence can
+ * still be found and edited where it was scheduled.
+ */
+export function occurrencesAround(
+  schedule: ScheduleTerms,
+  stored: readonly StoredOccurrence[],
+  range: { from: string; to: string },
+  today: string = householdToday(),
+): Occurrence[] {
+  const inRange = expandSchedule(schedule, stored, range, today)
+  const movedOut = stored.flatMap((row) => {
+    const date = row.overrideDate ?? row.nominalDate
+    const nominalIn = row.nominalDate >= range.from && row.nominalDate <= range.to
+    if (!nominalIn || (date >= range.from && date <= range.to)) return []
+    return expandSchedule(schedule, stored, { from: date, to: date }, today).filter(
+      (occurrence) => occurrence.nominalDate === row.nominalDate,
+    )
+  })
+  return [...inRange, ...movedOut].toSorted(
     (a, b) => a.date.localeCompare(b.date) || a.nominalDate.localeCompare(b.nominalDate),
   )
 }

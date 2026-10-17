@@ -1,5 +1,5 @@
 {
-  "id": "43184dcd-386e-4545-8e22-9c75dec04c5d",
+  "id": "e770abe5-d150-4b82-93d5-95c2b846d839",
   "prevId": "2a840a74-5d18-4ef1-8c4c-8c365eb4d2e2",
   "version": "7",
   "dialect": "postgresql",
@@ -864,6 +864,10 @@
       },
       "policies": {},
       "checkConstraints": {
+        "finances_occurrences_touched": {
+          "name": "finances_occurrences_touched",
+          "value": "\"finances_occurrences\".\"override_amount_cents\" is not null or \"finances_occurrences\".\"override_date\" is not null or \"finances_occurrences\".\"skipped\" or \"finances_occurrences\".\"reconciled_transaction_id\" is not null or \"finances_occurrences\".\"reconciled_transfer_id\" is not null"
+        },
         "finances_occurrences_one_link": {
           "name": "finances_occurrences_one_link",
           "value": "\"finances_occurrences\".\"reconciled_transaction_id\" is null or \"finances_occurrences\".\"reconciled_transfer_id\" is null"

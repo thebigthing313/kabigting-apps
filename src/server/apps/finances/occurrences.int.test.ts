@@ -165,10 +165,25 @@ describe("create", () => {
   test("the same Occurrence twice is a conflict, as is a duplicate id", async () => {
     const scheduleId = await schedule()
     const first = await created({ scheduleId, nominalDate: "2026-12-01", skipped: true })
-    const again = await create({ id: newId(), scheduleId, nominalDate: "2026-12-01" })
+    const again = await create({
+      id: newId(),
+      scheduleId,
+      nominalDate: "2026-12-01",
+      skipped: true,
+    })
     expect(again.status).toBe(409)
-    const sameId = await create({ id: first.id, scheduleId, nominalDate: "2027-01-01" })
+    const sameId = await create({
+      id: first.id,
+      scheduleId,
+      nominalDate: "2027-01-01",
+      skipped: true,
+    })
     expect(sameId.status).toBe(409)
+  })
+
+  test("an untouched Occurrence isn't stored", async () => {
+    const scheduleId = await schedule()
+    await expectInvalid(await create({ id: newId(), scheduleId, nominalDate: "2026-12-01" }))
   })
 
   test("Reconcile links can't be written here", async () => {
@@ -203,6 +218,13 @@ describe("update", () => {
     const row = await created({ scheduleId, nominalDate: "2026-12-20", skipped: true })
     await expectInvalid(await patch(row.id, { overrideAmountCents: -1 }))
     expect((await patch(row.id, { overrideAmountCents: 1 })).status).toBe(200)
+  })
+
+  test("an edit that leaves it untouched is refused; deleting puts it back", async () => {
+    const scheduleId = await schedule()
+    const row = await created({ scheduleId, nominalDate: "2026-12-01", skipped: true })
+    await expectInvalid(await patch(row.id, { skipped: false }))
+    expect((await query({ ids: [row.id] }))[0]?.skipped).toBe(true)
   })
 
   test("the nominal date and Schedule can't change", async () => {

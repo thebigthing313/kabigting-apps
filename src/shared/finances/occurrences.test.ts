@@ -4,7 +4,8 @@ import {
   expandSchedule,
   isOccurrenceDate,
   nextOccurrence,
-  storedEdit,
+  occurrencesAround,
+  overrideFor,
   type ScheduleTerms,
   type StoredOccurrence,
 } from "./occurrences.ts"
@@ -299,6 +300,34 @@ describe("nextOccurrence", () => {
   })
 })
 
+describe("occurrencesAround", () => {
+  test("keeps an Occurrence moved out of the range, on its new date, once", () => {
+    const occurrences = occurrencesAround(
+      schedule({ startDate: "2026-01-01" }),
+      [stored("2026-03-01", { overrideDate: "2026-04-15" })],
+      MARCH,
+      FAR_PAST,
+    )
+    expect(occurrences.map((o) => [o.nominalDate, o.date])).toEqual([["2026-03-01", "2026-04-15"]])
+  })
+
+  test("also has those moved into the range, in date order", () => {
+    const occurrences = occurrencesAround(
+      schedule({ startDate: "2026-01-01" }),
+      [
+        stored("2026-03-01", { overrideDate: "2026-02-20" }),
+        stored("2026-04-01", { overrideDate: "2026-03-20" }),
+      ],
+      MARCH,
+      FAR_PAST,
+    )
+    expect(occurrences.map((o) => [o.nominalDate, o.date])).toEqual([
+      ["2026-03-01", "2026-02-20"],
+      ["2026-04-01", "2026-03-20"],
+    ])
+  })
+})
+
 describe("isOccurrenceDate", () => {
   test("is true for a date the terms put an Occurrence on, within start and end", () => {
     const terms = schedule({ startDate: "2026-01-31", endDate: "2026-06-30" })
@@ -314,21 +343,29 @@ describe("isOccurrenceDate", () => {
   })
 })
 
-describe("storedEdit", () => {
+describe("overrideFor", () => {
   const rent = schedule({ startDate: "2026-01-01", amountCents: -150_000 })
 
   test("keeps only what differs from the Schedule's terms", () => {
     expect(
-      storedEdit(rent, "2026-03-01", { amountCents: -160_000, date: "2026-03-01", skipped: false }),
+      overrideFor(rent, "2026-03-01", {
+        amountCents: -160_000,
+        date: "2026-03-01",
+        skipped: false,
+      }),
     ).toEqual({ overrideAmountCents: -160_000, overrideDate: null, skipped: false })
     expect(
-      storedEdit(rent, "2026-03-01", { amountCents: -150_000, date: "2026-03-04", skipped: true }),
+      overrideFor(rent, "2026-03-01", { amountCents: -150_000, date: "2026-03-04", skipped: true }),
     ).toEqual({ overrideAmountCents: null, overrideDate: "2026-03-04", skipped: true })
   })
 
   test("is null when the edit puts the Occurrence back on the Schedule's terms", () => {
     expect(
-      storedEdit(rent, "2026-03-01", { amountCents: -150_000, date: "2026-03-01", skipped: false }),
+      overrideFor(rent, "2026-03-01", {
+        amountCents: -150_000,
+        date: "2026-03-01",
+        skipped: false,
+      }),
     ).toBeNull()
   })
 })

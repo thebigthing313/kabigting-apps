@@ -1,7 +1,8 @@
-import { and, asc, eq, gt, inArray, isNotNull, or, sql } from "drizzle-orm"
+import { and, asc, eq, gt, inArray, sql } from "drizzle-orm"
 import { Hono } from "hono"
 import { z } from "zod"
 import { isForeignKeyViolation, violatedCheck } from "#server/apps/finances/db-errors.ts"
+import { reconciledOccurrence } from "#server/apps/finances/occurrences.ts"
 import type { AppEnv } from "#server/core/context.ts"
 import { ApiError } from "#server/core/errors.ts"
 import { validate } from "#server/core/validate.ts"
@@ -107,15 +108,7 @@ export function scheduleRoutes(db: Db) {
           const [reconciled] = await tx
             .select({ id: financesOccurrences.id })
             .from(financesOccurrences)
-            .where(
-              and(
-                eq(financesOccurrences.scheduleId, scheduleId),
-                or(
-                  isNotNull(financesOccurrences.reconciledTransactionId),
-                  isNotNull(financesOccurrences.reconciledTransferId),
-                ),
-              ),
-            )
+            .where(and(eq(financesOccurrences.scheduleId, scheduleId), reconciledOccurrence))
             .limit(1)
           if (reconciled) {
             throw new ApiError("conflict", "Something is Reconciled to this Schedule")

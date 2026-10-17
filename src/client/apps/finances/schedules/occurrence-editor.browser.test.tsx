@@ -141,6 +141,22 @@ describe("OccurrenceEditor", () => {
     await vi.waitFor(() => expect(onSave).toHaveBeenCalledWith(null))
   })
 
+  test("Back to schedule on a skipped override keeps it skipped", async () => {
+    const { screen, onSave } = await renderEditor({
+      schedule: RENT,
+      occurrence: { ...untouched(RENT, "2026-12-01"), amountCents: -1, state: "skipped" },
+      overridden: true,
+    })
+    await screen.getByRole("button", { name: "Back to schedule" }).click()
+    await vi.waitFor(() =>
+      expect(onSave).toHaveBeenCalledWith({
+        overrideAmountCents: null,
+        overrideDate: null,
+        skipped: true,
+      }),
+    )
+  })
+
   test("on a Wallet shown as owed, the amount is typed as the Wallet shows it", async () => {
     const charge: EditedSchedule = { ...RENT, amountCents: -5_000 }
     const { screen, onSave } = await renderEditor({
