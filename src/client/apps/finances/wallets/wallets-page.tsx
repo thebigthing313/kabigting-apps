@@ -1,6 +1,7 @@
 import { Link } from "@tanstack/react-router"
 import { ChevronRightIcon, PlusIcon } from "lucide-react"
 import { useState } from "react"
+import { useBalanceDetails } from "@/apps/finances/wallets/wallet-balance"
 import { WalletForm } from "@/apps/finances/wallets/wallet-form"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -87,9 +88,9 @@ export function WalletsPage() {
 }
 
 function WalletRow({ wallet }: { wallet: Wallet }) {
-  // Balance checks arrive with their own slice; until then no Wallet has a balance to show.
+  const balance = useBalanceDetails(wallet)
   const details = [
-    "No Balance check",
+    ...(balance ?? []),
     ...(wallet.inForecast ? [] : ["not in the forecast"]),
     ...(wallet.archived ? ["archived"] : []),
   ]
