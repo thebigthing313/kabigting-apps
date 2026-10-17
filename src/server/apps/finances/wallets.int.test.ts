@@ -66,9 +66,8 @@ describe("access", () => {
     }
   })
 
-  test("the Admin reaches the Wallet routes", async () => {
-    // Granted as `admin:create` does; how the Admin holds every App is the access guard's concern.
-    const admin = (await server.signedInAccount({ role: "admin", apps: ["finances"] })).headers
+  test("the Admin reaches the Wallet routes without an access row", async () => {
+    const admin = (await server.signedInAccount({ role: "admin" })).headers
     const response = await server.app.request(
       "/api/finances/wallets/query",
       json("POST", {}, admin),
@@ -122,11 +121,13 @@ describe("create", () => {
     expect((await query({ ids: [input.id] }))[0]?.name).toBe(input.name)
   })
 
-  test("a name already in use is 409 conflict", async () => {
+  test("a name already in use, in any case, is 409 conflict", async () => {
     const first = await created()
-    const response = await create(wallet({ name: first.name }))
-    expect(response.status).toBe(409)
-    expect(await response.json()).toMatchObject({ error: { code: "conflict" } })
+    for (const name of [first.name, first.name.toUpperCase()]) {
+      const response = await create(wallet({ name }))
+      expect(response.status).toBe(409)
+      expect(await response.json()).toMatchObject({ error: { code: "conflict" } })
+    }
   })
 
   test("an empty name, a fractional Amount or an unknown field is 400 validation_failed", async () => {
@@ -227,9 +228,16 @@ describe("update", () => {
     expect((await patch(row.id, { bankAccountLast4: "9999" })).status).toBe(400)
   })
 
-  test("renaming to a name already in use is 409 conflict", async () => {
+  test("a Wallet can change the case of its own name", async () => {
+    const row = await created()
+    const response = await patch(row.id, { name: row.name.toUpperCase() })
+    expect(response.status).toBe(200)
+  })
+
+  test("renaming to a name already in use, in any case, is 409 conflict", async () => {
     const first = await created()
     const second = await created()
+    expect((await patch(second.id, { name: first.name.toLowerCase() })).status).toBe(409)
     const response = await patch(second.id, { name: first.name })
     expect(response.status).toBe(409)
   })

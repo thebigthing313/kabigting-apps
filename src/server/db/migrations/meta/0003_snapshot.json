@@ -1,5 +1,5 @@
 {
-  "id": "dcbc433b-4d1e-4e76-978d-73bd845fa2bb",
+  "id": "e1f62d99-6c55-414e-80b1-a579284364f2",
   "prevId": "46542a28-9750-4dac-bcfe-d17cf5f40dce",
   "version": "7",
   "dialect": "postgresql",
@@ -100,24 +100,24 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         }
       },
       "foreignKeys": {
         "auth_account_user_id_auth_user_id_fk": {
           "name": "auth_account_user_id_auth_user_id_fk",
           "tableFrom": "auth_account",
-          "tableTo": "auth_user",
           "columnsFrom": [
             "user_id"
           ],
+          "tableTo": "auth_user",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         }
       },
       "compositePrimaryKeys": {},
@@ -198,34 +198,34 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         }
       },
       "foreignKeys": {
         "auth_session_user_id_auth_user_id_fk": {
           "name": "auth_session_user_id_auth_user_id_fk",
           "tableFrom": "auth_session",
-          "tableTo": "auth_user",
           "columnsFrom": [
             "user_id"
           ],
+          "tableTo": "auth_user",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "auth_session_token_unique": {
           "name": "auth_session_token_unique",
-          "nullsNotDistinct": false,
           "columns": [
             "token"
-          ]
+          ],
+          "nullsNotDistinct": false
         }
       },
       "policies": {},
@@ -320,10 +320,10 @@
       "uniqueConstraints": {
         "auth_user_email_unique": {
           "name": "auth_user_email_unique",
-          "nullsNotDistinct": false,
           "columns": [
             "email"
-          ]
+          ],
+          "nullsNotDistinct": false
         }
       },
       "policies": {},
@@ -385,9 +385,9 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         }
       },
       "foreignKeys": {},
@@ -426,15 +426,15 @@
         "app_access_user_id_auth_user_id_fk": {
           "name": "app_access_user_id_auth_user_id_fk",
           "tableFrom": "app_access",
-          "tableTo": "auth_user",
           "columnsFrom": [
             "user_id"
           ],
+          "tableTo": "auth_user",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         }
       },
       "compositePrimaryKeys": {
@@ -480,15 +480,15 @@
         "temporary_password_user_id_auth_user_id_fk": {
           "name": "temporary_password_user_id_auth_user_id_fk",
           "tableFrom": "temporary_password",
-          "tableTo": "auth_user",
           "columnsFrom": [
             "user_id"
           ],
+          "tableTo": "auth_user",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         }
       },
       "compositePrimaryKeys": {},
@@ -496,109 +496,14 @@
       "policies": {},
       "checkConstraints": {},
       "isRLSEnabled": false
-    },
-    "public.finances_wallets": {
-      "name": "finances_wallets",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "uuidv7()"
-        },
-        "name": {
-          "name": "name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "in_forecast": {
-          "name": "in_forecast",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
-        },
-        "low_balance_threshold_cents": {
-          "name": "low_balance_threshold_cents",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "shown_as_owed": {
-          "name": "shown_as_owed",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
-        },
-        "bank_account_hash": {
-          "name": "bank_account_hash",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "bank_account_last4": {
-          "name": "bank_account_last4",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "archived": {
-          "name": "archived",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "finances_wallets_name_unique": {
-          "name": "finances_wallets_name_unique",
-          "nullsNotDistinct": false,
-          "columns": [
-            "name"
-          ]
-        },
-        "finances_wallets_bank_account_hash_unique": {
-          "name": "finances_wallets_bank_account_hash_unique",
-          "nullsNotDistinct": false,
-          "columns": [
-            "bank_account_hash"
-          ]
-        }
-      },
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
     }
   },
   "enums": {},
   "schemas": {},
+  "views": {},
   "sequences": {},
   "roles": {},
   "policies": {},
-  "views": {},
   "_meta": {
     "columns": {},
     "schemas": {},

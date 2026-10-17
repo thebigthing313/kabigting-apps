@@ -26,8 +26,15 @@
     {
       "idx": 3,
       "version": "7",
-      "when": 1792209577284,
-      "tag": "0003_finances_wallets",
+      "when": 1792208078477,
+      "tag": "0003_admin_holds_every_app",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1792238618853,
+      "tag": "0005_finances_wallets",
       "breakpoints": true
     }
   ]

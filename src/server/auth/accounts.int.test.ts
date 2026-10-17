@@ -1,5 +1,10 @@
 import { afterAll, beforeAll, describe, expect, test } from "vitest"
-import { removeAccount, createAccount, resetAccount } from "#server/auth/accounts.ts"
+import {
+  accountIdByEmail,
+  removeAccount,
+  createAccount,
+  resetAccount,
+} from "#server/auth/accounts.ts"
 import * as http from "#server/test/http-auth.ts"
 import { createTestServer, json, type TestServer } from "#server/test/server.ts"
 
@@ -71,6 +76,14 @@ describe("createAccount", () => {
     expect(await session(headers)).toMatchObject({
       user: { role: "admin", mustChangePassword: true },
     })
+  })
+
+  test("refuses to give an Admin Apps, creating nothing", async () => {
+    const email = uniqueEmail()
+    await expect(
+      createAccount(server, { email, name: "Admin", apps: ["finances"], role: "admin" }),
+    ).rejects.toThrow("The Admin holds every App")
+    expect(await accountIdByEmail(server.db, email)).toBeNull()
   })
 })
 

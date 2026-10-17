@@ -49,7 +49,7 @@ const accounts = {
   newcomers: {} as Record<string, { email: string; temporaryPassword: string }>,
 }
 await settledAccount(accounts.member.email, "Member", accounts.member.password, ["finances"])
-await settledAccount(accounts.admin.email, "Admin", accounts.admin.password, ["finances"], "admin")
+await settledAccount(accounts.admin.email, "Admin", accounts.admin.password, [], "admin")
 await settledAccount(accounts.guest.email, "Guest", accounts.guest.password, [])
 for (const project of ["chromium-desktop", "chromium-phone", "webkit-desktop", "webkit-phone"]) {
   const email = `newcomer-${project}@example.com`

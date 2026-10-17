@@ -9,6 +9,7 @@ CREATE TABLE "finances_wallets" (
 	"archived" boolean DEFAULT false NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
-	CONSTRAINT "finances_wallets_name_unique" UNIQUE("name"),
 	CONSTRAINT "finances_wallets_bank_account_hash_unique" UNIQUE("bank_account_hash")
 );
+--> statement-breakpoint
+CREATE UNIQUE INDEX "finances_wallets_name_unique" ON "finances_wallets" USING btree (lower("name"));
