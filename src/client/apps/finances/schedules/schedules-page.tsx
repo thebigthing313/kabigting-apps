@@ -1,7 +1,8 @@
-import { PlusIcon } from "lucide-react"
+import { Link } from "@tanstack/react-router"
+import { ChevronRightIcon, PlusIcon } from "lucide-react"
 import { useState } from "react"
+import { scheduleLabel, shownOnWallet } from "@/apps/finances/schedules/schedule-display"
 import { ScheduleForm } from "@/apps/finances/schedules/schedule-form"
-import { scheduleLabel } from "@/apps/finances/schedules/schedule-label"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -12,11 +13,11 @@ import {
 } from "@/components/ui/dialog"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useFinancesAccounts } from "@/data/finances-accounts"
+import { useStoredOccurrences } from "@/data/finances-occurrences"
 import { addSchedule, useSchedules, type Schedule } from "@/data/finances-schedules"
 import { useWallets, type Wallet } from "@/data/finances-wallets"
 import { formatDisplayDate, today } from "@shared/dates"
 import { describeTerms, nextOccurrence, type Occurrence } from "@shared/finances/occurrences"
-import { toShown } from "@shared/finances/wallets"
 import { format } from "@shared/money"
 
 type ScheduleListRow = {
@@ -34,12 +35,16 @@ export function SchedulesPage() {
 
   const walletName = new Map(wallets.map((wallet) => [wallet.id, wallet.name]))
   const accountName = new Map(accounts.map((account) => [account.id, account.name]))
+  const { data: stored } = useStoredOccurrences()
   const now = today()
-  // Occurrences are stored only once overridden, skipped or Reconciled; none can be yet.
   const rows: ScheduleListRow[] = schedules.map((schedule) => ({
     schedule,
     label: scheduleLabel(schedule, walletName, accountName),
-    next: nextOccurrence(schedule, [], now),
+    next: nextOccurrence(
+      schedule,
+      stored.filter((row) => row.scheduleId === schedule.id),
+      now,
+    ),
   }))
   const groups = wallets
     .map((wallet) => ({
@@ -112,20 +117,27 @@ function bySoonest(a: ScheduleListRow, b: ScheduleListRow): number {
 
 function ScheduleRowItem({ row, wallet }: { row: ScheduleListRow; wallet: Wallet }) {
   const { schedule, label, next } = row
-  // On the Wallet it draws on, a Transfer is money out.
-  const signed = (cents: number) => toShown(wallet, schedule.toWalletId === null ? cents : -cents)
   return (
-    <li className="flex min-h-14 items-center gap-3 px-3 py-2">
-      <div className="min-w-0 flex-1">
-        <p className="truncate font-medium">{label}</p>
-        <p className="text-sm text-muted-foreground">
-          {describeTerms(schedule)}
-          {next ? ` · next ${formatDisplayDate(next.date)}` : " · no more Occurrences"}
-        </p>
-      </div>
-      <span className="shrink-0 text-sm font-medium tabular-nums">
-        {format(signed(next?.amountCents ?? schedule.amountCents), { sign: "always" })}
-      </span>
+    <li>
+      <Link
+        to="/finances/schedules/$scheduleId"
+        params={{ scheduleId: schedule.id }}
+        className="flex min-h-14 items-center gap-3 px-3 py-2 hover:bg-muted/50"
+      >
+        <div className="min-w-0 flex-1">
+          <p className="truncate font-medium">{label}</p>
+          <p className="text-sm text-muted-foreground">
+            {describeTerms(schedule)}
+            {next ? ` · next ${formatDisplayDate(next.date)}` : " · no more Occurrences"}
+          </p>
+        </div>
+        <span className="shrink-0 text-sm font-medium tabular-nums">
+          {format(shownOnWallet(schedule, wallet, next?.amountCents ?? schedule.amountCents), {
+            sign: "always",
+          })}
+        </span>
+        <ChevronRightIcon className="size-4 shrink-0 text-muted-foreground" />
+      </Link>
     </li>
   )
 }

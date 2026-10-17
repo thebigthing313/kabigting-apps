@@ -252,3 +252,47 @@ export const scheduleRows = rowsResponse(scheduleRow)
 export type CreateSchedule = z.input<typeof createSchedule>
 export type UpdateSchedule = z.infer<typeof updateSchedule>
 export type ScheduleRow = z.infer<typeof scheduleRow>
+
+// Occurrences: stored only once a person overrides or skips one (or it is Reconciled).
+
+/** What a person may change. Reconcile links are set only by the Reconcile command. */
+const occurrenceOverride = {
+  /** Replaces the Schedule's amount; null keeps it. */
+  overrideAmountCents: cents.nullable(),
+  /** Moves the Occurrence to this date; null keeps its nominal date. */
+  overrideDate: isoDate.nullable(),
+  skipped: z.boolean(),
+}
+
+export const createOccurrence = z.strictObject({
+  id,
+  scheduleId: id,
+  /** The date the Schedule's terms put it on; with the Schedule, it names the Occurrence. */
+  nominalDate: isoDate,
+  overrideAmountCents: occurrenceOverride.overrideAmountCents.default(null),
+  overrideDate: occurrenceOverride.overrideDate.default(null),
+  skipped: occurrenceOverride.skipped.default(false),
+})
+
+export const updateOccurrence = z
+  .strictObject(occurrenceOverride)
+  .partial()
+  .refine(atLeastOneField, "Change at least one field")
+
+export const occurrenceRow = z.object({
+  id,
+  scheduleId: id,
+  nominalDate: isoDate,
+  ...occurrenceOverride,
+  reconciledTransactionId: id.nullable(),
+  reconciledTransferId: id.nullable(),
+  createdAt: instant,
+  updatedAt: instant,
+})
+
+export const occurrenceQuery = queryBody({})
+export const occurrenceRows = rowsResponse(occurrenceRow)
+
+export type CreateOccurrence = z.input<typeof createOccurrence>
+export type UpdateOccurrence = z.infer<typeof updateOccurrence>
+export type OccurrenceRow = z.infer<typeof occurrenceRow>

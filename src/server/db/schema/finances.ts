@@ -130,3 +130,41 @@ export const financesSchedules = pgTable(
     ),
   ],
 )
+
+/**
+ * An Occurrence a person overrode or skipped (or, later, Reconciled), keyed by its Schedule and
+ * nominal date. Untouched Occurrences are computed, never stored. On a card payment the override
+ * amount and date read "Statement balance" and "Due date"; there are no extra columns.
+ */
+export const financesOccurrences = pgTable(
+  "finances_occurrences",
+  {
+    id: idColumn(),
+    scheduleId: uuid()
+      .notNull()
+      .references(() => financesSchedules.id),
+    nominalDate: date({ mode: "string" }).notNull(),
+    overrideAmountCents: bigint({ mode: "number" }),
+    overrideDate: date({ mode: "string" }),
+    skipped: boolean().notNull().default(false),
+    // The Transactions and Transfers tables come with hand entry, and these foreign keys with them.
+    reconciledTransactionId: uuid().unique("finances_occurrences_reconciled_transaction_unique"),
+    reconciledTransferId: uuid().unique("finances_occurrences_reconciled_transfer_unique"),
+    ...timestamps(),
+  },
+  (table) => [
+    uniqueIndex("finances_occurrences_schedule_nominal_unique").on(
+      table.scheduleId,
+      table.nominalDate,
+    ),
+    // An untouched Occurrence is computed, never stored.
+    check(
+      "finances_occurrences_touched",
+      sql`${table.overrideAmountCents} is not null or ${table.overrideDate} is not null or ${table.skipped} or ${table.reconciledTransactionId} is not null or ${table.reconciledTransferId} is not null`,
+    ),
+    check(
+      "finances_occurrences_one_link",
+      sql`${table.reconciledTransactionId} is null or ${table.reconciledTransferId} is null`,
+    ),
+  ],
+)
