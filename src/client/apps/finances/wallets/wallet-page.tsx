@@ -2,6 +2,8 @@ import { Link } from "@tanstack/react-router"
 import { cn } from "cn"
 import { ChevronLeftIcon } from "lucide-react"
 import { toast } from "sonner"
+import { BalanceChecksTab } from "@/apps/finances/wallets/balance-checks-tab"
+import { WalletBalance } from "@/apps/finances/wallets/wallet-balance"
 import { WalletForm } from "@/apps/finances/wallets/wallet-form"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
@@ -37,8 +39,7 @@ export function WalletPage({ walletId, tab }: { walletId: string; tab: WalletTab
         <>
           <div>
             <h1 className="text-2xl font-semibold break-words">{wallet.name}</h1>
-            {/* Balance checks arrive with their own slice; until then there is no balance. */}
-            <p className="text-3xl font-semibold text-muted-foreground">No Balance check</p>
+            <WalletBalance wallet={wallet} />
             {wallet.archived ? <p className="text-sm text-muted-foreground">Archived</p> : null}
           </div>
 
@@ -64,6 +65,8 @@ export function WalletPage({ walletId, tab }: { walletId: string; tab: WalletTab
 
           {tab === "settings" ? (
             <WalletSettingsTab key={wallet.id} wallet={wallet} />
+          ) : tab === "checks" ? (
+            <BalanceChecksTab key={wallet.id} wallet={wallet} />
           ) : (
             <p className="rounded-xl border p-6 text-center text-muted-foreground">
               Nothing here yet

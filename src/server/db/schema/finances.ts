@@ -74,6 +74,23 @@ export const financesWallets = pgTable(
   (table) => [uniqueIndex("finances_wallets_name_unique").on(sql`lower(${table.name})`)],
 )
 
+/** A Wallet's posted end-of-day balance on a date, as the bank shows it. One per Wallet per date. */
+export const financesBalanceChecks = pgTable(
+  "finances_balance_checks",
+  {
+    id: idColumn(),
+    walletId: uuid()
+      .notNull()
+      .references(() => financesWallets.id),
+    date: date({ mode: "string" }).notNull(),
+    amountCents: bigint({ mode: "number" }).notNull(),
+    ...timestamps(),
+  },
+  (table) => [
+    uniqueIndex("finances_balance_checks_wallet_date_unique").on(table.walletId, table.date),
+  ],
+)
+
 /** A recurrence that makes Planned Transactions, or Transfers when `toWalletId` is set. */
 export const financesSchedules = pgTable(
   "finances_schedules",

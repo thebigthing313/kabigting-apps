@@ -97,14 +97,14 @@ export function walletRoutes(db: Db) {
       return wallet ? c.json(toRow(wallet)) : notFound()
     })
     .delete("/:id", validate("param", walletParams), async (c) => {
-      // Only a Wallet nothing references may go; one with Schedules or history is archived.
+      // Only a Wallet nothing references may go; one with history is archived instead.
       const [wallet] = await db
         .delete(financesWallets)
         .where(eq(financesWallets.id, c.req.valid("param").id))
         .returning()
         .catch((error: unknown) => {
           if (isForeignKeyViolation(error)) {
-            throw new ApiError("conflict", "This Wallet is in use; archive it instead")
+            throw new ApiError("conflict", "This Wallet has history; archive it instead")
           }
           throw error
         })

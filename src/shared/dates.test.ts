@@ -14,6 +14,19 @@ import {
   weekdayName,
 } from "./dates.ts"
 
+describe("addDays", () => {
+  test("moves a calendar date across month and year ends", () => {
+    expect(addDays("2026-10-31", 1)).toBe("2026-11-01")
+    expect(addDays("2027-01-01", -1)).toBe("2026-12-31")
+    expect(addDays("2028-03-01", -1)).toBe("2028-02-29")
+  })
+
+  test("is unaffected by a DST change in any zone", () => {
+    expect(addDays("2026-11-01", 1)).toBe("2026-11-02")
+    expect(addDays("2026-04-05", 1)).toBe("2026-04-06")
+  })
+})
+
 test("unit tests run far from the household zone", () => {
   expect(Intl.DateTimeFormat().resolvedOptions().timeZone).toBe("Pacific/Auckland")
   expect(HOUSEHOLD_ZONE).toBe("America/New_York")
