@@ -137,6 +137,9 @@ export default defineConfig({
         "no-shadow": "off",
         "react/no-unstable-nested-components": "off",
         "typescript/no-unsafe-type-assertion": "off",
+        // chart.tsx builds keys from Recharts' loosely typed dataKey and narrows its payloads.
+        "typescript/restrict-template-expressions": "off",
+        "typescript/no-unnecessary-type-assertion": "off",
       },
     },
   ],

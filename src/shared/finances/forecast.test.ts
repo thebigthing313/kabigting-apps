@@ -118,9 +118,12 @@ describe("Schedule Occurrences", () => {
     expect(balanceOn(result, "2026-04-08")).toBe(100_000)
   })
 
-  test("Overdue ones count today, whatever their date, and sit under today marked Overdue", () => {
+  test("Overdue ones after the Balance check count today and sit under today marked Overdue", () => {
     const result = forecast(
-      input({ schedules: [schedule({ startDate: "2026-01-05", amountCents: -1_000 })] }),
+      input({
+        latestCheck: { date: "2026-01-04", amountCents: 100_000 },
+        schedules: [schedule({ startDate: "2026-01-05", amountCents: -1_000 })],
+      }),
     )
     // Jan 5, Feb 5 and Mar 5 are Overdue; Apr 5 is upcoming.
     expect(result?.days[0]?.balanceCents).toBe(97_000)
@@ -136,6 +139,31 @@ describe("Schedule Occurrences", () => {
       ["2026-03-05", "occurrence", true],
     ])
     expect(balanceOn(result, "2026-04-05")).toBe(96_000)
+  })
+
+  test("Overdue ones dated on or before the Balance check are taken as already in it", () => {
+    const result = forecast(
+      input({
+        latestCheck: { date: "2026-02-05", amountCents: 100_000 },
+        schedules: [schedule({ startDate: "2026-01-05", amountCents: -1_000 })],
+      }),
+    )
+    // Jan 5 and Feb 5 are in the check; only Mar 5 counts today.
+    expect(result?.days[0]?.balanceCents).toBe(99_000)
+    expect(result?.days[0]?.items).toMatchObject([{ date: "2026-03-05", overdue: true }])
+  })
+
+  test("an Overdue one moved by its override to after the Balance check counts today", () => {
+    const result = forecast(
+      input({
+        latestCheck: { date: "2026-02-05", amountCents: 100_000 },
+        schedules: [schedule({ startDate: "2026-01-05", endDate: "2026-01-05" })],
+        occurrences: [stored("schedule-rent", "2026-01-05", { overrideDate: "2026-02-06" })],
+      }),
+    )
+    expect(result?.days[0]?.items).toMatchObject([
+      { nominalDate: "2026-01-05", date: "2026-02-06", overdue: true },
+    ])
   })
 
   test("one due today is not Overdue", () => {

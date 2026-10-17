@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useFinancesAccounts } from "@/data/finances-accounts"
 import { useLatestBalanceCheck } from "@/data/finances-balance-checks"
+import { useStoredOccurrences } from "@/data/finances-occurrences"
 import { useSchedules } from "@/data/finances-schedules"
 import { useWallets, type Wallet } from "@/data/finances-wallets"
 import { formatDisplayDate, today as householdToday } from "@shared/dates"
@@ -34,19 +35,20 @@ export function WalletForecast({
   const { data: schedules, isLoading: schedulesLoading } = useSchedules()
   const { data: wallets } = useWallets()
   const { data: accounts } = useFinancesAccounts()
+  const { data: occurrences, isLoading: occurrencesLoading } = useStoredOccurrences()
 
-  if (isLoading || schedulesLoading) return <Skeleton className="h-64" />
+  if (isLoading || schedulesLoading || occurrencesLoading) return <Skeleton className="h-64" />
   const today = householdToday()
   const result = forecast({
     wallet,
     latestCheck: check ?? null,
     // Hand entry, uploads and one-off Planned items arrive in later slices; until then there
-    // are none. Stored Occurrences (overrides and skips) arrive with their own slice too.
+    // are none.
     actualsSince: [],
     planned: [],
     plannedTransfers: [],
     schedules,
-    occurrences: [],
+    occurrences,
     today,
     horizonDays: days,
   })
@@ -106,6 +108,7 @@ export function WalletForecast({
       <ForecastChart
         forecast={result}
         thresholdCents={threshold}
+        formatAmount={shown}
         description={`End-of-day balance over the next ${days} days, lowest ${shown(low.balanceCents)} on ${formatDisplayDate(low.date)}`}
       />
 

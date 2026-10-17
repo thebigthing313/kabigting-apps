@@ -90,9 +90,6 @@ export type Forecast = {
   firstUnderZero: string | null
 }
 
-/** Early enough that every Overdue Occurrence is found, whatever its date. */
-const BEGINNING = "1900-01-01"
-
 /**
  * How an amount on `walletId` moves this Wallet: 1 as stored, -1 for money a Transfer takes out,
  * 0 when it does not touch this Wallet. A Transaction's amount is already signed; a Transfer's
@@ -103,16 +100,23 @@ function signOn(walletId: string, toWalletId: string | null, thisWallet: string)
   return toWalletId === thisWallet ? 1 : 0
 }
 
-/** The outstanding Occurrences that move this Wallet, up to `to`, signed for this Wallet. */
-function occurrenceItems(input: ForecastInput, to: string): ForecastItem[] {
+/**
+ * The outstanding Occurrences that move this Wallet, dated after the Balance check up to `to`,
+ * signed for this Wallet. One dated on or before the check is taken as already in the bank's
+ * balance, so even when Overdue it does not count again.
+ */
+function occurrenceItems(input: ForecastInput, checkDate: string, to: string): ForecastItem[] {
   const { wallet, today } = input
+  const afterCheck = addDays(checkDate, 1)
+  // From today at the latest, should a check be dated ahead of today.
+  const from = afterCheck < today ? afterCheck : today
   const items: ForecastItem[] = []
   for (const schedule of input.schedules) {
     // A Transfer moves money out of its from Wallet and into its to Wallet.
     const sign = signOn(schedule.walletId, schedule.toWalletId, wallet.id)
     if (sign === 0) continue
     const stored = input.occurrences.filter((row) => row.scheduleId === schedule.id)
-    for (const occurrence of expandSchedule(schedule, stored, { from: BEGINNING, to }, today)) {
+    for (const occurrence of expandSchedule(schedule, stored, { from, to }, today)) {
       if (occurrence.state !== "upcoming" && occurrence.state !== "overdue") continue
       items.push({
         kind: "occurrence",
@@ -158,7 +162,10 @@ export function forecast(input: ForecastInput): Forecast | null {
   const lastDay = addDays(today, horizonDays - 1)
 
   // Planned items land on their date; Overdue ones land on today.
-  const outstanding = [...occurrenceItems(input, lastDay), ...oneOffItems(input, lastDay)]
+  const outstanding = [
+    ...occurrenceItems(input, latestCheck.date, lastDay),
+    ...oneOffItems(input, lastDay),
+  ]
   const planned = new Map<string, ForecastItem[]>()
   for (const item of outstanding) {
     const day = item.date < today ? today : item.date
