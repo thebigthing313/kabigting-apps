@@ -110,9 +110,9 @@ Resolved on 2026-10-14 (versions the spec fixed are installed exactly as listed 
   reset and ban through Better Auth's internal adapter (`updatePassword`, `updateUser`,
   `deleteUserSessions`), using Better Auth's own password hashing.
 - `admin:create` uses the same code path as `admin:create-account` (role `admin`, no App access
-  rows since the role holds every App, a one-time temporary password with the forced change), the spec's fallback to the Better Auth
-  server API instead of `npx auth create-admin`. The CLI reads a static config file and would skip
-  the forced change.
+  rows since the role holds every App, a one-time temporary password with the forced change), the
+  spec's fallback to the Better Auth server API instead of `npx auth create-admin`. The CLI reads a
+  static config file and would skip the forced change.
 - Rate limiting is on in `createAuth`; the test-only auth instance turns it off so tests can sign
   in repeatedly. An integration test checks the production config returns 429.
 - `shadcn add sonner` generated a toaster that imports `next-themes`; it uses our theme provider

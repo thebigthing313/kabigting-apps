@@ -130,17 +130,17 @@ export async function findAccount(db: Db, userId: string): Promise<AdminAccount 
   return account ?? null
 }
 
-function adminHoldsEveryApp(): ApiError {
+function adminAppsRefused(): ApiError {
   return new ApiError("validation_failed", "The Admin holds every App")
 }
 
 /** The Admin holds every App through the role, so App access is never set on an Admin. */
-async function refuseAdmin(db: Db, userId: string): Promise<void> {
+async function refuseAdmin(db: Pick<Db, "select">, userId: string): Promise<void> {
   const [user] = await db
     .select({ role: auth_user.role })
     .from(auth_user)
     .where(eq(auth_user.id, userId))
-  if (user?.role === "admin") throw adminHoldsEveryApp()
+  if (user?.role === "admin") throw adminAppsRefused()
 }
 
 export async function grantApps(db: Db, userId: string, apps: readonly string[]): Promise<void> {
@@ -157,8 +157,8 @@ export async function grantApps(db: Db, userId: string, apps: readonly string[])
  * not sign the Account out: App routes refuse it from the next request.
  */
 export async function setApps(db: Db, userId: string, apps: readonly string[]): Promise<void> {
-  await refuseAdmin(db, userId)
   await db.transaction(async (tx) => {
+    await refuseAdmin(tx, userId)
     await tx
       .delete(appAccess)
       .where(
@@ -181,7 +181,7 @@ export async function createAccount(
   input: { email: string; name: string; apps: readonly string[]; role?: "admin" | "user" },
 ): Promise<{ userId: string; temporaryPassword: string }> {
   // Refused before the Account exists, so a refusal leaves nothing half made.
-  if (input.role === "admin" && input.apps.length > 0) throw adminHoldsEveryApp()
+  if (input.role === "admin" && input.apps.length > 0) throw adminAppsRefused()
   const temporaryPassword = generateTemporaryPassword()
   const { user } = await auth.api.createUser({
     body: {

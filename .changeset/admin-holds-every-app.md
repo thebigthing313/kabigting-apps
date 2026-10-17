@@ -2,4 +2,4 @@
 "kabigting-apps": minor
 ---
 
-The Admin now holds every App through their role. The Accounts screen shows an Admin as holding "All Apps" and offers no App checkboxes for them, and setting Apps on an Admin is refused. Existing App access rows for Admins are removed.
+The Admin now holds every App through the role. On the Accounts screen the Admin's row shows "All Apps" and its Edit Apps sheet has no App checkboxes, and setting Apps on the Admin is refused. App access rows the Admin had before are removed.

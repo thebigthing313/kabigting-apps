@@ -16,7 +16,7 @@ export function accessRoutes({ db, auth }: Deps) {
     .use(mustChangePassword)
     .get("/", async (c) => {
       const account = c.get("account")
-      if (account.role === "admin") return c.json({ apps: [...APP_KEYS] as string[] })
+      if (account.role === "admin") return c.json({ apps: [...APP_KEYS] })
       const rows = await db
         .select({ appKey: appAccess.appKey })
         .from(appAccess)
