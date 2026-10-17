@@ -1,6 +1,7 @@
 import { PlusIcon } from "lucide-react"
 import { useState } from "react"
 import { ScheduleForm } from "@/apps/finances/schedules/schedule-form"
+import { scheduleLabel } from "@/apps/finances/schedules/schedule-label"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -37,7 +38,7 @@ export function SchedulesPage() {
   // Occurrences are stored only once overridden, skipped or Reconciled; none can be yet.
   const rows: ScheduleListRow[] = schedules.map((schedule) => ({
     schedule,
-    label: labelOf(schedule, walletName, accountName),
+    label: scheduleLabel(schedule, walletName, accountName),
     next: nextOccurrence(schedule, [], now),
   }))
   const groups = wallets
@@ -101,19 +102,6 @@ export function SchedulesPage() {
       </Dialog>
     </div>
   )
-}
-
-/** The Account, or "Transfer to <Wallet>" for a Transfer. */
-function labelOf(
-  schedule: Schedule,
-  walletName: ReadonlyMap<string, string>,
-  accountName: ReadonlyMap<string, string>,
-): string {
-  if (schedule.toWalletId !== null) {
-    return `Transfer to ${walletName.get(schedule.toWalletId) ?? "another Wallet"}`
-  }
-  const account = schedule.accountId === null ? undefined : accountName.get(schedule.accountId)
-  return account ?? (schedule.note || "No Account")
 }
 
 /** Upcoming first by date; ended Schedules last. */
