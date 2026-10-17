@@ -34,6 +34,28 @@ const financesOccurrences = defineRestCollection<OccurrenceRow>({
   remove: async (id) => readJson(await api.finances.occurrences[":id"].$delete({ param: { id } })),
 })
 
+/**
+ * Writes what a Schedule command changed on the server into the stored Occurrences: `upserted`
+ * rows, and the ids of rows it deleted.
+ */
+export async function applyOccurrenceChanges(
+  upserted: readonly OccurrenceRow[],
+  deleted: readonly string[],
+): Promise<void> {
+  const collection = financesOccurrences()
+  if (upserted.length > 0) await collection.utils.writeUpsert([...upserted])
+  const gone = deleted.filter((id) => collection.has(id))
+  if (gone.length > 0) await collection.utils.writeDelete(gone)
+}
+
+/** Drops the stored Occurrences of Schedules the server deleted. */
+export async function forgetOccurrencesOf(scheduleIds: readonly string[]): Promise<void> {
+  const collection = financesOccurrences()
+  const schedules = new Set(scheduleIds)
+  const gone = collection.toArray.filter((row) => schedules.has(row.scheduleId))
+  if (gone.length > 0) await collection.utils.writeDelete(gone.map((row) => row.id))
+}
+
 /** Every stored Occurrence (overridden, skipped or Reconciled), live. */
 export function useStoredOccurrences() {
   const occurrences = financesOccurrences()

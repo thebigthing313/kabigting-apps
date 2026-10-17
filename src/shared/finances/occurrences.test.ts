@@ -2,10 +2,14 @@ import { describe, expect, test } from "vitest"
 import {
   describeTerms,
   expandSchedule,
+  isEnded,
   isOccurrenceDate,
+  nextInChain,
   nextOccurrence,
   occurrencesAround,
   overrideFor,
+  overridesAfter,
+  scheduleChain,
   type ScheduleTerms,
   type StoredOccurrence,
 } from "./occurrences.ts"
@@ -367,5 +371,109 @@ describe("overrideFor", () => {
         skipped: false,
       }),
     ).toBeNull()
+  })
+})
+
+describe("scheduleChain", () => {
+  type Linked = { id: string; predecessorId: string | null }
+  // A rent Schedule changed twice (a → b → c), and an unrelated one (x).
+  const schedules: Linked[] = [
+    { id: "b", predecessorId: "a" },
+    { id: "x", predecessorId: null },
+    { id: "a", predecessorId: null },
+    { id: "c", predecessorId: "b" },
+  ]
+  const ids = (chain: readonly Linked[]) => chain.map((link) => link.id)
+
+  test("lists the newest Schedule's predecessors, newest first", () => {
+    expect(ids(scheduleChain(schedules, "c"))).toEqual(["c", "b", "a"])
+  })
+
+  test("from any Schedule in the chain, it is the whole chain", () => {
+    expect(ids(scheduleChain(schedules, "a"))).toEqual(["c", "b", "a"])
+    expect(ids(scheduleChain(schedules, "b"))).toEqual(["c", "b", "a"])
+  })
+
+  test("a Schedule never changed is a chain of one", () => {
+    expect(ids(scheduleChain(schedules, "x"))).toEqual(["x"])
+  })
+
+  test("an unknown id is an empty chain", () => {
+    expect(scheduleChain(schedules, "nope")).toEqual([])
+  })
+})
+
+describe("overridesAfter", () => {
+  const overridden = { overrideAmountCents: -160_000 }
+
+  test("lists the overrides and skips after the end date, in date order", () => {
+    const rows = [
+      stored("2026-06-01", { skipped: true }),
+      stored("2026-04-01", overridden),
+      stored("2026-05-01", overridden),
+    ]
+    expect(overridesAfter(rows, "2026-04-30").map((o) => o.nominalDate)).toEqual([
+      "2026-05-01",
+      "2026-06-01",
+    ])
+  })
+
+  test("keeps one on the end date, and one moved past it from on or before it", () => {
+    const rows = [
+      stored("2026-04-30", overridden),
+      stored("2026-04-01", { overrideDate: "2026-05-10" }),
+    ]
+    expect(overridesAfter(rows, "2026-04-30")).toEqual([])
+  })
+
+  test("never lists a Reconciled one", () => {
+    const rows = [
+      stored("2026-05-01", { reconciledTransactionId: "t" }),
+      stored("2026-06-01", { reconciledTransferId: "u" }),
+    ]
+    expect(overridesAfter(rows, "2026-04-30")).toEqual([])
+  })
+})
+
+describe("chains", () => {
+  type ChainSchedule = ScheduleTerms & { id: string; predecessorId: string | null }
+  // Rent of $1,500 on the 1st, changed to $1,600 from Aug 1.
+  const before: ChainSchedule = {
+    ...schedule({ startDate: "2026-01-01", endDate: "2026-07-31" }),
+    id: "before",
+    predecessorId: null,
+  }
+  const after: ChainSchedule = {
+    ...schedule({ startDate: "2026-08-01", amountCents: -160_000 }),
+    id: "after",
+    predecessorId: "before",
+  }
+  const chain = [after, before]
+
+  test("the next Occurrence comes from the older terms until the change", () => {
+    expect(nextInChain(chain, [], "2026-06-15")).toMatchObject({
+      schedule: { id: "before" },
+      occurrence: { date: "2026-07-01", amountCents: -150_000 },
+    })
+    expect(nextInChain(chain, [], "2026-07-02")).toMatchObject({
+      schedule: { id: "after" },
+      occurrence: { date: "2026-08-01", amountCents: -160_000 },
+    })
+  })
+
+  test("each Schedule's own stored Occurrences count", () => {
+    const skipped = { ...stored("2026-07-01", { skipped: true }), scheduleId: "before" }
+    expect(nextInChain(chain, [skipped], "2026-06-15")?.occurrence.date).toBe("2026-08-01")
+  })
+
+  test("a chain whose newest Schedule has ended has no next Occurrence", () => {
+    const ended = { ...after, endDate: "2026-09-30" }
+    expect(nextInChain([ended, before], [], "2026-10-01")).toBeNull()
+  })
+
+  test("a Schedule has ended once its end date is past", () => {
+    expect(isEnded(after, "2026-10-01")).toBe(false)
+    expect(isEnded({ ...after, endDate: "2026-10-01" }, "2026-10-01")).toBe(false)
+    expect(isEnded({ ...after, endDate: "2026-09-30" }, "2026-10-01")).toBe(true)
   })
 })

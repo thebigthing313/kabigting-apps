@@ -2,15 +2,22 @@ import { Link } from "@tanstack/react-router"
 import { ChevronLeftIcon } from "lucide-react"
 import { useState } from "react"
 import { OccurrenceEditor } from "@/apps/finances/schedules/occurrence-editor"
+import { ScheduleActions } from "@/apps/finances/schedules/schedule-actions"
 import { scheduleLabel, shownOnWallet } from "@/apps/finances/schedules/schedule-display"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useFinancesAccounts } from "@/data/finances-accounts"
 import { useCategories } from "@/data/finances-categories"
 import { saveOccurrence, useStoredOccurrences } from "@/data/finances-occurrences"
-import { useSchedule, type Schedule } from "@/data/finances-schedules"
+import { useSchedules, type Schedule } from "@/data/finances-schedules"
 import { useWallets, type Wallet } from "@/data/finances-wallets"
 import { addMonthsClamped, formatDisplayDate, today } from "@shared/dates"
-import { describeTerms, occurrencesAround, type Occurrence } from "@shared/finances/occurrences"
+import {
+  describeTerms,
+  isReconciled,
+  occurrencesAround,
+  scheduleChain,
+  type Occurrence,
+} from "@shared/finances/occurrences"
 import type { OccurrenceRow } from "@shared/finances/schemas"
 import { format } from "@shared/money"
 import { cn } from "cn"
@@ -19,11 +26,23 @@ import { cn } from "cn"
 const MONTHS_BACK = 3
 const MONTHS_AHEAD = 6
 
-/** One Schedule: who and what, its terms, and its recent and upcoming Occurrences to edit. */
+/** An Occurrence on the page, with the Schedule in the chain it falls on. */
+type ChainOccurrence = { schedule: Schedule; occurrence: Occurrence }
+
+function occurrenceKey(scheduleId: string, nominalDate: string) {
+  return `${scheduleId}:${nominalDate}`
+}
+
+/**
+ * One Schedule: who and what, its terms, its recent and upcoming Occurrences to edit, and its
+ * History. A chain of Schedules changed from a date reads as one, under its newest.
+ */
 export function SchedulePage({ scheduleId }: { scheduleId: string }) {
-  const { schedule, isLoading } = useSchedule(scheduleId)
+  const { data: schedules, isLoading } = useSchedules()
   const { data: wallets, isLoading: walletsLoading } = useWallets()
 
+  const chain = scheduleChain(schedules, scheduleId)
+  const schedule = chain[0]
   const wallet = wallets.find((candidate) => candidate.id === schedule?.walletId)
 
   return (
@@ -39,7 +58,7 @@ export function SchedulePage({ scheduleId }: { scheduleId: string }) {
       {isLoading || walletsLoading ? (
         <Skeleton className="h-20" />
       ) : schedule && wallet ? (
-        <ScheduleDetail schedule={schedule} wallet={wallet} wallets={wallets} />
+        <ScheduleDetail chain={chain} schedule={schedule} wallet={wallet} wallets={wallets} />
       ) : (
         <p className="rounded-xl border p-6 text-center text-muted-foreground">
           There is no such Schedule.
@@ -50,10 +69,13 @@ export function SchedulePage({ scheduleId }: { scheduleId: string }) {
 }
 
 function ScheduleDetail({
+  chain,
   schedule,
   wallet,
   wallets,
 }: {
+  /** Newest first; `schedule` is the newest. */
+  chain: readonly Schedule[]
   schedule: Schedule
   wallet: Wallet
   wallets: readonly Wallet[]
@@ -66,15 +88,29 @@ function ScheduleDetail({
   const accountName = new Map(accounts.map((account) => [account.id, account.name]))
   const toWallet = wallets.find((candidate) => candidate.id === schedule.toWalletId)
   const category = categories.find((candidate) => candidate.id === schedule.categoryId)
-  const stored = allStored.filter((row) => row.scheduleId === schedule.id)
+  const chainIds = chain.map((member) => member.id)
+  const stored = allStored.filter((row) => chainIds.includes(row.scheduleId))
+  const storedOf = (member: Schedule) => stored.filter((row) => row.scheduleId === member.id)
+  const reconciled = stored.some(isReconciled)
 
   const now = today()
-  const occurrences = occurrencesAround(
-    schedule,
-    stored,
-    { from: addMonthsClamped(now, -MONTHS_BACK), to: addMonthsClamped(now, MONTHS_AHEAD) },
-    now,
-  )
+  const range = {
+    from: addMonthsClamped(now, -MONTHS_BACK),
+    to: addMonthsClamped(now, MONTHS_AHEAD),
+  }
+  // Each Schedule in the chain contributes the Occurrences on its own terms.
+  const occurrences: ChainOccurrence[] = chain
+    .flatMap((member) =>
+      occurrencesAround(member, storedOf(member), range, now).map((occurrence) => ({
+        schedule: member,
+        occurrence,
+      })),
+    )
+    .toSorted(
+      (a, b) =>
+        a.occurrence.date.localeCompare(b.occurrence.date) ||
+        a.occurrence.nominalDate.localeCompare(b.occurrence.nominalDate),
+    )
 
   return (
     <>
@@ -96,6 +132,14 @@ function ScheduleDetail({
         ) : null}
       </div>
 
+      <ScheduleActions
+        schedule={schedule}
+        chainIds={chainIds}
+        stored={storedOf(schedule)}
+        wallet={wallet}
+        deletable={!reconciled}
+      />
+
       <section aria-labelledby="occurrences-heading" className="flex flex-col gap-2">
         <h2 id="occurrences-heading" className="font-medium">
           Occurrences
@@ -110,7 +154,6 @@ function ScheduleDetail({
           </p>
         ) : (
           <OccurrenceList
-            schedule={schedule}
             wallet={wallet}
             toWallet={toWallet}
             occurrences={occurrences}
@@ -118,34 +161,57 @@ function ScheduleDetail({
           />
         )}
       </section>
+
+      <section aria-labelledby="history-heading" className="flex flex-col gap-2">
+        <h2 id="history-heading" className="font-medium">
+          History
+        </h2>
+        <ol className="divide-y rounded-xl border">
+          {chain.map((member) => (
+            <li key={member.id} className="flex items-center gap-3 px-3 py-2">
+              <span className="flex min-w-0 flex-1 flex-col">
+                <span className="text-sm font-medium">
+                  {formatDisplayDate(member.startDate)} –{" "}
+                  {member.endDate === null ? "no end date" : formatDisplayDate(member.endDate)}
+                </span>
+                <span className="text-sm text-muted-foreground">{describeTerms(member)}</span>
+              </span>
+              <span className="shrink-0 text-sm font-medium tabular-nums">
+                {format(shownOnWallet(member, wallet, member.amountCents), { sign: "always" })}
+              </span>
+            </li>
+          ))}
+        </ol>
+      </section>
     </>
   )
 }
 
 function OccurrenceList({
-  schedule,
   wallet,
   toWallet,
   occurrences,
   stored,
 }: {
-  schedule: Schedule
   wallet: Wallet
   toWallet: Wallet | undefined
-  occurrences: readonly Occurrence[]
+  occurrences: readonly ChainOccurrence[]
   stored: readonly OccurrenceRow[]
 }) {
-  // The nominal date of the Occurrence whose editor is open.
+  // The key of the Occurrence whose editor is open.
   const [editing, setEditing] = useState<string | null>(null)
-  const storedByNominal = new Map(stored.map((row) => [row.nominalDate, row]))
+  const storedByKey = new Map(
+    stored.map((row) => [occurrenceKey(row.scheduleId, row.nominalDate), row]),
+  )
 
   return (
     <ul className="divide-y rounded-xl border">
-      {occurrences.map((occurrence) => {
-        const row = storedByNominal.get(occurrence.nominalDate)
+      {occurrences.map(({ schedule, occurrence }) => {
+        const key = occurrenceKey(schedule.id, occurrence.nominalDate)
+        const row = storedByKey.get(key)
         const overridden =
           row !== undefined && (row.overrideAmountCents !== null || row.overrideDate !== null)
-        const open = editing === occurrence.nominalDate
+        const open = editing === key
         const summary = (
           <OccurrenceSummary
             occurrence={occurrence}
@@ -154,7 +220,7 @@ function OccurrenceList({
           />
         )
         return (
-          <li key={occurrence.nominalDate} aria-label={formatDisplayDate(occurrence.date)}>
+          <li key={key} aria-label={formatDisplayDate(occurrence.date)}>
             {occurrence.state === "reconciled" ? (
               // A Reconciled Occurrence is the Actual's now; it is changed from the Wallet.
               <Link
@@ -172,7 +238,7 @@ function OccurrenceList({
                   "bg-muted/50": open,
                 })}
                 aria-expanded={open}
-                onClick={() => setEditing(open ? null : occurrence.nominalDate)}
+                onClick={() => setEditing(open ? null : key)}
               >
                 {summary}
               </button>

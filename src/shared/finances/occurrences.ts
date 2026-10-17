@@ -74,10 +74,15 @@ export type StoredOccurrence = {
   reconciledTransferId: string | null
 }
 
+/** True when an Actual is Reconciled to the stored Occurrence. */
+export function isReconciled(
+  row: Pick<StoredOccurrence, "reconciledTransactionId" | "reconciledTransferId">,
+): boolean {
+  return row.reconciledTransactionId !== null || row.reconciledTransferId !== null
+}
+
 function stateOf(date: string, row: StoredOccurrence | undefined, today: string): OccurrenceState {
-  if (row && (row.reconciledTransactionId !== null || row.reconciledTransferId !== null)) {
-    return "reconciled"
-  }
+  if (row && isReconciled(row)) return "reconciled"
   if (row?.skipped) return "skipped"
   return date < today ? "overdue" : "upcoming"
 }
@@ -203,6 +208,80 @@ export function nextOccurrence(
     from = addDays(to, 1)
     to = fourPeriodsFrom(from)
   }
+}
+
+/**
+ * The stored overrides and skips that ending a Schedule on `endDate` deletes: those whose nominal
+ * date is after it, in date order. A Reconciled Occurrence is never among them.
+ */
+export function overridesAfter<Row extends StoredOccurrence>(
+  stored: readonly Row[],
+  endDate: string,
+): Row[] {
+  return stored
+    .filter((row) => row.nominalDate > endDate && !isReconciled(row))
+    .toSorted((a, b) => a.nominalDate.localeCompare(b.nominalDate))
+}
+
+/** A Schedule's place in a chain: the Schedule a change from a date continued, if any. */
+export type ChainLink = { id: string; predecessorId: string | null }
+
+/**
+ * Every Schedule in the chain `id` belongs to, newest first: the Schedules that changed from a
+ * date read as one. Empty when there is no such Schedule.
+ */
+export function scheduleChain<Link extends ChainLink>(
+  schedules: readonly Link[],
+  id: string,
+): Link[] {
+  const byId = new Map(schedules.map((schedule) => [schedule.id, schedule]))
+  const successorOf = new Map(
+    schedules.flatMap((schedule) =>
+      schedule.predecessorId === null ? [] : [[schedule.predecessorId, schedule] as const],
+    ),
+  )
+  let newest = byId.get(id)
+  if (!newest) return []
+  // Guard against a cycle, which the server never makes, so a bad row can't hang the page.
+  const seen = new Set<string>([newest.id])
+  for (let next = successorOf.get(newest.id); next && !seen.has(next.id);) {
+    seen.add(next.id)
+    newest = next
+    next = successorOf.get(next.id)
+  }
+  const chain: Link[] = []
+  const walked = new Set<string>()
+  for (let link: Link | undefined = newest; link && !walked.has(link.id);) {
+    walked.add(link.id)
+    chain.push(link)
+    link = link.predecessorId === null ? undefined : byId.get(link.predecessorId)
+  }
+  return chain
+}
+
+/** True once the Schedule's end date has passed; it then sits in the Schedules list's Ended group. */
+export function isEnded(schedule: Pick<ScheduleTerms, "endDate">, today: string): boolean {
+  return schedule.endDate !== null && schedule.endDate < today
+}
+
+/**
+ * The chain's next Occurrence still to happen, and the Schedule it falls on: until a change from
+ * a date takes effect, it is the older terms'. `stored` may hold any Schedule's rows.
+ */
+export function nextInChain<Schedule extends ScheduleTerms & { id: string }>(
+  chain: readonly Schedule[],
+  stored: readonly (StoredOccurrence & { scheduleId: string })[],
+  today: string = householdToday(),
+): { schedule: Schedule; occurrence: Occurrence } | null {
+  let soonest: { schedule: Schedule; occurrence: Occurrence } | null = null
+  for (const schedule of chain) {
+    const own = stored.filter((row) => row.scheduleId === schedule.id)
+    const occurrence = nextOccurrence(schedule, own, today)
+    if (occurrence && (soonest === null || occurrence.date < soonest.occurrence.date)) {
+      soonest = { schedule, occurrence }
+    }
+  }
+  return soonest
 }
 
 function ordinal(day: number): string {
