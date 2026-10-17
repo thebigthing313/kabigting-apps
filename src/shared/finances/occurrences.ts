@@ -82,8 +82,36 @@ function stateOf(date: string, row: StoredOccurrence | undefined, today: string)
   return date < today ? "overdue" : "upcoming"
 }
 
-function isNominal(schedule: ScheduleTerms, date: string): boolean {
+/** True when the Schedule's terms put an Occurrence on `date`, within its start and end dates. */
+export function isOccurrenceDate(schedule: ScheduleTerms, date: string): boolean {
   return nominalDates(schedule, date, date).length === 1
+}
+
+/** A person's edit of one Occurrence: where it lands, how much, and whether it is skipped. */
+export type OccurrenceEdit = { amountCents: number; date: string; skipped: boolean }
+
+export type OccurrenceOverride = Pick<
+  StoredOccurrence,
+  "overrideAmountCents" | "overrideDate" | "skipped"
+>
+
+/**
+ * What to store for an edited Occurrence: only what differs from the Schedule's terms. Null when
+ * the edit leaves it on those terms, so nothing need be stored.
+ */
+export function storedEdit(
+  schedule: ScheduleTerms,
+  nominalDate: string,
+  edit: OccurrenceEdit,
+): OccurrenceOverride | null {
+  const override = {
+    overrideAmountCents: edit.amountCents === schedule.amountCents ? null : edit.amountCents,
+    overrideDate: edit.date === nominalDate ? null : edit.date,
+    skipped: edit.skipped,
+  }
+  const untouched =
+    override.overrideAmountCents === null && override.overrideDate === null && !override.skipped
+  return untouched ? null : override
 }
 
 /**
@@ -101,7 +129,7 @@ export function expandSchedule(
   const nominals = new Set(nominalDates(schedule, range.from, range.to))
   for (const row of stored) {
     const date = row.overrideDate ?? row.nominalDate
-    if (date >= range.from && date <= range.to && isNominal(schedule, row.nominalDate)) {
+    if (date >= range.from && date <= range.to && isOccurrenceDate(schedule, row.nominalDate)) {
       nominals.add(row.nominalDate)
     }
   }

@@ -2,7 +2,9 @@ import { describe, expect, test } from "vitest"
 import {
   describeTerms,
   expandSchedule,
+  isOccurrenceDate,
   nextOccurrence,
+  storedEdit,
   type ScheduleTerms,
   type StoredOccurrence,
 } from "./occurrences.ts"
@@ -294,5 +296,39 @@ describe("nextOccurrence", () => {
 
   test("is null once the Schedule has ended", () => {
     expect(nextOccurrence(schedule({ endDate: "2026-02-28" }), [], "2026-03-02")).toBeNull()
+  })
+})
+
+describe("isOccurrenceDate", () => {
+  test("is true for a date the terms put an Occurrence on, within start and end", () => {
+    const terms = schedule({ startDate: "2026-01-31", endDate: "2026-06-30" })
+    expect(isOccurrenceDate(terms, "2026-02-28")).toBe(true)
+    expect(isOccurrenceDate(terms, "2026-03-31")).toBe(true)
+  })
+
+  test("is false off the cadence, before the start or after the end", () => {
+    const terms = schedule({ startDate: "2026-01-31", endDate: "2026-06-30" })
+    expect(isOccurrenceDate(terms, "2026-03-30")).toBe(false)
+    expect(isOccurrenceDate(terms, "2025-12-31")).toBe(false)
+    expect(isOccurrenceDate(terms, "2026-07-31")).toBe(false)
+  })
+})
+
+describe("storedEdit", () => {
+  const rent = schedule({ startDate: "2026-01-01", amountCents: -150_000 })
+
+  test("keeps only what differs from the Schedule's terms", () => {
+    expect(
+      storedEdit(rent, "2026-03-01", { amountCents: -160_000, date: "2026-03-01", skipped: false }),
+    ).toEqual({ overrideAmountCents: -160_000, overrideDate: null, skipped: false })
+    expect(
+      storedEdit(rent, "2026-03-01", { amountCents: -150_000, date: "2026-03-04", skipped: true }),
+    ).toEqual({ overrideAmountCents: null, overrideDate: "2026-03-04", skipped: true })
+  })
+
+  test("is null when the edit puts the Occurrence back on the Schedule's terms", () => {
+    expect(
+      storedEdit(rent, "2026-03-01", { amountCents: -150_000, date: "2026-03-01", skipped: false }),
+    ).toBeNull()
   })
 })
