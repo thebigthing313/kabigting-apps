@@ -119,3 +119,34 @@ describe("0002 removes the sample App", () => {
     expect(table).toEqual([])
   })
 })
+
+describe("0003 drops the Admin's App access rows", () => {
+  let earlier: string
+
+  beforeAll(async () => {
+    earlier = await createEmptyDatabase("migrate_admin_rows")
+  })
+
+  afterAll(async () => {
+    await dropDatabase("migrate_admin_rows")
+  })
+
+  test("deletes rows belonging to Admins and keeps everyone else's", async () => {
+    await migrateBefore(earlier, "0003_admin_holds_every_app")
+    await query(
+      earlier,
+      `insert into auth_user (id, name, email, role, updated_at) values
+         ('admin', 'Admin', 'a@example.com', 'admin', now()),
+         ('member', 'Member', 'm@example.com', 'user', now());
+       insert into app_access (user_id, app_key) values ('admin', 'finances'), ('member', 'finances')`,
+    )
+
+    await runMigrations(earlier)
+
+    const access = await query<{ user_id: string }>(
+      earlier,
+      "select user_id from app_access order by user_id",
+    )
+    expect(access.map((row) => row.user_id)).toEqual(["member"])
+  })
+})

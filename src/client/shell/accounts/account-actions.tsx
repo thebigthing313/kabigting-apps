@@ -226,8 +226,12 @@ function RemoveAccount({ account, onClose }: { account: AdminAccount; onClose: (
   )
 }
 
-/** Tick the Apps the Account may open; Save sends the whole set at once. */
+/**
+ * Tick the Apps the Account may open; Save sends the whole set at once. An Admin holds every App
+ * through the role, so their sheet has nothing to tick.
+ */
 function EditApps({ account, onClose }: { account: AdminAccount; onClose: () => void }) {
+  const isAdmin = account.role === "admin"
   const save = useSetApps()
   const [apps, setApps] = useState<AppKey[]>(account.apps)
 
@@ -242,7 +246,9 @@ function EditApps({ account, onClose }: { account: AdminAccount; onClose: () => 
         <SheetHeader>
           <SheetTitle>Edit Apps</SheetTitle>
           <SheetDescription>
-            {account.name} ({account.email}) can open only the ticked Apps.
+            {isAdmin
+              ? `${account.name} (${account.email}) can open every App.`
+              : `${account.name} (${account.email}) can open only the ticked Apps.`}
           </SheetDescription>
         </SheetHeader>
         <form
@@ -261,12 +267,18 @@ function EditApps({ account, onClose }: { account: AdminAccount; onClose: () => 
           }}
         >
           <div className="px-4">
-            <AppCheckboxes value={apps} onChange={setApps} />
+            {isAdmin ? (
+              <p className="text-sm">The Admin holds every App.</p>
+            ) : (
+              <AppCheckboxes value={apps} onChange={setApps} />
+            )}
           </div>
           <SheetFooter>
-            <Button type="submit" className="h-11" disabled={save.isPending}>
-              {save.isPending ? "Saving…" : "Save"}
-            </Button>
+            {isAdmin ? null : (
+              <Button type="submit" className="h-11" disabled={save.isPending}>
+                {save.isPending ? "Saving…" : "Save"}
+              </Button>
+            )}
             <Button
               type="button"
               variant="outline"
@@ -274,7 +286,7 @@ function EditApps({ account, onClose }: { account: AdminAccount; onClose: () => 
               disabled={save.isPending}
               onClick={onClose}
             >
-              Cancel
+              {isAdmin ? "Close" : "Cancel"}
             </Button>
           </SheetFooter>
         </form>

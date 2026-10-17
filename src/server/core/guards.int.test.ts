@@ -69,6 +69,13 @@ test("an Account with app_access reaches the route", async () => {
   expect(await response.json()).toEqual({ ok: true })
 })
 
+test("an Admin without app_access rows reaches every App's routes", async () => {
+  const { headers } = await server.signedInAccount({ role: "admin", apps: [] })
+  const response = await server.app.request(PING, { headers })
+  expect(response.status).toBe(200)
+  expect(await response.json()).toEqual({ ok: true })
+})
+
 test("an unknown API path is a 404 envelope, never the SPA", async () => {
   const response = await server.app.request("/api/nope")
   expect(response.status).toBe(404)
@@ -86,6 +93,13 @@ test("health answers 503 when the database does not answer", async () => {
 describe("GET /api/access", () => {
   test("lists the Apps the Account may open", async () => {
     const { headers } = await server.signedInAccount({ apps: ["finances"] })
+    const response = await server.app.request("/api/access", { headers })
+    expect(response.status).toBe(200)
+    expect(await response.json()).toEqual({ apps: ["finances"] })
+  })
+
+  test("lists every App for an Admin without app_access rows", async () => {
+    const { headers } = await server.signedInAccount({ role: "admin", apps: [] })
     const response = await server.app.request("/api/access", { headers })
     expect(response.status).toBe(200)
     expect(await response.json()).toEqual({ apps: ["finances"] })
