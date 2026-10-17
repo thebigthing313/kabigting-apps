@@ -2,7 +2,7 @@
 
 Build agents use this spec to replace the Notes scaffold with the **Finances App**: recurring
 Schedules, a daily cash-flow Forecast per Wallet, Reconciling Planned against Actual Transactions
-(hand entry and OFX/QFX upload), Categories with a Monthly summary, and Balance checks. Three Shell
+(hand entry and OFX/QFX/QBO upload), Categories with a Monthly summary, and Balance checks. Three Shell
 changes come first: Notes is removed, the Admin holds every App, and each App gets its own sidebar
 with an App switcher. A one-time local import brings over the household's old data last.
 
@@ -33,7 +33,7 @@ of the old database. Tests use made-up data. The Access file and its JSON extrac
    screen works at phone width (360 px) with no horizontal page scroll.
 5. A Wallet's Forecast is its daily end-of-day balance from the latest Balance check over a 30, 90,
    180 or 365-day horizon. It has threshold and below-zero warnings, and Overdue items count today.
-6. Actuals can be entered by hand or uploaded from OFX/QFX files. Re-uploading the same file adds
+6. Actuals can be entered by hand or uploaded from OFX/QFX/QBO files. Re-uploading the same file adds
    nothing. Suggested Reconciles appear in To review and are confirmed by a person.
 7. The Monthly summary shows one month's income, spending and net, plus every Category, against
    last month and the trailing 12-month average.
@@ -53,7 +53,7 @@ of the old database. Tests use made-up data. The Access file and its JSON extrac
 | D6 | A Schedule repeats every N weeks or N months (N ≥ 1) from its start date, which is the first Occurrence. A monthly Schedule on the 29th to 31st falls on the month's last day without losing its anchor day. Dates never shift for weekends or holidays. ([How does a Schedule make Planned Transactions?](https://github.com/thebigthing313/kabigting-apps/issues/19)) |
 | D7 | Occurrences are computed by one pure shared function. They are stored only when overridden (amount or date), skipped or Reconciled, and keyed by (Schedule, nominal date). (#19) |
 | D8 | Changing a Schedule from a date ends it the day before and starts a successor under the same Account. Ending it deletes later overrides after a confirmation that lists them, and never touches Reconciled ones. Reopening clears the end date. Deleting is allowed only when nothing is Reconciled to it. (#19) |
-| D9 | Actuals come from hand entry and OFX/QFX upload. Only posted lines are stored. Each one is keyed by (Wallet, source, source key); the source key is the FITID, or a content hash when there is none. ([How are Planned and Actual Transactions reconciled?](https://github.com/thebigthing313/kabigting-apps/issues/20), [Bank import options for a self-hosted household app](https://github.com/thebigthing313/kabigting-apps/issues/17)) |
+| D9 | Actuals come from hand entry and OFX/QFX/QBO upload. Only posted lines are stored. Each one is keyed by (Wallet, source, source key); the source key is the FITID, or a content hash when there is none. ([How are Planned and Actual Transactions reconciled?](https://github.com/thebigthing313/kabigting-apps/issues/20), [Bank import options for a self-hosted household app](https://github.com/thebigthing313/kabigting-apps/issues/17)) |
 | D10 | A Reconcile is one to one: suggested by the app, confirmed by a person. Candidates are in the same Wallet, have the same sign and are dated within ±7 days of the Planned date, ranked by closeness of amount, then of date. A person can also pick any outstanding Planned by hand. The Actual's amount and date are the truth. (#20) |
 | D11 | A Planned item is outstanding (upcoming, or Overdue once its date passes), Reconciled or skipped. An Actual is Reconciled or unplanned, and unplanned is a normal end state. (#20) |
 | D12 | An imported Actual has its amount, date and Wallet locked. Deleting one keeps its key, as an ignored line that can be restored. On a file's first upload, a person picks the Wallet for its bank account id. (#20) |
@@ -71,6 +71,7 @@ of the old database. Tests use made-up data. The Access file and its JSON extrac
 | D24 | Debts get no special treatment. Loan and mortgage payments are ordinary spending under Loans and mortgage. ([Does v1 track debts, and how?](https://github.com/thebigthing313/kabigting-apps/issues/28)) |
 | D25 | The import brings all history since 2019, through a local extract and `pnpm finances:import`. The full mapping is in section 8. ([What does the one-time import bring over, and how does it map?](https://github.com/thebigthing313/kabigting-apps/issues/24)) |
 | D26 | The prototype branches `prototype/finances-home` and `prototype/finances-screens` are visual references only and are never merged. Match the picked variants, but don't copy their stub code. (#32) |
+| D27 | Uploads accept `.ofx`, `.qfx` and `.qbo`. All three are OFX with different headers, so one parser reads them. Bank of America and American Express cards offer QBO but not QFX. CSV-only issuers are hand entry in v1. Discover cards are moving to Capital One's site, where file downloads exist. (checked after #32) |
 
 ## 3. Shell changes
 
@@ -359,14 +360,16 @@ grouped by collection:
   the list equals the later non-Reconciled stored Occurrences. Those are deleted.
 - `POST /categories/:id/merge` with `{ intoId }`: moves Transactions and Schedule defaults over,
   then archives the Category and sets `mergedIntoId`.
-- `POST /uploads`, a multipart OFX/QFX file under a 5 MB upload limit (a separate `bodyLimit` for
+- `POST /uploads`, a multipart OFX/QFX/QBO file under a 5 MB upload limit (a separate `bodyLimit` for
   this route):
   - It parses with `ofx.ts`.
   - If the bank account hash is unknown, it returns `{ needsWallet: { last4 } }`. The client
     resends with `walletId`, and the Wallet remembers the hash.
   - It inserts the new posted lines as Actuals (`source: 'ofx'`), drops lines whose key is
     already stored, and returns `{ inserted, duplicates }`.
-- **`ofx.ts`** is a small hand-written parser for OFX 1.x (SGML) and 2.x (XML).
+- **`ofx.ts`** is a small hand-written parser for OFX 1.x (SGML) and 2.x (XML). It reads `.ofx`,
+  `.qfx` (Quicken) and `.qbo` (QuickBooks Web Connect) alike, ignoring unknown elements such as
+  Intuit's `INTU.*` headers (D27). The source is `'ofx'` for all three.
   - Fields read:
     - `BANKID`/`ACCTID` from `BANKACCTFROM` or `CCACCTFROM`
     - for each `STMTTRN`: `TRNAMT`, `DTPOSTED`, `FITID`, `NAME`, `MEMO`
@@ -376,7 +379,8 @@ grouped by collection:
   - With no `FITID`, the source key is the SHA-256 of date, amount, description and the line's
     ordinal among identical lines in the file.
   - Pending lines aren't in OFX statements. Nothing else is filtered.
-  - Tested on made-up sample files in both dialects, including a card statement.
+  - Tested on made-up sample files in both dialects, a QFX and a QBO file with Intuit headers,
+    and a card statement.
 
 ## 7. Client
 
@@ -441,7 +445,7 @@ Home and Wallet pages also have the floating + button.
   - It can also enter a one-off Planned Transfer, or an Actual Transfer, by choosing "Transfer
     to…".
 - **Upload:**
-  - It shows a file picker. If the server returns `needsWallet`, it shows a Wallet picker with
+  - It shows a file picker accepting `.ofx`, `.qfx` and `.qbo`. If the server returns `needsWallet`, it shows a Wallet picker with
     the last four digits, then the result: "N added, M already here".
   - New lines that have a suggestion, a hand-entry twin or a Transfer half land in To review.
     Lines with none are unplanned, with `reviewedAt` set by the client right after the upload.
@@ -661,7 +665,7 @@ Checking, dated in the household zone.
     moved out of range, skipped and Reconciled Occurrences.
   - Forecast: Overdue counted today, Transfers between two forecast Wallets, no Balance check.
   - The summary's sign rule, merged Categories, and averages over a short history.
-  - Both OFX dialects, and the import mapping.
+  - Both OFX dialects, QFX and QBO headers, and the import mapping.
 - **Integration (`*.int.test.ts`):** every Finances route, including:
   - 403 without access, and access for the Admin
   - the locked fields on imported Actuals
@@ -707,7 +711,7 @@ slice, but must keep this order where a later slice depends on an earlier one.
    - `reconcile.ts`
    - the reconcile, unreconcile, mark-transfer and pair commands
    - the To review panel, Pick another, and the Reconcile option on Add
-10. **OFX/QFX upload**: `ofx.ts`, `/uploads`, Wallet mapping, hand-entry twins, Transfer halves,
+10. **OFX/QFX/QBO upload**: `ofx.ts`, `/uploads`, Wallet mapping, hand-entry twins, Transfer halves,
     ignored lines
 11. **Attention**: the banner and the bell with item links (7.8)
 12. **Monthly summary and Category pages**: `summary.ts`, the summary screen, the Category page,
