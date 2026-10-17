@@ -1,5 +1,5 @@
 /** Every App the Shell hosts: the key used by App access and App routers, and its title. */
-export const APPS = [{ key: "skeleton", title: "Notes" }] as const
+export const APPS = [{ key: "finances", title: "Finances" }] as const
 
 export type AppKey = (typeof APPS)[number]["key"]
 

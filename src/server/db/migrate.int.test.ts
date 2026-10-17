@@ -1,7 +1,18 @@
+import { cp, mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
+import { drizzle } from "drizzle-orm/node-postgres"
+import { migrate } from "drizzle-orm/node-postgres/migrator"
 import pg from "pg"
-import { afterAll, beforeAll, expect, test } from "vitest"
-import { runMigrations } from "#server/db/migrate.ts"
+import { afterAll, beforeAll, describe, expect, test } from "vitest"
+import { z } from "zod"
+import { MIGRATIONS_FOLDER, runMigrations } from "#server/db/migrate.ts"
 import { createEmptyDatabase, dropDatabase } from "#server/test/databases.ts"
+
+// Unknown journal fields are kept, so the shortened journal stays valid for the migrator.
+const journalSchema = z.looseObject({
+  entries: z.array(z.looseObject({ tag: z.string() })),
+})
 
 let url: string
 
@@ -13,8 +24,11 @@ afterAll(async () => {
   await dropDatabase("migrate_from_empty")
 })
 
-async function query<Row extends pg.QueryResultRow>(sql: string): Promise<Row[]> {
-  const client = new pg.Client({ connectionString: url })
+async function query<Row extends pg.QueryResultRow>(
+  databaseUrl: string,
+  sql: string,
+): Promise<Row[]> {
+  const client = new pg.Client({ connectionString: databaseUrl })
   await client.connect()
   try {
     return (await client.query<Row>(sql)).rows
@@ -23,9 +37,32 @@ async function query<Row extends pg.QueryResultRow>(sql: string): Promise<Row[]>
   }
 }
 
+/** Applies only the migrations before `tag`, from a copy of the folder with a shorter journal. */
+async function migrateUpTo(databaseUrl: string, tag: string): Promise<void> {
+  const folder = await mkdtemp(join(tmpdir(), "kabigting-migrations-"))
+  try {
+    await cp(MIGRATIONS_FOLDER, folder, { recursive: true })
+    const journalPath = join(folder, "meta", "_journal.json")
+    const journal = journalSchema.parse(JSON.parse(await readFile(journalPath, "utf8")))
+    const index = journal.entries.findIndex((entry) => entry.tag === tag)
+    if (index < 0) throw new Error(`No migration ${tag}`)
+    journal.entries = journal.entries.slice(0, index)
+    await writeFile(journalPath, JSON.stringify(journal))
+    const pool = new pg.Pool({ connectionString: databaseUrl, max: 1 })
+    try {
+      await migrate(drizzle({ client: pool }), { migrationsFolder: folder })
+    } finally {
+      await pool.end()
+    }
+  } finally {
+    await rm(folder, { recursive: true, force: true })
+  }
+}
+
 test("migrations apply to an empty database and create every table", async () => {
   await runMigrations(url)
   const tables = await query<{ table_name: string }>(
+    url,
     "select table_name from information_schema.tables where table_schema = 'public' order by 1",
   )
   expect(tables.map((t) => t.table_name)).toEqual([
@@ -34,7 +71,6 @@ test("migrations apply to an empty database and create every table", async () =>
     "auth_session",
     "auth_user",
     "auth_verification",
-    "skeleton_notes",
     "temporary_password",
   ])
 })
@@ -43,28 +79,38 @@ test("running migrations again is a no-op", async () => {
   await expect(runMigrations(url)).resolves.toBeUndefined()
 })
 
-test("skeleton_notes stores signed cents as bigint and dates without a zone", async () => {
-  const columns = await query<{ column_name: string; data_type: string }>(
-    "select column_name, data_type from information_schema.columns where table_name = 'skeleton_notes' order by ordinal_position",
-  )
-  expect(Object.fromEntries(columns.map((c) => [c.column_name, c.data_type]))).toEqual({
-    id: "uuid",
-    user_id: "text",
-    text: "text",
-    amount_cents: "bigint",
-    on_date: "date",
-    created_at: "timestamp with time zone",
-    updated_at: "timestamp with time zone",
-  })
-})
+describe("0002 removes the sample App", () => {
+  let earlier: string
 
-test("a note without an id gets a UUIDv7 from the database", async () => {
-  const [row] = await query<{ id: string }>(`
-    with u as (
-      insert into auth_user (id, name, email, updated_at) values ('u1', 'Test', 't@example.com', now())
-      returning id
+  beforeAll(async () => {
+    earlier = await createEmptyDatabase("migrate_remove_notes")
+  })
+
+  afterAll(async () => {
+    await dropDatabase("migrate_remove_notes")
+  })
+
+  test("drops skeleton_notes and its app_access rows, keeping other Apps' rows", async () => {
+    await migrateUpTo(earlier, "0002_drop_skeleton")
+    await query(
+      earlier,
+      `insert into auth_user (id, name, email, updated_at) values ('u1', 'Test', 't@example.com', now());
+       insert into app_access (user_id, app_key) values ('u1', 'skeleton'), ('u1', 'finances');
+       insert into skeleton_notes (user_id, text, amount_cents, on_date)
+         values ('u1', 'x', -1, '2026-10-14')`,
     )
-    insert into skeleton_notes (user_id, text, amount_cents, on_date)
-    select id, 'x', -1, '2026-10-14' from u returning id`)
-  expect(row?.id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-7/)
+
+    await runMigrations(earlier)
+
+    const access = await query<{ app_key: string }>(
+      earlier,
+      "select app_key from app_access order by app_key",
+    )
+    expect(access.map((row) => row.app_key)).toEqual(["finances"])
+    const table = await query(
+      earlier,
+      "select 1 from information_schema.tables where table_name = 'skeleton_notes'",
+    )
+    expect(table).toEqual([])
+  })
 })

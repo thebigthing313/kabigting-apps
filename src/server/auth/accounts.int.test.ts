@@ -31,8 +31,8 @@ function changePassword(headers: Headers, currentPassword: string, newPassword: 
   return http.changePassword(server.app, headers, currentPassword, newPassword)
 }
 
-async function notes(headers: Headers) {
-  return server.app.request("/api/skeleton/notes/query", json("POST", {}, headers))
+async function finances(headers: Headers) {
+  return server.app.request("/api/finances/ping", { headers })
 }
 
 describe("createAccount", () => {
@@ -41,7 +41,7 @@ describe("createAccount", () => {
     const { temporaryPassword } = await createAccount(server, {
       email,
       name: "New",
-      apps: ["skeleton"],
+      apps: ["finances"],
     })
     expect(temporaryPassword.length).toBeGreaterThanOrEqual(16)
 
@@ -50,7 +50,7 @@ describe("createAccount", () => {
     expect(await session(headers)).toMatchObject({
       user: { mustChangePassword: true, role: "user" },
     })
-    expect((await notes(headers)).status).toBe(403)
+    expect((await finances(headers)).status).toBe(403)
   })
 
   test("temporary passwords differ every time", async () => {
@@ -80,7 +80,7 @@ describe("changing the temporary password", () => {
     const { temporaryPassword } = await createAccount(server, {
       email,
       name: "C",
-      apps: ["skeleton"],
+      apps: ["finances"],
     })
     const phone = await signIn(email, temporaryPassword)
     const laptop = await signIn(email, temporaryPassword)
@@ -88,7 +88,7 @@ describe("changing the temporary password", () => {
     const changed = await changePassword(laptop.headers, temporaryPassword, "a-brand-new-password")
     expect(changed.status).toBe(200)
     expect(await session(changed.headers)).toMatchObject({ user: { mustChangePassword: false } })
-    expect((await notes(changed.headers)).status).toBe(200)
+    expect((await finances(changed.headers)).status).toBe(200)
     expect(await session(phone.headers)).toBeNull()
   })
 
@@ -141,7 +141,7 @@ describe("changing the temporary password", () => {
 describe("resetAccount", () => {
   test("issues a new temporary password, sets the flag again and signs the Account out everywhere", async () => {
     const email = uniqueEmail()
-    const first = await createAccount(server, { email, name: "H", apps: ["skeleton"] })
+    const first = await createAccount(server, { email, name: "H", apps: ["finances"] })
     const signedIn = await signIn(email, first.temporaryPassword)
     const { headers } = await changePassword(
       signedIn.headers,

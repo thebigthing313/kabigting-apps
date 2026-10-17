@@ -7,7 +7,7 @@ import { reportError } from "@/data/error-handler"
 import { queryClient } from "@/data/query-client"
 
 export type RestCollectionSpec<Row extends { id: string }> = {
-  /** Unique across the app, e.g. "skeleton-notes". */
+  /** Unique across the app, e.g. "finances-wallets". */
   id: string
   queryKey: readonly string[]
   fetchRows: () => Promise<Row[]>

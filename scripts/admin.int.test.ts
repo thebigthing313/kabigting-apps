@@ -48,9 +48,9 @@ describe("admin create-account", () => {
       "--name",
       "Guest",
       "--apps",
-      "skeleton",
+      "finances",
     )
-    expect(output).toContain("skeleton")
+    expect(output).toContain("finances")
     expect((await signIn("guest@example.com", passwordIn(output))).status).toBe(200)
   })
 

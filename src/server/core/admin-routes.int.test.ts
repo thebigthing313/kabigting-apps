@@ -52,7 +52,7 @@ async function listAccounts(headers: Headers) {
 describe("listing Accounts", () => {
   test("the Admin sees every Account with its status and Apps, ordered by email", async () => {
     const admin = await server.signedInAccount({ role: "admin" })
-    const member = await server.signedInAccount({ apps: ["skeleton"] })
+    const member = await server.signedInAccount({ apps: ["finances"] })
     const newcomer = await server.signedInAccount({ mustChangePassword: true })
     const removed = await server.signedInAccount()
     await server.db.update(auth_user).set({ banned: true }).where(eq(auth_user.id, removed.user.id))
@@ -74,7 +74,7 @@ describe("listing Accounts", () => {
           name: member.user.name,
           role: "user",
           status: "active",
-          apps: ["skeleton"],
+          apps: ["finances"],
         }),
         expect.objectContaining({ id: newcomer.user.id, status: "awaiting_password_change" }),
         expect.objectContaining({ id: removed.user.id, status: "removed", apps: [] }),
@@ -83,7 +83,7 @@ describe("listing Accounts", () => {
   })
 
   test("a non-Admin gets 403 forbidden_admin", async () => {
-    const { headers } = await server.signedInAccount({ apps: ["skeleton"] })
+    const { headers } = await server.signedInAccount({ apps: ["finances"] })
     const response = await server.app.request(ACCOUNTS, { headers })
     expect(response.status).toBe(403)
     expect(await response.json()).toMatchObject({ error: { code: "forbidden_admin" } })
@@ -111,7 +111,7 @@ describe("creating an Account", () => {
     const response = await createViaApi(admin.headers, {
       email: `  ${email.toUpperCase()} `,
       name: "  New Person ",
-      apps: ["skeleton"],
+      apps: ["finances"],
     })
     expect(response.status).toBe(201)
     const { row } = rowResponse.parse(await response.json())
@@ -120,7 +120,7 @@ describe("creating an Account", () => {
       name: "New Person",
       role: "user",
       status: "awaiting_password_change",
-      apps: ["skeleton"],
+      apps: ["finances"],
     })
     if (!row.temporaryPassword) throw new Error("No temporary password returned")
 
@@ -336,25 +336,25 @@ function setApps(headers: Headers, userId: string, body: unknown) {
   return server.app.request(`${ACCOUNTS}/${userId}/apps`, json("PUT", body, headers))
 }
 
-function notes(headers: Headers) {
-  return server.app.request("/api/skeleton/notes/query", json("POST", {}, headers))
+function finances(headers: Headers) {
+  return server.app.request("/api/finances/ping", { headers })
 }
 
 describe("editing App access", () => {
   test("grants and revokes Apps; a revoked App refuses the Account at once", async () => {
     const admin = await server.signedInAccount({ role: "admin" })
     const guest = await server.signedInAccount()
-    expect((await notes(guest.headers)).status).toBe(403)
+    expect((await finances(guest.headers)).status).toBe(403)
 
-    const granted = await setApps(admin.headers, guest.user.id, { apps: ["skeleton"] })
+    const granted = await setApps(admin.headers, guest.user.id, { apps: ["finances"] })
     expect(granted.status).toBe(200)
-    expect(rowResponse.parse(await granted.json()).row).toMatchObject({ apps: ["skeleton"] })
-    expect((await notes(guest.headers)).status).toBe(200)
+    expect(rowResponse.parse(await granted.json()).row).toMatchObject({ apps: ["finances"] })
+    expect((await finances(guest.headers)).status).toBe(200)
 
     const revoked = await setApps(admin.headers, guest.user.id, { apps: [] })
     expect(revoked.status).toBe(200)
     expect(rowResponse.parse(await revoked.json()).row).toMatchObject({ apps: [] })
-    const refused = await notes(guest.headers)
+    const refused = await finances(guest.headers)
     expect(refused.status).toBe(403)
     expect(await refused.json()).toMatchObject({ error: { code: "forbidden_app" } })
     // Revoking an App does not sign the Account out.
@@ -363,23 +363,23 @@ describe("editing App access", () => {
 
   test("saving the same set twice changes nothing", async () => {
     const admin = await server.signedInAccount({ role: "admin" })
-    const member = await server.signedInAccount({ apps: ["skeleton"] })
+    const member = await server.signedInAccount({ apps: ["finances"] })
     const response = await setApps(admin.headers, member.user.id, {
-      apps: ["skeleton", "skeleton"],
+      apps: ["finances", "finances"],
     })
     expect(response.status).toBe(200)
-    expect(rowResponse.parse(await response.json()).row).toMatchObject({ apps: ["skeleton"] })
+    expect(rowResponse.parse(await response.json()).row).toMatchObject({ apps: ["finances"] })
   })
 
   test("refusals: unknown App, the Admin's own Account, an unknown Account, a non-Admin", async () => {
     const admin = await server.signedInAccount({ role: "admin" })
-    const member = await server.signedInAccount({ apps: ["skeleton"] })
+    const member = await server.signedInAccount({ apps: ["finances"] })
     expect((await setApps(admin.headers, member.user.id, { apps: ["nope"] })).status).toBe(400)
     expect((await setApps(admin.headers, member.user.id, {})).status).toBe(400)
     expect((await setApps(admin.headers, admin.user.id, { apps: [] })).status).toBe(409)
     expect((await setApps(admin.headers, "no-such-account", { apps: [] })).status).toBe(404)
     expect((await setApps(member.headers, admin.user.id, { apps: [] })).status).toBe(403)
-    expect((await notes(member.headers)).status).toBe(200)
+    expect((await finances(member.headers)).status).toBe(200)
   })
 })
 

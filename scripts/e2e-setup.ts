@@ -48,14 +48,14 @@ const accounts = {
   // Fresh Accounts for the forced-change test, one per Playwright project.
   newcomers: {} as Record<string, { email: string; temporaryPassword: string }>,
 }
-await settledAccount(accounts.member.email, "Member", accounts.member.password, ["skeleton"])
-await settledAccount(accounts.admin.email, "Admin", accounts.admin.password, ["skeleton"], "admin")
+await settledAccount(accounts.member.email, "Member", accounts.member.password, ["finances"])
+await settledAccount(accounts.admin.email, "Admin", accounts.admin.password, ["finances"], "admin")
 await settledAccount(accounts.guest.email, "Guest", accounts.guest.password, [])
 for (const project of ["chromium-desktop", "chromium-phone", "webkit-desktop", "webkit-phone"]) {
   const email = `newcomer-${project}@example.com`
   const { temporaryPassword } = await createAccount(
     { db, auth },
-    { email, name: "Newcomer", apps: ["skeleton"] },
+    { email, name: "Newcomer", apps: ["finances"] },
   )
   accounts.newcomers[project] = { email, temporaryPassword }
 }

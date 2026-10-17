@@ -13,8 +13,9 @@ import { Route as AppRouteImport } from './routes/_app'
 import { Route as ChangePasswordRouteImport } from './routes/change-password'
 import { Route as SignInRouteImport } from './routes/sign-in'
 import { Route as AppIndexRouteImport } from './routes/_app/index'
-import { Route as AppSkeletonRouteImport } from './routes/_app/skeleton'
+import { Route as AppFinancesRouteRouteImport } from './routes/_app/finances/route'
 import { Route as AppAdminAccountsRouteImport } from './routes/_app/admin/accounts'
+import { Route as AppFinancesIndexRouteImport } from './routes/_app/finances/index'
 
 const AppRoute = AppRouteImport.update({
   id: '/_app',
@@ -35,9 +36,9 @@ const AppIndexRoute = AppIndexRouteImport.update({
   path: '/',
   getParentRoute: () => AppRoute,
 } as any)
-const AppSkeletonRoute = AppSkeletonRouteImport.update({
-  id: '/skeleton',
-  path: '/skeleton',
+const AppFinancesRouteRoute = AppFinancesRouteRouteImport.update({
+  id: '/finances',
+  path: '/finances',
   getParentRoute: () => AppRoute,
 } as any)
 const AppAdminAccountsRoute = AppAdminAccountsRouteImport.update({
@@ -45,44 +46,57 @@ const AppAdminAccountsRoute = AppAdminAccountsRouteImport.update({
   path: '/admin/accounts',
   getParentRoute: () => AppRoute,
 } as any)
+const AppFinancesIndexRoute = AppFinancesIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => AppFinancesRouteRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof AppIndexRoute
   '/change-password': typeof ChangePasswordRoute
   '/sign-in': typeof SignInRoute
-  '/skeleton': typeof AppSkeletonRoute
+  '/finances': typeof AppFinancesRouteRouteWithChildren
   '/admin/accounts': typeof AppAdminAccountsRoute
+  '/finances/': typeof AppFinancesIndexRoute
 }
 export interface FileRoutesByTo {
   '/change-password': typeof ChangePasswordRoute
   '/sign-in': typeof SignInRoute
-  '/skeleton': typeof AppSkeletonRoute
   '/': typeof AppIndexRoute
   '/admin/accounts': typeof AppAdminAccountsRoute
+  '/finances': typeof AppFinancesIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_app': typeof AppRouteWithChildren
   '/change-password': typeof ChangePasswordRoute
   '/sign-in': typeof SignInRoute
-  '/_app/skeleton': typeof AppSkeletonRoute
+  '/_app/finances': typeof AppFinancesRouteRouteWithChildren
   '/_app/': typeof AppIndexRoute
   '/_app/admin/accounts': typeof AppAdminAccountsRoute
+  '/_app/finances/': typeof AppFinancesIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
-    '/' | '/change-password' | '/sign-in' | '/skeleton' | '/admin/accounts'
+    | '/'
+    | '/change-password'
+    | '/sign-in'
+    | '/finances'
+    | '/admin/accounts'
+    | '/finances/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/change-password' | '/sign-in' | '/skeleton' | '/' | '/admin/accounts'
+  to: '/change-password' | '/sign-in' | '/' | '/admin/accounts' | '/finances'
   id:
     | '__root__'
     | '/_app'
     | '/change-password'
     | '/sign-in'
-    | '/_app/skeleton'
+    | '/_app/finances'
     | '/_app/'
     | '/_app/admin/accounts'
+    | '/_app/finances/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -121,11 +135,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppIndexRouteImport
       parentRoute: typeof AppRoute
     }
-    '/_app/skeleton': {
-      id: '/_app/skeleton'
-      path: '/skeleton'
-      fullPath: '/skeleton'
-      preLoaderRoute: typeof AppSkeletonRouteImport
+    '/_app/finances': {
+      id: '/_app/finances'
+      path: '/finances'
+      fullPath: '/finances'
+      preLoaderRoute: typeof AppFinancesRouteRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/admin/accounts': {
@@ -135,17 +149,35 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppAdminAccountsRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/finances/': {
+      id: '/_app/finances/'
+      path: '/'
+      fullPath: '/finances/'
+      preLoaderRoute: typeof AppFinancesIndexRouteImport
+      parentRoute: typeof AppFinancesRouteRoute
+    }
   }
 }
 
+interface AppFinancesRouteRouteChildren {
+  AppFinancesIndexRoute: typeof AppFinancesIndexRoute
+}
+
+const AppFinancesRouteRouteChildren: AppFinancesRouteRouteChildren = {
+  AppFinancesIndexRoute: AppFinancesIndexRoute,
+}
+
+const AppFinancesRouteRouteWithChildren =
+  AppFinancesRouteRoute._addFileChildren(AppFinancesRouteRouteChildren)
+
 interface AppRouteChildren {
-  AppSkeletonRoute: typeof AppSkeletonRoute
+  AppFinancesRouteRoute: typeof AppFinancesRouteRouteWithChildren
   AppIndexRoute: typeof AppIndexRoute
   AppAdminAccountsRoute: typeof AppAdminAccountsRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
-  AppSkeletonRoute: AppSkeletonRoute,
+  AppFinancesRouteRoute: AppFinancesRouteRouteWithChildren,
   AppIndexRoute: AppIndexRoute,
   AppAdminAccountsRoute: AppAdminAccountsRoute,
 }
