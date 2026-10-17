@@ -17,20 +17,22 @@ import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import type { NewSchedule } from "@/data/finances-schedules"
 import { today } from "@shared/dates"
+import { fromShown } from "@shared/finances/wallets"
 import { cn } from "cn"
 
-type WalletOption = { id: string; name: string }
+type WalletOption = { id: string; name: string; shownAsOwed: boolean }
 
 type Kind = "transaction" | "transfer"
-type Direction = "out" | "in"
+/** The sign as the Wallet shows it; flipped from the stored sign on a Wallet shown as owed. */
+type ShownSign = "minus" | "plus"
 
 type ScheduleFormValues = {
   walletId: string
   kind: Kind
   toWalletId: string
   accountId: string | null
-  direction: Direction
-  /** As typed; only its size counts, the direction gives the sign. */
+  shownSign: ShownSign
+  /** As typed; only its size counts, `shownSign` gives the sign. */
   amount: number | null
   every: string
   unit: "week" | "month"
@@ -46,7 +48,7 @@ const scheduleFormSchema = z
     kind: z.enum(["transaction", "transfer"]),
     toWalletId: z.string(),
     accountId: z.string().nullable(),
-    direction: z.enum(["out", "in"]),
+    shownSign: z.enum(["minus", "plus"]),
     amount: z
       .int()
       .nullable()
@@ -78,15 +80,19 @@ const scheduleFormSchema = z
     }
   })
 
-/** The form's values as a Schedule: signed for a Transaction, positive for a Transfer. */
-function toSchedule(values: ScheduleFormValues): NewSchedule {
+/**
+ * The form's values as a Schedule: signed for a Transaction, positive for a Transfer. A
+ * Transaction is typed as its Wallet shows it, so a Wallet shown as owed flips it back (D15).
+ */
+function toSchedule(values: ScheduleFormValues, wallet: { shownAsOwed: boolean }): NewSchedule {
   const size = Math.abs(values.amount ?? 0)
   const transfer = values.kind === "transfer"
+  const shown = values.shownSign === "plus" ? size : -size
   return {
     walletId: values.walletId,
     toWalletId: transfer ? values.toWalletId : null,
     accountId: values.accountId,
-    amountCents: transfer || values.direction === "in" ? size : -size,
+    amountCents: transfer ? size : fromShown(wallet, shown),
     unit: values.unit,
     every: Number(values.every),
     startDate: values.startDate,
@@ -189,26 +195,32 @@ export function ScheduleForm({
   /** May return a promise; the submit button stays disabled until it settles. */
   onSave: (schedule: NewSchedule) => void | Promise<unknown>
 }) {
-  const [defaultValues] = useState<ScheduleFormValues>(() => ({
-    walletId: wallets.length === 1 ? (wallets[0]?.id ?? "") : "",
-    kind: "transaction",
-    toWalletId: "",
-    accountId: null,
-    direction: "out",
-    amount: null,
-    every: "1",
-    unit: "month",
-    startDate: today(),
-    endDate: "",
-    categoryId: null,
-    note: "",
-  }))
+  const isOwed = (walletId: string) =>
+    wallets.find((wallet) => wallet.id === walletId)?.shownAsOwed ?? false
+  const [defaultValues] = useState<ScheduleFormValues>(() => {
+    const walletId = wallets.length === 1 ? (wallets[0]?.id ?? "") : ""
+    // Money out by default: shown as a plus on a Wallet shown as owed.
+    return {
+      walletId,
+      kind: "transaction",
+      toWalletId: "",
+      accountId: null,
+      shownSign: isOwed(walletId) ? "plus" : "minus",
+      amount: null,
+      every: "1",
+      unit: "month",
+      startDate: today(),
+      endDate: "",
+      categoryId: null,
+      note: "",
+    }
+  })
 
   const form = useForm({
     defaultValues,
     validators: { onSubmit: scheduleFormSchema },
     onSubmit: async ({ value }) => {
-      await onSave(toSchedule(value))
+      await onSave(toSchedule(value, { shownAsOwed: isOwed(value.walletId) }))
     },
   })
 
@@ -232,7 +244,15 @@ export function ScheduleForm({
                   wallets={wallets}
                   value={field.state.value}
                   onBlur={field.handleBlur}
-                  onChange={field.handleChange}
+                  onChange={(walletId) => {
+                    // The sign is typed as the Wallet shows it; keep what was meant across Wallets.
+                    if (isOwed(walletId) !== isOwed(field.state.value)) {
+                      form.setFieldValue("shownSign", (sign) =>
+                        sign === "plus" ? "minus" : "plus",
+                      )
+                    }
+                    field.handleChange(walletId)
+                  }}
                   invalid={invalid}
                 />
                 {invalid ? <FieldError errors={field.state.meta.errors} /> : null}
@@ -279,20 +299,31 @@ export function ScheduleForm({
                 }}
               </form.Field>
             ) : (
-              <form.Field name="direction">
-                {(field) => (
-                  <Choice
-                    legend="Direction"
-                    name="schedule-direction"
-                    value={field.state.value}
-                    onChange={field.handleChange}
-                    options={[
-                      { value: "out", label: "Money out" },
-                      { value: "in", label: "Money in" },
-                    ]}
-                  />
+              <form.Subscribe selector={(state) => isOwed(state.values.walletId)}>
+                {(owed) => (
+                  <form.Field name="shownSign">
+                    {(field) => (
+                      <Choice
+                        legend="Direction"
+                        name="schedule-direction"
+                        value={field.state.value}
+                        onChange={field.handleChange}
+                        options={
+                          owed
+                            ? [
+                                { value: "plus", label: "Adds to what's owed" },
+                                { value: "minus", label: "Pays down what's owed" },
+                              ]
+                            : [
+                                { value: "minus", label: "Money out" },
+                                { value: "plus", label: "Money in" },
+                              ]
+                        }
+                      />
+                    )}
+                  </form.Field>
                 )}
-              </form.Field>
+              </form.Subscribe>
             )
           }
         </form.Subscribe>

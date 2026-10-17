@@ -27,8 +27,8 @@ vi.mock("@/apps/finances/pickers", async () => {
 })
 
 const WALLETS = [
-  { id: CHECKING, name: "Test checking" },
-  { id: CARD, name: "Test card" },
+  { id: CHECKING, name: "Test checking", shownAsOwed: false },
+  { id: CARD, name: "Test card", shownAsOwed: true },
 ]
 
 async function renderForm() {
@@ -36,6 +36,48 @@ async function renderForm() {
   const screen = await render(<ScheduleForm wallets={WALLETS} onSave={onSave} />)
   return { screen, onSave }
 }
+
+describe("ScheduleForm on a Wallet shown as owed", () => {
+  test("takes the amount as the Wallet shows it: a charge adds to what's owed", async () => {
+    const { screen, onSave } = await renderForm()
+    await userEvent.selectOptions(screen.getByLabelText("Wallet"), CARD)
+    await expect.element(screen.getByRole("radio", { name: "Adds to what's owed" })).toBeChecked()
+    await expect.element(screen.getByText("Money out")).not.toBeInTheDocument()
+    await userEvent.fill(screen.getByLabelText("Amount"), "50")
+    await userEvent.fill(screen.getByLabelText("Start date"), "2026-11-05")
+    await screen.getByRole("button", { name: "Add Schedule" }).click()
+    // Stored with its real sign: a charge is money out of the card.
+    await vi.waitFor(() =>
+      expect(onSave).toHaveBeenCalledWith(
+        expect.objectContaining({ walletId: CARD, amountCents: -5_000 }),
+      ),
+    )
+  })
+
+  test("a refund pays down what's owed and is stored as money in", async () => {
+    const { screen, onSave } = await renderForm()
+    await userEvent.selectOptions(screen.getByLabelText("Wallet"), CARD)
+    await screen.getByText("Pays down what's owed").click()
+    await userEvent.fill(screen.getByLabelText("Amount"), "20")
+    await screen.getByRole("button", { name: "Add Schedule" }).click()
+    await vi.waitFor(() =>
+      expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ amountCents: 2_000 })),
+    )
+  })
+
+  test("switching Wallets keeps what was meant: money in on checking pays down the card", async () => {
+    const { screen, onSave } = await renderForm()
+    await userEvent.selectOptions(screen.getByLabelText("Wallet"), CHECKING)
+    await screen.getByText("Money in").click()
+    await userEvent.selectOptions(screen.getByLabelText("Wallet"), CARD)
+    await expect.element(screen.getByRole("radio", { name: "Pays down what's owed" })).toBeChecked()
+    await userEvent.fill(screen.getByLabelText("Amount"), "20")
+    await screen.getByRole("button", { name: "Add Schedule" }).click()
+    await vi.waitFor(() =>
+      expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ amountCents: 2_000 })),
+    )
+  })
+})
 
 describe("ScheduleForm", () => {
   test("a monthly bill saves as money out with its Account and Category", async () => {
