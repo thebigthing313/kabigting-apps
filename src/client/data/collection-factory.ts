@@ -29,8 +29,6 @@ export type RestCollectionSpec<Row extends { id: string }> = RestWrites<Row> & {
 export type OnDemandCollectionSpec<Row extends { id: string }> = RestWrites<Row> & {
   /** One server query in the fixed filter set. */
   fetchRows: (query: OnDemandQuery) => Promise<Row[]>
-  /** How long a loaded subset stays fresh; defaults to the client's 30 seconds. */
-  staleTime?: number
 }
 
 function writeHandlers<Row extends { id: string }>(spec: RestWrites<Row>) {
@@ -105,7 +103,6 @@ export function buildOnDemandCollection<Row extends { id: string; date: string }
       queryKey: [...spec.queryKey],
       queryClient: client,
       syncMode: "on-demand",
-      ...(spec.staleTime === undefined ? {} : { staleTime: spec.staleTime }),
       getKey: (row: Row) => row.id,
       queryFn: async ({ meta }) => {
         const queries = toOnDemandQueries(meta?.loadSubsetOptions ?? {})

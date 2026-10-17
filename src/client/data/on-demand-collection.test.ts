@@ -221,6 +221,13 @@ describe("toOnDemandQueries", () => {
       { where: func("or", func("eq", ref("walletId"), val(WALLET)), func("isNull", ref("date"))) },
       { where: func("like", ref("note"), val("%rent%")) },
       { where: func("isNull", ref("date")) },
+      {
+        where: func(
+          "and",
+          func("eq", ref("categoryId"), val(WALLET)),
+          func("isNull", ref("categoryId")),
+        ),
+      },
     ]) {
       expect(() => toOnDemandQueries(options), JSON.stringify(options)).toThrow(
         UnsupportedLiveQueryError,

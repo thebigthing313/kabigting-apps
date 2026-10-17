@@ -38,10 +38,11 @@ function earlier(a: string | undefined, b: string): string {
   return a === undefined || b < a ? b : a
 }
 
-function setOnce<Key extends "walletId" | "status">(
+/** Two different values for one field can match nothing the server can say; refuse them. */
+function setOnce<Key extends "walletId" | "status" | "categoryId">(
   query: OnDemandQuery,
   key: Key,
-  next: NonNullable<OnDemandQuery[Key]>,
+  next: Exclude<OnDemandQuery[Key], undefined>,
 ) {
   if (query[key] !== undefined && query[key] !== next) {
     throw new UnsupportedLiveQueryError(`two different values for ${key}`)
@@ -76,14 +77,8 @@ function narrow(query: OnDemandQuery, expression: Expression): void {
     const status = value(right)
     if (status === "planned" || status === "actual") return setOnce(query, key, status)
   }
-  if (name === "eq" && key === "categoryId") {
-    query.categoryId = text(right, key)
-    return
-  }
-  if (name === "isNull" && key === "categoryId") {
-    query.categoryId = null
-    return
-  }
+  if (name === "eq" && key === "categoryId") return setOnce(query, key, text(right, key))
+  if (name === "isNull" && key === "categoryId") return setOnce(query, key, null)
   if (name === "isNull" && key === "reviewedAt") {
     query.unreviewed = true
     return

@@ -46,50 +46,41 @@ const financesBalanceChecks = defineOnDemandCollection<BalanceCheckRow>({
 /** Dates are `YYYY-MM-DD`, so plain string order is date order and can page. */
 const NEWEST_FIRST = { direction: "desc", stringSort: "lexical" } as const
 
-/**
- * A Wallet's checks, newest first: the `count` newest, plus the one before them so each shown
- * check can be compared with its previous. Raising `count` loads the next page.
- */
-export function useBalanceChecks(walletId: string, count: number) {
+/** A Wallet's newest `count` checks, only those before `before` when given. */
+function useNewestChecks(walletId: string, count: number, before?: string) {
   const checks = financesBalanceChecks()
   return useLiveQuery(
     (q) =>
       q
         .from({ check: checks })
-        .where(({ check }) => eq(check.walletId, walletId))
+        .where(({ check }) =>
+          before === undefined
+            ? eq(check.walletId, walletId)
+            : and(eq(check.walletId, walletId), lt(check.date, before)),
+        )
         .orderBy(({ check }) => check.date, NEWEST_FIRST)
-        .limit(count + 1),
-    [checks, walletId, count],
+        .limit(count),
+    [checks, walletId, count, before],
   )
+}
+
+/**
+ * A Wallet's checks, newest first: the `count` newest, plus the one before them so each shown
+ * check can be compared with its previous. Raising `count` loads the next page.
+ */
+export function useBalanceChecks(walletId: string, count: number) {
+  return useNewestChecks(walletId, count + 1)
 }
 
 /** A Wallet's latest check, the starting point of its balance; undefined when it has none. */
 export function useLatestBalanceCheck(walletId: string) {
-  const checks = financesBalanceChecks()
-  const { data, isLoading } = useLiveQuery(
-    (q) =>
-      q
-        .from({ check: checks })
-        .where(({ check }) => eq(check.walletId, walletId))
-        .orderBy(({ check }) => check.date, NEWEST_FIRST)
-        .limit(1),
-    [checks, walletId],
-  )
+  const { data, isLoading } = useNewestChecks(walletId, 1)
   return { check: data[0], isLoading }
 }
 
 /** The Wallet's check before `date`, the one a check on `date` is compared with. */
 export function usePreviousBalanceCheck(walletId: string, date: string) {
-  const checks = financesBalanceChecks()
-  const { data, isLoading } = useLiveQuery(
-    (q) =>
-      q
-        .from({ check: checks })
-        .where(({ check }) => and(eq(check.walletId, walletId), lt(check.date, date)))
-        .orderBy(({ check }) => check.date, NEWEST_FIRST)
-        .limit(1),
-    [checks, walletId, date],
-  )
+  const { data, isLoading } = useNewestChecks(walletId, 1, date)
   return { check: data[0], isLoading }
 }
 

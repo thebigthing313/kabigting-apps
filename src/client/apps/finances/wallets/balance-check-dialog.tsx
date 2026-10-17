@@ -34,8 +34,8 @@ export function BalanceCheckDialog({
   walletId?: string
 }) {
   const { data: wallets } = useWallets()
-  const [saved, setSaved] = useState<BalanceCheckEntry | null>(null)
-  const savedWallet = saved ? wallets.find((wallet) => wallet.id === saved.walletId) : undefined
+  // The Wallet is kept with the entry, so the result never depends on the list reloading.
+  const [saved, setSaved] = useState<{ entry: BalanceCheckEntry; wallet: Wallet } | null>(null)
   const choices = wallets.filter((wallet) => !wallet.archived || wallet.id === walletId)
 
   return (
@@ -55,10 +55,10 @@ export function BalanceCheckDialog({
               : "The balance exactly as the bank shows it. A second check on the same date replaces the first."}
           </DialogDescription>
         </DialogHeader>
-        {saved && savedWallet ? (
+        {saved ? (
           <BalanceCheckResult
-            entry={saved}
-            wallet={savedWallet}
+            entry={saved.entry}
+            wallet={saved.wallet}
             onDone={() => {
               setSaved(null)
               onOpenChange(false)
@@ -70,7 +70,8 @@ export function BalanceCheckDialog({
             walletId={walletId}
             onSave={async (entry) => {
               // Stays open if the server refuses it, keeping what was typed.
-              if (await enterBalanceCheck(entry)) setSaved(entry)
+              const wallet = choices.find((choice) => choice.id === entry.walletId)
+              if (wallet && (await enterBalanceCheck(entry))) setSaved({ entry, wallet })
             }}
           />
         )}
