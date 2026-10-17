@@ -32,7 +32,7 @@ function changePassword(headers: Headers, currentPassword: string, newPassword: 
 }
 
 async function finances(headers: Headers) {
-  return server.app.request("/api/finances/ping", { headers })
+  return server.app.request("/api/finances/wallets/query", json("POST", {}, headers))
 }
 
 describe("createAccount", () => {

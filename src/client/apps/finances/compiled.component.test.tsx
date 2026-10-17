@@ -1,6 +1,9 @@
 import { renderToStaticMarkup } from "react-dom/server"
 import { describe, expect, test } from "vitest"
 import { FinancesHome } from "@/apps/finances/finances-home"
+import { WalletForm } from "@/apps/finances/wallets/wallet-form"
+import { WalletPage } from "@/apps/finances/wallets/wallet-page"
+import { WalletsPage } from "@/apps/finances/wallets/wallets-page"
 import { AmountInput } from "@/components/amount-input"
 
 // React Compiler rewrites a component to keep values in a memo cache (`$[0] = ...`). A component
@@ -22,6 +25,9 @@ describe("React Compiler", () => {
   test.each([
     ["FinancesHome", FinancesHome],
     ["AmountInput", AmountInput],
+    ["WalletsPage", WalletsPage],
+    ["WalletPage", WalletPage],
+    ["WalletForm", WalletForm],
   ])("compiled %s", (_name, component) => {
     expect(isCompiled(component)).toBe(true)
   })

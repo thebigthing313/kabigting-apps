@@ -337,7 +337,7 @@ function setApps(headers: Headers, userId: string, body: unknown) {
 }
 
 function finances(headers: Headers) {
-  return server.app.request("/api/finances/ping", { headers })
+  return server.app.request("/api/finances/wallets/query", json("POST", {}, headers))
 }
 
 describe("editing App access", () => {

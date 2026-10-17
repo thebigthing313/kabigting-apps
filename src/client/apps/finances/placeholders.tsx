@@ -12,10 +12,6 @@ export function SchedulesPage() {
   return <SectionPlaceholder title="Schedules" />
 }
 
-export function WalletsPage() {
-  return <SectionPlaceholder title="Wallets" />
-}
-
 export function SummaryPage() {
   return <SectionPlaceholder title="Summary" />
 }
