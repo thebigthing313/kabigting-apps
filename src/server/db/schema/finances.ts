@@ -2,6 +2,7 @@
 import { sql } from "drizzle-orm"
 import {
   type AnyPgColumn,
+  bigint,
   boolean,
   pgTable,
   text,
@@ -49,4 +50,23 @@ export const financesCategories = pgTable(
     ...timestamps(),
   },
   (table) => [uniqueIndex("finances_categories_name_unique").on(sql`lower(${table.name})`)],
+)
+
+/** A place money is held, such as checking, a credit card or cash. */
+export const financesWallets = pgTable(
+  "finances_wallets",
+  {
+    id: idColumn(),
+    name: text().notNull(),
+    inForecast: boolean().notNull().default(false),
+    lowBalanceThresholdCents: bigint({ mode: "number" }).notNull().default(0),
+    shownAsOwed: boolean().notNull().default(false),
+    /** SHA-256 of the OFX BANKID/ACCTID pair. A full account number is never stored. */
+    bankAccountHash: text().unique("finances_wallets_bank_account_hash_unique"),
+    bankAccountLast4: text(),
+    archived: boolean().notNull().default(false),
+    ...timestamps(),
+  },
+  // Names are unique regardless of case, as for Accounts and Categories.
+  (table) => [uniqueIndex("finances_wallets_name_unique").on(sql`lower(${table.name})`)],
 )

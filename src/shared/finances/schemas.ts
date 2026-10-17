@@ -1,6 +1,6 @@
 /** Wire schemas for the Finances App's resources. */
 import { z } from "zod"
-import { id, instant } from "../schemas/primitives.ts"
+import { cents, id, instant } from "../schemas/primitives.ts"
 import { queryBody, rowsResponse } from "../schemas/query.ts"
 
 /** A unique display name, trimmed; the database enforces uniqueness. */
@@ -58,3 +58,49 @@ export const categoryRows = rowsResponse(categoryRow)
 
 export type UpdateCategory = z.infer<typeof updateCategory>
 export type CategoryRow = z.infer<typeof categoryRow>
+
+// Wallets: places money is held, such as checking, a card or cash.
+
+const walletSettings = {
+  name,
+  inForecast: z.boolean(),
+  lowBalanceThresholdCents: cents,
+  shownAsOwed: z.boolean(),
+}
+
+export const createWallet = z.strictObject({
+  id,
+  name,
+  inForecast: walletSettings.inForecast.optional(),
+  lowBalanceThresholdCents: walletSettings.lowBalanceThresholdCents.optional(),
+  shownAsOwed: walletSettings.shownAsOwed.optional(),
+})
+
+export const updateWallet = z
+  .strictObject({
+    ...walletSettings,
+    archived: z.boolean(),
+    // Only "Forget" is allowed: uploads remember the bank account, people only clear it.
+    bankAccountLast4: z.null(),
+  })
+  .partial()
+  .refine(atLeastOneField, "Change at least one field")
+
+export const walletRow = z.object({
+  id,
+  name: z.string(),
+  inForecast: z.boolean(),
+  lowBalanceThresholdCents: cents,
+  shownAsOwed: z.boolean(),
+  /** The last four digits of the bank account an upload was mapped to; never the full number. */
+  bankAccountLast4: z.string().nullable(),
+  archived: z.boolean(),
+  createdAt: instant,
+  updatedAt: instant,
+})
+
+export const walletQuery = queryBody({})
+export const walletRows = rowsResponse(walletRow)
+
+export type UpdateWallet = z.infer<typeof updateWallet>
+export type WalletRow = z.infer<typeof walletRow>

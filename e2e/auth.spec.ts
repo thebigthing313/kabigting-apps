@@ -38,19 +38,21 @@ test("a Guest without the App cannot see or open it", async ({ page }) => {
   await expect(page.getByText("No Apps yet", { exact: true })).toBeVisible()
   await page.goto("/finances")
   await expect(page.getByRole("heading", { name: "Page not found" })).toBeVisible()
-  const response = await page.request.get("/api/finances/ping")
+  const response = await page.request.post("/api/finances/wallets/query", { data: {} })
   expect(response.status()).toBe(403)
   expect(await response.json()).toMatchObject({ error: { code: "forbidden_app" } })
 })
 
-test("signing out leaves no signed-in data behind", async ({ page }) => {
+test("signing out leaves no signed-in data behind", async ({ page }, testInfo) => {
   const { member } = accounts()
   await signIn(page, member.email, member.password)
   await expect(page.getByRole("heading", { name: "Hello, Member" })).toBeVisible()
-  await page.goto("/finances")
-  // The empty Finances home stands in for App data. Once Finances has records, write one here and
-  // check it is gone after sign-out, as this test did before.
-  const text = "Nothing here yet"
+  const text = `Sign-out wallet ${testInfo.project.name} ${Date.now()}`
+  const created = await page.request.post("/api/finances/wallets", {
+    data: { id: crypto.randomUUID(), name: text },
+  })
+  expect(created.status()).toBe(201)
+  await page.goto("/finances/wallets")
   await expect(page.getByText(text).filter({ visible: true })).toBeVisible()
 
   await openAccountMenu(page, "Member")
@@ -71,5 +73,5 @@ test("signing out leaves no signed-in data behind", async ({ page }) => {
   await page.goBack()
   await expect(page).toHaveURL(/\/sign-in/)
   await expect(page.getByText(text)).toHaveCount(0)
-  expect((await page.request.get("/api/finances/ping")).status()).toBe(401)
+  expect((await page.request.post("/api/finances/wallets/query", { data: {} })).status()).toBe(401)
 })

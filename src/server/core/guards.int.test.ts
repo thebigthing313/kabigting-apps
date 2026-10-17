@@ -13,7 +13,10 @@ afterAll(async () => {
   await server.close()
 })
 
-const PING = "/api/finances/ping"
+/** A gated App route: listing the household Wallets. */
+function gated(headers?: Headers) {
+  return server.app.request("/api/finances/wallets/query", json("POST", {}, headers))
+}
 
 test("health answers 200 when the database answers", async () => {
   const response = await server.app.request("/api/health")
@@ -22,7 +25,7 @@ test("health answers 200 when the database answers", async () => {
 })
 
 test("an App route without a session is 401 unauthenticated", async () => {
-  const response = await server.app.request(PING)
+  const response = await gated()
   expect(response.status).toBe(401)
   expect(await response.json()).toMatchObject({ error: { code: "unauthenticated" } })
 })
@@ -33,7 +36,7 @@ describe("an Account that must change its password", () => {
       mustChangePassword: true,
       apps: ["finances"],
     })
-    const response = await server.app.request(PING, { headers })
+    const response = await gated(headers)
     expect(response.status).toBe(403)
     expect(await response.json()).toMatchObject({ error: { code: "password_change_required" } })
   })
@@ -57,23 +60,23 @@ describe("an Account that must change its password", () => {
 
 test("an Account without app_access for the App gets 403 forbidden_app", async () => {
   const { headers } = await server.signedInAccount({ apps: [] })
-  const response = await server.app.request(PING, { headers })
+  const response = await gated(headers)
   expect(response.status).toBe(403)
   expect(await response.json()).toMatchObject({ error: { code: "forbidden_app" } })
 })
 
 test("an Account with app_access reaches the route", async () => {
   const { headers } = await server.signedInAccount({ apps: ["finances"] })
-  const response = await server.app.request(PING, { headers })
+  const response = await gated(headers)
   expect(response.status).toBe(200)
-  expect(await response.json()).toEqual({ ok: true })
+  expect(await response.json()).toEqual({ rows: expect.any(Array) })
 })
 
 test("an Admin without app_access rows reaches every App's routes", async () => {
   const { headers } = await server.signedInAccount({ role: "admin", apps: [] })
-  const response = await server.app.request(PING, { headers })
+  const response = await gated(headers)
   expect(response.status).toBe(200)
-  expect(await response.json()).toEqual({ ok: true })
+  expect(await response.json()).toEqual({ rows: expect.any(Array) })
 })
 
 test("an unknown API path is a 404 envelope, never the SPA", async () => {
