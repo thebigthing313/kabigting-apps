@@ -76,7 +76,7 @@ export function NamePicker({
         <ComboboxInput
           id={id}
           className="h-11 flex-1"
-          placeholder={`Pick or add a ${noun}`}
+          placeholder="Pick or type a name"
           autoComplete="off"
           showClear
         />

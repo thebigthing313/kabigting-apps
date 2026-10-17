@@ -61,10 +61,12 @@ describe("create", () => {
     expect(await query({ ids: [input.id] })).toEqual([row])
   })
 
-  test("a taken name is 409 conflict", async () => {
+  test("a taken name, in any case, is 409 conflict", async () => {
     const first = await created(category())
     const response = await create(category({ name: first.name }))
     expect(response.status).toBe(409)
+    const differentCase = await create(category({ name: first.name.toUpperCase() }))
+    expect(differentCase.status).toBe(409)
     expect(await response.json()).toMatchObject({ error: { code: "conflict" } })
   })
 

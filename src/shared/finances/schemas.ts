@@ -32,7 +32,6 @@ export const accountRow = z.object({
 export const accountQuery = queryBody({})
 export const accountRows = rowsResponse(accountRow)
 
-export type CreateAccount = z.infer<typeof createAccount>
 export type UpdateAccount = z.infer<typeof updateAccount>
 export type AccountRow = z.infer<typeof accountRow>
 
@@ -57,6 +56,5 @@ export const categoryRow = z.object({
 export const categoryQuery = queryBody({})
 export const categoryRows = rowsResponse(categoryRow)
 
-export type CreateCategory = z.infer<typeof createCategory>
 export type UpdateCategory = z.infer<typeof updateCategory>
 export type CategoryRow = z.infer<typeof categoryRow>

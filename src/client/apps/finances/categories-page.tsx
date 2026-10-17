@@ -80,11 +80,12 @@ export function CategoryList({
             </span>
             {category.archived ? (
               <span className="shrink-0 rounded-full border px-2 py-0.5 text-xs text-muted-foreground">
-                Archived
+                {category.mergedIntoId ? "Merged" : "Archived"}
               </span>
             ) : null}
           </span>
-          {category.archived ? (
+          {/* A merged Category's rows now live under its target, so it stays archived. */}
+          {category.archived && !category.mergedIntoId ? (
             <Button
               variant="outline"
               className="h-11 shrink-0"

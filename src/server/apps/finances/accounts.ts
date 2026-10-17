@@ -14,6 +14,7 @@ import {
   type AccountRow,
 } from "#shared/finances/schemas.ts"
 import { id } from "#shared/schemas/primitives.ts"
+import { MAX_QUERY_IDS } from "#shared/schemas/query.ts"
 
 type AccountRecord = typeof financesAccounts.$inferSelect
 
@@ -57,7 +58,7 @@ export function accountRoutes(db: Db) {
           ),
         )
         .orderBy(asc(financesAccounts.id))
-        .limit(limit ?? 5000)
+        .limit(limit ?? MAX_QUERY_IDS)
       return c.json({ rows: accounts.map(toRow) })
     })
     .post("/", validate("json", createAccount), async (c) => {

@@ -1,5 +1,5 @@
 {
-  "id": "486e8853-9ed0-4310-b443-b3d00e0033d9",
+  "id": "4b5a3c7c-8a1e-429b-a34f-fb48d9ea13af",
   "prevId": "46542a28-9750-4dac-bcfe-d17cf5f40dce",
   "version": "7",
   "dialect": "postgresql",
@@ -543,18 +543,26 @@
           "default": "now()"
         }
       },
-      "indexes": {},
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {
+      "indexes": {
         "finances_accounts_name_unique": {
           "name": "finances_accounts_name_unique",
-          "nullsNotDistinct": false,
           "columns": [
-            "name"
-          ]
+            {
+              "expression": "lower(\"name\")",
+              "asc": true,
+              "isExpression": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
       "isRLSEnabled": false
@@ -604,7 +612,23 @@
           "default": "now()"
         }
       },
-      "indexes": {},
+      "indexes": {
+        "finances_categories_name_unique": {
+          "name": "finances_categories_name_unique",
+          "columns": [
+            {
+              "expression": "lower(\"name\")",
+              "asc": true,
+              "isExpression": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {
         "finances_categories_merged_into_id_finances_categories_id_fk": {
           "name": "finances_categories_merged_into_id_finances_categories_id_fk",
@@ -621,15 +645,7 @@
         }
       },
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "finances_categories_name_unique": {
-          "name": "finances_categories_name_unique",
-          "nullsNotDistinct": false,
-          "columns": [
-            "name"
-          ]
-        }
-      },
+      "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
       "isRLSEnabled": false

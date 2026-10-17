@@ -14,6 +14,7 @@ import {
   type CategoryRow,
 } from "#shared/finances/schemas.ts"
 import { id } from "#shared/schemas/primitives.ts"
+import { MAX_QUERY_IDS } from "#shared/schemas/query.ts"
 
 type CategoryRecord = typeof financesCategories.$inferSelect
 
@@ -57,7 +58,7 @@ export function categoryRoutes(db: Db) {
           ),
         )
         .orderBy(asc(financesCategories.id))
-        .limit(limit ?? 5000)
+        .limit(limit ?? MAX_QUERY_IDS)
       return c.json({ rows: categories.map(toRow) })
     })
     .post("/", validate("json", createCategory), async (c) => {
@@ -83,7 +84,7 @@ export function categoryRoutes(db: Db) {
       return category ? c.json(toRow(category)) : notFound()
     })
     .delete("/:id", validate("param", params), () => {
-      // D14: history must keep its Category, so the only ways out are archive and merge.
+      // History must keep its Category, so the only ways out are archive and merge (spec D14).
       throw new ApiError("conflict", "Categories are never deleted; archive or merge it instead")
     })
 }

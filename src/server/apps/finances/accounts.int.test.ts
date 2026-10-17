@@ -69,10 +69,12 @@ describe("create", () => {
     expect(await created(input)).toMatchObject({ note: "Rent on the 1st" })
   })
 
-  test("a taken name is 409 conflict", async () => {
+  test("a taken name, in any case, is 409 conflict", async () => {
     const first = await created(account())
     const response = await create(account({ name: first.name }))
     expect(response.status).toBe(409)
+    const differentCase = await create(account({ name: first.name.toUpperCase() }))
+    expect(differentCase.status).toBe(409)
     expect(await response.json()).toMatchObject({ error: { code: "conflict" } })
   })
 

@@ -19,6 +19,10 @@ function Harness() {
   const [categories, setCategories] = useState([
     category("11111111-1111-7111-8111-111111111111", "Groceries", false),
     category("22222222-2222-7222-8222-222222222222", "Old Club", true),
+    {
+      ...category("33333333-3333-7333-8333-333333333333", "Takeaway", true),
+      mergedIntoId: "11111111-1111-7111-8111-111111111111",
+    },
   ])
   return (
     <CategoryList
@@ -39,6 +43,11 @@ test("lists every Category, marks archived ones, and unarchives them", async () 
   await expect.element(rows.nth(1).getByText("Archived", { exact: true })).toBeVisible()
   await expect
     .element(screen.getByRole("button", { name: "Unarchive Groceries" }))
+    .not.toBeInTheDocument()
+
+  await expect.element(rows.nth(2).getByText("Merged", { exact: true })).toBeVisible()
+  await expect
+    .element(screen.getByRole("button", { name: "Unarchive Takeaway" }))
     .not.toBeInTheDocument()
 
   await screen.getByRole("button", { name: "Unarchive Old Club" }).click()
