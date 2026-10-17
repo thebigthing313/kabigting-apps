@@ -157,6 +157,27 @@ describe("change from a date", () => {
     ])
   })
 
+  test("is refused when a later override wouldn't fall on the new terms, changing nothing", async () => {
+    const before = await rent()
+    const later = await override(before.id, "2027-04-01")
+    await expectStatus(
+      await changeFrom(before.id, {
+        date: "2027-03-02",
+        changes: { unit: "week", every: 2, startDate: "2027-03-05" },
+      }),
+      400,
+      "validation_failed",
+    )
+    // Starting the new terms later leaves an override in between with nowhere to go.
+    await expectStatus(
+      await changeFrom(before.id, { date: "2027-03-15", changes: { startDate: "2027-05-01" } }),
+      400,
+      "validation_failed",
+    )
+    expect((await schedules([before.id]))[0]?.endDate).toBeNull()
+    expect((await occurrences([later.id]))[0]?.scheduleId).toBe(before.id)
+  })
+
   test("a date outside the Schedule's terms is refused, changing nothing", async () => {
     const before = await rent({ endDate: "2027-06-01" })
     await expectStatus(
@@ -322,6 +343,26 @@ async function chain() {
   if (!third) throw new Error("No successor")
   return [third, second, first]
 }
+
+describe("reopen and delete access", () => {
+  test("need Finances access, which the Admin holds", async () => {
+    const schedule = await rent({ endDate: "2027-02-01" })
+    const reopen = (as: Headers) =>
+      server.app.request(
+        `/api/finances/schedules/${schedule.id}`,
+        json("PATCH", { endDate: null }, as),
+      )
+    const removeAs = (as: Headers) =>
+      server.app.request(`/api/finances/schedules/${schedule.id}`, {
+        method: "DELETE",
+        headers: as,
+      })
+    await expectStatus(await reopen(noAccessHeaders), 403, "forbidden_app")
+    expect((await reopen(adminHeaders)).status).toBe(200)
+    await expectStatus(await removeAs(noAccessHeaders), 403, "forbidden_app")
+    expect((await removeAs(adminHeaders)).status).toBe(200)
+  })
+})
 
 describe("delete", () => {
   test("from any Schedule in a chain, deletes the whole chain and its overrides", async () => {

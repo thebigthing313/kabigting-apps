@@ -30,6 +30,8 @@ type ScheduleListRow = {
   schedule: Schedule
   label: string
   next: Occurrence | null
+  /** Its newest Schedule's end date has passed. */
+  ended: boolean
 }
 
 /** Every Schedule, grouped by the Wallet it draws on, soonest first. */
@@ -51,17 +53,16 @@ export function SchedulesPage() {
       schedule,
       label: scheduleLabel(schedule, walletName, accountName),
       next: nextInChain(scheduleChain(schedules, schedule.id), stored, now)?.occurrence ?? null,
+      ended: isEnded(schedule, now),
     }))
-  const running = rows.filter((row) => !isEnded(row.schedule, now))
+  const running = rows.filter((row) => !row.ended)
   const groups = wallets
     .map((wallet) => ({
       wallet,
       rows: running.filter((row) => row.schedule.walletId === wallet.id).toSorted(bySoonest),
     }))
     .filter((group) => group.rows.length > 0)
-  const ended = rows
-    .filter((row) => isEnded(row.schedule, now))
-    .toSorted((a, b) => a.label.localeCompare(b.label))
+  const ended = rows.filter((row) => row.ended).toSorted((a, b) => a.label.localeCompare(b.label))
 
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-4">
@@ -155,7 +156,7 @@ function ScheduleRowItem({ row, wallet }: { row: ScheduleListRow; wallet: Wallet
             {describeTerms(schedule)}
             {next
               ? ` · next ${formatDisplayDate(next.date)}`
-              : schedule.endDate !== null && isEnded(schedule, today())
+              : schedule.endDate !== null && row.ended
                 ? ` · ended ${formatDisplayDate(schedule.endDate)}`
                 : " · no more Occurrences"}
           </p>

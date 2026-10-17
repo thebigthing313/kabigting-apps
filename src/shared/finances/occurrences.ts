@@ -74,7 +74,10 @@ export type StoredOccurrence = {
   reconciledTransferId: string | null
 }
 
-function isReconciled(row: StoredOccurrence): boolean {
+/** True when an Actual is Reconciled to the stored Occurrence. */
+export function isReconciled(
+  row: Pick<StoredOccurrence, "reconciledTransactionId" | "reconciledTransferId">,
+): boolean {
   return row.reconciledTransactionId !== null || row.reconciledTransferId !== null
 }
 

@@ -11,7 +11,7 @@ import { ApiError } from "#server/core/errors.ts"
 import { validate } from "#server/core/validate.ts"
 import type { Db } from "#server/db/client.ts"
 import { financesOccurrences, financesSchedules } from "#server/db/schema/index.ts"
-import { isOccurrenceDate } from "#shared/finances/occurrences.ts"
+import { isOccurrenceDate, isReconciled } from "#shared/finances/occurrences.ts"
 import {
   createOccurrence,
   occurrenceQuery,
@@ -54,10 +54,6 @@ export const notReconciled = sql`${financesOccurrences.reconciledTransactionId} 
 
 /** One Reconcile link or the other is set. */
 export const reconciledOccurrence = not(notReconciled)
-
-function isReconciled(occurrence: OccurrenceRecord): boolean {
-  return occurrence.reconciledTransactionId !== null || occurrence.reconciledTransferId !== null
-}
 
 /** The database refuses to store an untouched Occurrence: it is computed instead. */
 function refusedUntouched(error: unknown) {

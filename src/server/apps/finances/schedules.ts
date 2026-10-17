@@ -13,7 +13,7 @@ import { validate } from "#server/core/validate.ts"
 import type { Db } from "#server/db/client.ts"
 import { financesOccurrences, financesSchedules } from "#server/db/schema/index.ts"
 import { addDays } from "#shared/dates.ts"
-import { overridesAfter, scheduleChain } from "#shared/finances/occurrences.ts"
+import { isOccurrenceDate, overridesAfter, scheduleChain } from "#shared/finances/occurrences.ts"
 import {
   changeScheduleFrom,
   createSchedule,
@@ -178,6 +178,22 @@ export function scheduleRoutes(db: Db) {
               .returning()
             if (!ended || !successor) throw new Error("The Schedule change wrote nothing")
             // The old terms stop at the change, so its later overrides belong to the new ones.
+            // One the new terms never fall on would be lost from sight, so the change waits.
+            const later = await tx
+              .select({ nominalDate: financesOccurrences.nominalDate })
+              .from(financesOccurrences)
+              .where(
+                and(
+                  eq(financesOccurrences.scheduleId, schedule.id),
+                  gte(financesOccurrences.nominalDate, date),
+                  notReconciled,
+                ),
+              )
+            if (later.some((row) => !isOccurrenceDate(successor, row.nominalDate))) {
+              invalid(
+                "An override or skip from that date doesn't fall on the new terms. Put it back on schedule first.",
+              )
+            }
             const moved = await tx
               .update(financesOccurrences)
               .set({ scheduleId: successor.id, updatedAt: sql`now()` })
@@ -217,18 +233,24 @@ export function scheduleRoutes(db: Db) {
           ) {
             throw new ApiError("conflict", "The overrides to delete have changed; look again")
           }
-          if (doomed.length > 0) {
-            await tx
-              .delete(financesOccurrences)
-              .where(and(inArray(financesOccurrences.id, doomed), notReconciled))
-          }
+          const deleted =
+            doomed.length === 0
+              ? []
+              : await tx
+                  .delete(financesOccurrences)
+                  .where(and(inArray(financesOccurrences.id, doomed), notReconciled))
+                  .returning({ id: financesOccurrences.id })
           const [ended] = await tx
             .update(financesSchedules)
             .set({ endDate, updatedAt: sql`now()` })
             .where(eq(financesSchedules.id, schedule.id))
             .returning()
           if (!ended) throw new Error("Ending the Schedule wrote nothing")
-          return { schedules: [toRow(ended)], occurrences: [], deletedOccurrences: doomed }
+          return {
+            schedules: [toRow(ended)],
+            occurrences: [],
+            deletedOccurrences: deleted.map((row) => row.id),
+          }
         })
         .catch(refused)
       return c.json(result)

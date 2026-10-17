@@ -13,6 +13,7 @@ import { useWallets, type Wallet } from "@/data/finances-wallets"
 import { addMonthsClamped, formatDisplayDate, today } from "@shared/dates"
 import {
   describeTerms,
+  isReconciled,
   occurrencesAround,
   scheduleChain,
   type Occurrence,
@@ -90,9 +91,7 @@ function ScheduleDetail({
   const chainIds = chain.map((member) => member.id)
   const stored = allStored.filter((row) => chainIds.includes(row.scheduleId))
   const storedOf = (member: Schedule) => stored.filter((row) => row.scheduleId === member.id)
-  const reconciled = stored.some(
-    (row) => row.reconciledTransactionId !== null || row.reconciledTransferId !== null,
-  )
+  const reconciled = stored.some(isReconciled)
 
   const now = today()
   const range = {
