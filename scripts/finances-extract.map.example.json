@@ -1,0 +1,65 @@
+{
+  "categories": {
+    "table": "tblCategories",
+    "columns": { "id": "CategoryId", "name": "CategoryName" }
+  },
+  "schedules": [
+    {
+      "kind": "expense",
+      "table": "tblExpenseSchedules",
+      "columns": { "id": "ExpenseScheduleId", "name": "ScheduleName", "categoryId": "CategoryId" }
+    },
+    {
+      "kind": "income",
+      "table": "tblIncomeSchedules",
+      "columns": { "id": "IncomeScheduleId", "name": "ScheduleName", "categoryId": "CategoryId" }
+    }
+  ],
+  "transactions": [
+    {
+      "kind": "expense",
+      "table": "tblExpenseTransactions",
+      "columns": {
+        "id": "ExpenseTransactionId",
+        "scheduleId": "ExpenseScheduleId",
+        "date": "TransactionDate",
+        "amount": "Amount",
+        "note": "Notes",
+        "pending": "IsPending",
+        "posted": "IsPosted"
+      }
+    },
+    {
+      "kind": "income",
+      "table": "tblIncomeTransactions",
+      "columns": {
+        "id": "IncomeTransactionId",
+        "scheduleId": "IncomeScheduleId",
+        "date": "TransactionDate",
+        "amount": "Amount",
+        "note": "Notes",
+        "pending": "IsPending",
+        "posted": "IsPosted"
+      }
+    }
+  ],
+  "ledger": {
+    "table": "tblLedger",
+    "columns": {
+      "id": "LedgerId",
+      "isExpense": "IsExpense",
+      "transactionId": "TransactionId",
+      "date": "LedgerDate",
+      "payee": "Payee",
+      "amount": "TotalAmount",
+      "categoryId": "CategoryId",
+      "note": "Notes",
+      "bankDescription": "BankDescription",
+      "bankDate": "BankDate"
+    }
+  },
+  "balances": {
+    "table": "tblBalances",
+    "columns": { "id": "BalanceId", "enteredAt": "EnteredAt", "amount": "Balance" }
+  }
+}
