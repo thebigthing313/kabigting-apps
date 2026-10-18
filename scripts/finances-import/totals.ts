@@ -42,15 +42,9 @@ function oldTotals(extract: Extract, today: string): Map<string, number> {
     const link = row.transactionId === null ? null : ref(kind, row.transactionId)
     if (link !== null) linked.add(link)
     if (row.amountCents === 0) continue
-    if (
-      (row.date !== null && !hasPlausibleYear(row.date)) ||
-      (row.bankDate !== null && !hasPlausibleYear(row.bankDate))
-    ) {
-      continue
-    }
     const linkedDate = link === null ? null : (transactions.get(link)?.date ?? null)
-    const date = row.bankDate ?? row.date ?? (hasPlausibleYear(linkedDate) ? linkedDate : null)
-    if (date === null) continue
+    const date = [row.bankDate, row.date, linkedDate].find((d) => hasPlausibleYear(d))
+    if (date == null) continue
     add(date, mapped(row.categoryId), signed(kind, row.amountCents))
   }
   for (const row of extract.transactions) {

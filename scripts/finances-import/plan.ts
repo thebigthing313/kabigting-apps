@@ -49,6 +49,7 @@ export type ImportReport = {
     dateFromBankDate: number
     dateFromLedgerDate: number
     dateFromTransactionDate: number
+    impossibleBankDateFellBack: number
     payeesMovedToNotes: number
   }
   categoryTotals: CategoryTotal[]
@@ -113,6 +114,7 @@ export function planImport(extract: Extract, options: { today: string }): Import
     dateFromBankDate: 0,
     dateFromLedgerDate: 0,
     dateFromTransactionDate: 0,
+    impossibleBankDateFellBack: 0,
     payeesMovedToNotes: 0,
   }
 
@@ -175,14 +177,6 @@ export function planImport(extract: Extract, options: { today: string }): Import
     if (row.transactionId !== null) linkedLedgerSums.set(ref(kindOf(row), row.transactionId), 0)
   }
   for (const row of extract.ledger) {
-    if (!hasPlausibleYear(row.date) && row.date !== null) {
-      skip("ledger", row.date, "impossible date")
-      continue
-    }
-    if (row.bankDate !== null && !hasPlausibleYear(row.bankDate)) {
-      skip("ledger", row.date, "impossible date")
-      continue
-    }
     if (row.amountCents === 0) {
       skip("ledger", row.date, "zero amount")
       continue
@@ -191,21 +185,21 @@ export function planImport(extract: Extract, options: { today: string }): Import
     const linked = linkRef === null ? undefined : transactions.get(linkRef)
     if (linkRef !== null && linked === undefined) counted.linksToMissingTransactions += 1
 
-    let date: string | null = null
-    if (row.bankDate !== null) {
-      date = row.bankDate
-      counted.dateFromBankDate += 1
-    } else if (row.date !== null) {
-      date = row.date
-      counted.dateFromLedgerDate += 1
-    } else if (linked !== undefined && hasPlausibleYear(linked.date)) {
-      date = linked.date
-      counted.dateFromTransactionDate += 1
-    }
+    // The first possible date of the bank date, the row's own and the linked transaction's. An
+    // impossible one counts as none; the row drops only when every date it has is impossible.
+    const candidates = [row.bankDate, row.date, linked?.date ?? null]
+    const chosen = candidates.findIndex((candidate) => hasPlausibleYear(candidate))
+    const date = chosen === -1 ? null : (candidates[chosen] ?? null)
     if (date === null) {
-      skip("ledger", row.date, "no date")
+      const anyDate = candidates.some((candidate) => candidate !== null)
+      skip("ledger", row.date, anyDate ? "impossible date" : "no date")
       continue
     }
+    const bankDateImpossible = row.bankDate !== null && chosen > 0
+    if (chosen === 0) counted.dateFromBankDate += 1
+    else if (chosen === 1) counted.dateFromLedgerDate += 1
+    else counted.dateFromTransactionDate += 1
+    if (bankDateImpossible) counted.impossibleBankDateFellBack += 1
 
     const amountCents = signed(kindOf(row), row.amountCents)
     if (linkRef !== null) {

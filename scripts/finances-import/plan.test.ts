@@ -360,3 +360,40 @@ describe("a transaction whose only ledger row is skipped", () => {
     expect(result.report.counted.linkedSumsDiffer).toBe(1)
   })
 })
+
+describe("an impossible bank posting date", () => {
+  test("falls back to the ledger date, then the linked transaction's, and is counted", () => {
+    const result = plan({
+      transactions: [transaction("5", { date: "2023-03-09" })],
+      ledger: [
+        ledger("1", { date: "2023-03-01", bankDate: "0202-03-02" }),
+        ledger("2", { date: null, bankDate: "0202-03-02", transactionId: "5" }),
+      ],
+    })
+    expect(actualByKey(result.actuals, "ledger:1").date).toBe("2023-03-01")
+    expect(actualByKey(result.actuals, "ledger:2").date).toBe("2023-03-09")
+    expect(result.report.counted).toMatchObject({
+      impossibleBankDateFellBack: 2,
+      dateFromBankDate: 0,
+      dateFromLedgerDate: 1,
+      dateFromTransactionDate: 1,
+    })
+    expect([...result.report.skipped.keys()]).toEqual(["transactions: carried by its ledger rows"])
+    expect(result.report.failures).toEqual([])
+  })
+
+  test("drops the row only when no other date is possible either", () => {
+    const result = plan({
+      transactions: [transaction("5", { date: "0425-01-01" })],
+      ledger: [
+        ledger("1", { date: null, bankDate: "0202-03-02", transactionId: "5" }),
+        ledger("2", { date: "0425-06-01", bankDate: null }),
+        ledger("3", { date: "0425-06-01", bankDate: "2024-06-02" }),
+      ],
+    })
+    expect(result.actuals.map((a) => [a.sourceKey, a.date])).toEqual([["ledger:3", "2024-06-02"]])
+    expect(result.report.skipped.get("ledger: impossible date")).toBe(2)
+    expect(result.report.counted.impossibleBankDateFellBack).toBe(0)
+    expect(result.report.failures).toEqual([])
+  })
+})

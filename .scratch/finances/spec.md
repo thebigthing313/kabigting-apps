@@ -694,6 +694,8 @@ income transactions when it is false. Amounts are decimal dollars; dates are `YY
   - Otherwise the ledger row's own `date`.
   - Otherwise the linked transaction's `date`.
   - An unlinked transaction uses its own `date`.
+  - An impossible bank posting date counts as none, so the row falls back to its other dates.
+    It drops only when every candidate date is impossible, as the year-425 row does.
 - **Category:**
   - A ledger row takes its own `categoryId`.
   - An unlinked transaction takes its Schedule's `categoryId`.
@@ -749,7 +751,8 @@ is the date part of `enteredAt`, read as household time.
   with the mapping applied; "new" is `src/shared/finances/summary.ts` over the Actuals to be
   written.
 - Counted, never failing: transactions whose ledger rows don't sum to the transaction amount,
-  each date fallback, each skip reason, and payees moved into notes.
+  each date fallback (including impossible bank dates that fell back), each skip reason, and
+  payees moved into notes.
 
 **Failure.** The run exits non-zero, and writes nothing even without `--dry-run`, when:
 
