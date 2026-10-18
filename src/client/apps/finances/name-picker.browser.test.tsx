@@ -31,7 +31,7 @@ function Harness({ initial = null, lag = 0 }: { initial?: string | null; lag?: n
           const next = [...options, { id, name, archived: false }]
           if (lag === 0) setOptions(next)
           else setTimeout(() => setOptions(next), lag)
-          return id
+          return { id, saved: Promise.resolve(true) }
         }}
         onRename={(id, name) => {
           setOptions(options.map((option) => (option.id === id ? { ...option, name } : option)))

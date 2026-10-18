@@ -2,6 +2,7 @@ import { useLiveQuery } from "@tanstack/react-db"
 import { api } from "@/data/api"
 import { defineRestCollection } from "@/data/collection-factory"
 import { readJson } from "@/data/error-handler"
+import { type InlineAdd, trackInlineAdd } from "@/data/inline-adds"
 import { nowInstant } from "@shared/dates"
 import type { AccountRow, UpdateAccount } from "@shared/finances/schemas"
 import { newId } from "@shared/ids"
@@ -38,12 +39,22 @@ export function useFinancesAccounts() {
   )
 }
 
-/** Shows the new Account at once and returns its id; a refusal rolls it back with a toast. */
-export function addFinancesAccount(name: string): string {
+/**
+ * Shows the new Account at once and returns its id, with whether the server stored it; a refusal
+ * rolls it back with a toast.
+ */
+export function addFinancesAccount(name: string): InlineAdd {
   const now = nowInstant()
   const id = newId()
-  financesAccounts().insert({ id, name, note: "", archived: false, createdAt: now, updatedAt: now })
-  return id
+  const transaction = financesAccounts().insert({
+    id,
+    name,
+    note: "",
+    archived: false,
+    createdAt: now,
+    updatedAt: now,
+  })
+  return trackInlineAdd(id, transaction)
 }
 
 export function renameFinancesAccount(id: string, name: string): void {
