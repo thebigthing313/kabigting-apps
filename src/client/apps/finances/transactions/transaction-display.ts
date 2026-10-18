@@ -20,8 +20,3 @@ export function categoryLabel(
     "Uncategorised"
   )
 }
-
-/** An imported Actual keeps the amount, date and Wallet the bank gave it. */
-export function isImported(transaction: Pick<Transaction, "source">): boolean {
-  return transaction.source !== null && transaction.source !== "manual"
-}

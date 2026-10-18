@@ -16,6 +16,7 @@ import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import type { NewTransaction } from "@/data/finances-transactions"
 import { today } from "@shared/dates"
+import { transactionStatus } from "@shared/finances/schemas"
 import { fromShown, toShown } from "@shared/finances/wallets"
 
 type Status = NewTransaction["status"]
@@ -33,7 +34,7 @@ type TransactionFormValues = {
 }
 
 const formSchema = z.object({
-  status: z.enum(["planned", "actual"]),
+  status: transactionStatus,
   walletId: z.string().min(1, "Pick a Wallet"),
   date: z.iso.date("Pick a date"),
   shownSign: z.enum(["minus", "plus"]),

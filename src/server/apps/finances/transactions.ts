@@ -6,9 +6,10 @@ import type { AppEnv } from "#server/core/context.ts"
 import { ApiError } from "#server/core/errors.ts"
 import { validate } from "#server/core/validate.ts"
 import type { Db } from "#server/db/client.ts"
-import { financesTransactions } from "#server/db/schema/index.ts"
+import { financesOccurrences, financesTransactions } from "#server/db/schema/index.ts"
 import {
   createTransaction,
+  isImported,
   transactionQuery,
   type TransactionRow,
   updateTransaction,
@@ -45,16 +46,15 @@ function notFound(): never {
 }
 
 /** A missing Wallet, Account or Category is the caller's to fix, not a server fault. */
+function reconciledConflict(): never {
+  throw new ApiError("conflict", "Something is Reconciled to it; un-Reconcile it first")
+}
+
 function refusedLink(error: unknown): never {
   if (isForeignKeyViolation(error)) {
     throw new ApiError("validation_failed", "No such Wallet, Account or Category")
   }
   throw error
-}
-
-/** Uploaded and imported Actuals came from the bank (or the old ledger); people only label them. */
-function isImported(transaction: TransactionRecord): boolean {
-  return transaction.source !== null && transaction.source !== "manual"
 }
 
 /**
@@ -157,8 +157,20 @@ export function transactionRoutes(db: Db) {
       const transactionId = c.req.valid("param").id
       const [found] = await db.select().from(table).where(eq(table.id, transactionId))
       if (!found) notFound()
-      // An imported line is kept as ignored, so uploading the same file again adds nothing.
+      // An imported line is kept as ignored, so uploading the same file again adds nothing. Like a
+      // deleted one, an ignored line can't stay the target of a Reconcile.
       if (isImported(found)) {
+        const [occurrence] = await db
+          .select({ id: financesOccurrences.id })
+          .from(financesOccurrences)
+          .where(eq(financesOccurrences.reconciledTransactionId, transactionId))
+          .limit(1)
+        const [planned] = await db
+          .select({ id: table.id })
+          .from(table)
+          .where(eq(table.reconciledActualId, transactionId))
+          .limit(1)
+        if (occurrence || planned) reconciledConflict()
         const [ignored] = await db
           .update(table)
           .set({ ignored: true, updatedAt: sql`now()` })
@@ -171,9 +183,7 @@ export function transactionRoutes(db: Db) {
         .where(eq(table.id, transactionId))
         .returning()
         .catch((error: unknown) => {
-          if (isForeignKeyViolation(error)) {
-            throw new ApiError("conflict", "Something is Reconciled to it; un-Reconcile it first")
-          }
+          if (isForeignKeyViolation(error)) reconciledConflict()
           throw error
         })
       return deleted ? c.json(toRow(deleted)) : notFound()

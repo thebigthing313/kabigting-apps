@@ -299,8 +299,21 @@ export type OccurrenceRow = z.infer<typeof occurrenceRow>
 
 // Transactions: one-off Planned and Actual rows of money in or out of one Wallet.
 
+/** Planned (not happened yet) or Actual (really happened). */
+export const transactionStatus = onDemandFilters.status
+
 /** Where an Actual came from: entered by hand, uploaded, or brought over by the import. */
 export const transactionSource = z.enum(["manual", "ofx", "access"])
+
+/**
+ * An Actual that came from the bank or the old ledger keeps its amount, date and Wallet, and
+ * deleting it keeps it as an ignored line.
+ */
+export function isImported(transaction: {
+  source: z.infer<typeof transactionSource> | null
+}): boolean {
+  return transaction.source !== null && transaction.source !== "manual"
+}
 
 /** What a person enters, and may change on a hand-entered row. */
 const transactionFields = {
@@ -316,7 +329,7 @@ const transactionFields = {
 /** A hand-entered one-off Planned or Actual. */
 export const createTransaction = z.strictObject({
   id,
-  status: onDemandFilters.status,
+  status: transactionStatus,
   ...transactionFields,
   accountId: transactionFields.accountId.default(null),
   categoryId: transactionFields.categoryId.default(null),
@@ -334,7 +347,7 @@ export const updateTransaction = z
 
 export const transactionRow = z.object({
   id,
-  status: onDemandFilters.status,
+  status: transactionStatus,
   ...transactionFields,
   note: z.string(),
   bankDescription: z.string().nullable(),

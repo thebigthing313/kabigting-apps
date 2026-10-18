@@ -1,6 +1,5 @@
 import { useState } from "react"
 import { toast } from "sonner"
-import { isImported } from "@/apps/finances/transactions/transaction-display"
 import { TransactionForm } from "@/apps/finances/transactions/transaction-form"
 import {
   AlertDialog,
@@ -28,6 +27,7 @@ import {
   type Transaction,
 } from "@/data/finances-transactions"
 import { useWallets } from "@/data/finances-wallets"
+import { isImported } from "@shared/finances/schemas"
 
 type Status = NewTransaction["status"]
 
@@ -133,7 +133,11 @@ export function EditTransactionDialog({
               wallets={wallets}
               initial={shown}
               locked={isImported(shown)}
-              onSave={async ({ status: _status, ...changes }) => {
+              onSave={async ({ accountId, categoryId, note, walletId, date, amountCents }) => {
+                // An imported Actual's amount, date and Wallet are the bank's; only labels change.
+                const changes = isImported(shown)
+                  ? { accountId, categoryId, note }
+                  : { accountId, categoryId, note, walletId, date, amountCents }
                 if (await editTransaction(shown.id, changes)) {
                   toast.success("Saved")
                   onClose()

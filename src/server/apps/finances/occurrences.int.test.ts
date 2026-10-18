@@ -260,13 +260,22 @@ describe("delete", () => {
   })
 })
 
-/** Reconciling arrives with hand entry; until then the link is written straight to the table. */
+/** Reconciling arrives with its own command; until then the link is written straight to the table. */
 async function reconciled() {
   const scheduleId = await schedule()
   const row = await created({ scheduleId, nominalDate: "2026-12-01", skipped: true })
+  const actualId = newId()
+  const actual = await post("transactions", {
+    id: actualId,
+    status: "actual",
+    walletId: checking,
+    date: "2026-12-01",
+    amountCents: -150_000,
+  })
+  expect(actual.status).toBe(201)
   await server.db
     .update(financesOccurrences)
-    .set({ skipped: false, reconciledTransactionId: newId() })
+    .set({ skipped: false, reconciledTransactionId: actualId })
     .where(eq(financesOccurrences.id, row.id))
   return { scheduleId, row }
 }

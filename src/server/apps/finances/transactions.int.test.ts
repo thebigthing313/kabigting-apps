@@ -425,6 +425,20 @@ describe("delete", () => {
     await expectStatus(await remove(actual.id), 409, "conflict")
   })
 
+  test("an imported Actual a one-off Planned is Reconciled to is not ignored", async () => {
+    const wallet = await newWallet()
+    const line = await imported(wallet.id, "2026-10-01", -1_000)
+    await server.db.insert(financesTransactions).values({
+      status: "planned",
+      walletId: wallet.id,
+      date: "2026-10-01",
+      amountCents: -1_000,
+      reconciledActualId: line.id,
+    })
+    await expectStatus(await remove(line.id), 409, "conflict")
+    expect(await query({ ids: [line.id] })).toHaveLength(1)
+  })
+
   test("a Wallet with Transactions cannot be deleted; it is archived instead", async () => {
     const wallet = await newWallet()
     await created(wallet.id, "2026-10-01", -1)

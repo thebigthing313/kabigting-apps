@@ -20,7 +20,7 @@ export function BalanceChecksTab({ wallet }: { wallet: Wallet }) {
   const { data: checks, isLoading } = useBalanceChecks(wallet.id, count)
   const shown = checks.slice(0, count)
   // Each shown check is compared with the one before it, so the Actuals since the oldest loaded.
-  const { actuals } = useActualsSince(wallet.id, checks.at(-1)?.date)
+  const { actuals, isLoading: actualsLoading } = useActualsSince(wallet.id, checks.at(-1)?.date)
 
   return (
     <div className="flex flex-col gap-4">
@@ -42,7 +42,10 @@ export function BalanceChecksTab({ wallet }: { wallet: Wallet }) {
       ) : (
         <ul className="divide-y rounded-xl border" aria-label="Balance checks">
           {shown.map((check, index) => {
-            const comparison = compareToComputed(check, checks[index + 1], actuals)
+            // Compared only once the Actuals are in, so no false "off by" shows meanwhile.
+            const comparison = actualsLoading
+              ? null
+              : compareToComputed(check, checks[index + 1], actuals)
             return (
               <li
                 key={check.id}
