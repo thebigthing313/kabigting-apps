@@ -1,8 +1,10 @@
 import { describe, expect, test } from "vitest"
 import {
+  findHandEntryTwin,
   type PlannedItem,
   outstandingPlanned,
   reconcilableTo,
+  reviewSuggestion,
   suggestMatches,
 } from "./reconcile.ts"
 
@@ -224,5 +226,85 @@ describe("reconcilableTo", () => {
 
   test("an Actual Transfer takes only a Planned Transfer between the same Wallets, the same way", () => {
     expect(ids(reconcilableTo({ between: toCard }, items))).toEqual(["payment"])
+  })
+})
+
+/** A made-up Actual on Checking; tests change only what they are about. */
+function actual(
+  id: string,
+  changes: Partial<{
+    walletId: string
+    date: string
+    amountCents: number
+    source: "manual" | "ofx" | "access" | null
+    status: "planned" | "actual"
+    ignored: boolean
+  }> = {},
+) {
+  return {
+    id,
+    walletId: CHECKING,
+    date: "2026-03-10",
+    amountCents: -5_000,
+    source: "manual" as const,
+    status: "actual" as const,
+    ignored: false,
+    ...changes,
+  }
+}
+
+const LINE = { walletId: CHECKING, date: "2026-03-10", amountCents: -5_000 }
+
+describe("findHandEntryTwin", () => {
+  test("finds a hand-entered Actual in the same Wallet, for the exact amount, within 3 days", () => {
+    for (const date of ["2026-03-07", "2026-03-10", "2026-03-13"]) {
+      expect(findHandEntryTwin(LINE, [actual("twin", { date })])?.id).toBe("twin")
+    }
+  })
+
+  test("passes over other Wallets, other amounts, dates further off and keyed rows", () => {
+    const others = [
+      actual("other-wallet", { walletId: CARD }),
+      actual("a-cent-off", { amountCents: -5_001 }),
+      actual("four-days-before", { date: "2026-03-06" }),
+      actual("four-days-after", { date: "2026-03-14" }),
+      actual("uploaded", { source: "ofx" }),
+      actual("imported", { source: "access" }),
+      actual("planned", { status: "planned", source: null }),
+      actual("ignored", { ignored: true }),
+    ]
+    expect(findHandEntryTwin(LINE, others)).toBeUndefined()
+  })
+
+  test("picks the closest date", () => {
+    const entries = [actual("far", { date: "2026-03-13" }), actual("near", { date: "2026-03-09" })]
+    expect(findHandEntryTwin(LINE, entries)?.id).toBe("near")
+  })
+})
+
+describe("reviewSuggestion", () => {
+  test("a hand-entry twin comes before a Planned match", () => {
+    const suggestion = reviewSuggestion(LINE, {
+      outstanding: [planned("rent")],
+      handEntered: [actual("twin")],
+    })
+    expect(suggestion).toMatchObject({ kind: "twin", handEntry: { id: "twin" } })
+  })
+
+  test("otherwise the best Planned match", () => {
+    const suggestion = reviewSuggestion(LINE, {
+      outstanding: [planned("far", { amountCents: -9_000 }), planned("best")],
+      handEntered: [],
+    })
+    expect(suggestion).toMatchObject({ kind: "planned", item: { id: "best" } })
+  })
+
+  test("nothing when there is neither", () => {
+    expect(
+      reviewSuggestion(LINE, {
+        outstanding: [planned("other-wallet", { walletId: CARD })],
+        handEntered: [actual("uploaded", { source: "ofx" })],
+      }),
+    ).toBeNull()
   })
 })

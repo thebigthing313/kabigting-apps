@@ -102,7 +102,7 @@ export function reconcileBody(item: PlannedItem, actualId: string): Reconcile {
 }
 
 /** The label, date, Overdue mark and amount of a Planned item, as its Wallet shows them. */
-function PlannedSummary({
+export function PlannedSummary({
   item,
   wallet,
 }: {
@@ -168,6 +168,53 @@ export function SuggestedMatches({
         })}
       </ul>
     </FieldSet>
+  )
+}
+
+/**
+ * Every outstanding Planned item an Actual can be Reconciled to, as buttons: the suggestions
+ * first, best first and marked, then every other one by date.
+ */
+export function PlannedChoices({
+  actual,
+  outstanding,
+  wallet,
+  disabled,
+  onPick,
+}: {
+  actual: { walletId: string; date: string; amountCents: number }
+  outstanding: readonly LabelledPlanned[]
+  wallet: { shownAsOwed: boolean }
+  disabled: boolean
+  onPick: (item: LabelledPlanned) => void
+}) {
+  const suggested = suggestMatches(actual, outstanding)
+  const suggestedKeys = new Set(suggested.map(plannedKey))
+  const choices = [
+    ...suggested,
+    ...outstanding.filter((item) => !suggestedKeys.has(plannedKey(item))),
+  ]
+  if (choices.length === 0) {
+    return <p className="text-sm text-muted-foreground">Nothing Planned is outstanding here.</p>
+  }
+  return (
+    <ul className="divide-y rounded-lg border" aria-label="Outstanding Planned">
+      {choices.map((item) => (
+        <li key={plannedKey(item)}>
+          <button
+            type="button"
+            disabled={disabled}
+            className="flex min-h-14 w-full items-center gap-3 px-3 py-2 text-left hover:bg-muted/50 disabled:opacity-50"
+            onClick={() => onPick(item)}
+          >
+            <PlannedSummary item={item} wallet={wallet} />
+            {suggestedKeys.has(plannedKey(item)) ? (
+              <span className="shrink-0 rounded-full border px-2 py-0.5 text-xs">Suggested</span>
+            ) : null}
+          </button>
+        </li>
+      ))}
+    </ul>
   )
 }
 
@@ -279,14 +326,6 @@ export function ReconcileSection({
     )
   }
 
-  // The suggestions first, best first; then every other outstanding item by date.
-  const suggested = suggestMatches(actual, outstanding)
-  const suggestedKeys = new Set(suggested.map(plannedKey))
-  const choices = [
-    ...suggested,
-    ...outstanding.filter((item) => !suggestedKeys.has(plannedKey(item))),
-  ]
-
   return (
     <section aria-labelledby="reconcile-heading" className="flex flex-col gap-2">
       <h3 id="reconcile-heading" className="font-medium">
@@ -296,31 +335,15 @@ export function ReconcileSection({
         Not Reconciled to anything Planned. That&apos;s fine for unplanned spending.
       </p>
       {picking ? (
-        choices.length === 0 ? (
-          <p className="text-sm text-muted-foreground">Nothing Planned is outstanding here.</p>
-        ) : (
-          <ul className="divide-y rounded-lg border" aria-label="Outstanding Planned">
-            {choices.map((item) => (
-              <li key={plannedKey(item)}>
-                <button
-                  type="button"
-                  disabled={pending}
-                  className="flex min-h-14 w-full items-center gap-3 px-3 py-2 text-left hover:bg-muted/50 disabled:opacity-50"
-                  onClick={() =>
-                    void run(() => reconcileActual(reconcileBody(item, actual.id)), "Reconciled")
-                  }
-                >
-                  <PlannedSummary item={item} wallet={wallet} />
-                  {suggestedKeys.has(plannedKey(item)) ? (
-                    <span className="shrink-0 rounded-full border px-2 py-0.5 text-xs">
-                      Suggested
-                    </span>
-                  ) : null}
-                </button>
-              </li>
-            ))}
-          </ul>
-        )
+        <PlannedChoices
+          actual={actual}
+          outstanding={outstanding}
+          wallet={wallet}
+          disabled={pending}
+          onPick={(item) =>
+            void run(() => reconcileActual(reconcileBody(item, actual.id)), "Reconciled")
+          }
+        />
       ) : (
         <Button variant="outline" className="h-11 self-start" onClick={() => setPicking(true)}>
           Reconcile to Planned…

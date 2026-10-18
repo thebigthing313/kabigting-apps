@@ -3,6 +3,7 @@ import { balanceCheckRoutes } from "#server/apps/finances/balance-checks.ts"
 import { categoryRoutes } from "#server/apps/finances/categories.ts"
 import { occurrenceRoutes } from "#server/apps/finances/occurrences.ts"
 import { reconcileRoutes } from "#server/apps/finances/reconcile.ts"
+import { reviewRoutes } from "#server/apps/finances/review.ts"
 import { scheduleRoutes } from "#server/apps/finances/schedules.ts"
 import { settingsRoutes } from "#server/apps/finances/settings.ts"
 import { transactionRoutes } from "#server/apps/finances/transactions.ts"
@@ -23,6 +24,7 @@ export function financesRoutes(deps: Deps) {
     .route("/occurrences", occurrenceRoutes(deps.db))
     .route("/settings", settingsRoutes(deps.db))
     .route("/transactions", transactionRoutes(deps.db))
+    .route("/transactions", reviewRoutes(deps.db))
     .route("/transfers", transferRoutes(deps.db))
     .route("/uploads", uploadRoutes(deps.db))
     .route("/", reconcileRoutes(deps.db))

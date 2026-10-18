@@ -2,8 +2,9 @@
  * Reconcile: pairing an Actual with the Planned item it fulfils. The app suggests candidates and
  * a person confirms one; the Actual's amount and date are the truth.
  */
-import { daysBetween, today as householdToday } from "../dates.ts"
+import { addDays, daysBetween, today as householdToday } from "../dates.ts"
 import { expandSchedule, type ScheduleTerms, type StoredOccurrence } from "./occurrences.ts"
+import type { TransactionRow } from "./schemas.ts"
 import { transferAmountOn } from "./transfers.ts"
 
 /** How many days either side of an Actual a suggested Planned item may be dated. */
@@ -57,6 +58,74 @@ export function suggestMatches<Item extends PlannedDetails>(
         daysOff(item) <= MATCH_WINDOW_DAYS,
     )
     .toSorted((a, b) => amountOff(a) - amountOff(b) || daysOff(a) - daysOff(b))
+}
+
+/**
+ * The dates from `days` before the earliest of `rows` to `days` after the latest, inclusive: where
+ * their suggestions can be dated. Null when there are no rows.
+ */
+export function datesAround(
+  rows: readonly { date: string }[],
+  days: number,
+): { from: string; to: string } | null {
+  const dates = rows.map((row) => row.date).toSorted()
+  const first = dates[0]
+  const last = dates.at(-1)
+  if (first === undefined || last === undefined) return null
+  return { from: addDays(first, -days), to: addDays(last, days) }
+}
+
+/** How many days either side of an uploaded line a hand-entered twin may be dated. */
+export const TWIN_WINDOW_DAYS = 3
+
+/**
+ * What `findHandEntryTwin` reads of an Actual a person may have entered by hand. Only a
+ * hand-entered row (source `manual`) has no key from a bank or the old ledger.
+ */
+export type MaybeHandEntry = Pick<
+  TransactionRow,
+  "walletId" | "date" | "amountCents" | "status" | "source" | "ignored"
+>
+
+/**
+ * The hand-entered Actual an uploaded line most likely repeats: one in the same Wallet, for the
+ * exact amount, dated within 3 days either side, with no key of its own. The closest date wins.
+ */
+export function findHandEntryTwin<Row extends MaybeHandEntry>(
+  line: { walletId: string; date: string; amountCents: number },
+  handEntered: readonly Row[],
+): Row | undefined {
+  const daysOff = (row: Row) => Math.abs(daysBetween(line.date, row.date))
+  return handEntered
+    .filter(
+      (row) =>
+        row.status === "actual" &&
+        row.source === "manual" &&
+        !row.ignored &&
+        row.walletId === line.walletId &&
+        row.amountCents === line.amountCents &&
+        daysOff(row) <= TWIN_WINDOW_DAYS,
+    )
+    .toSorted((a, b) => daysOff(a) - daysOff(b))[0]
+}
+
+/** What To review offers for an uploaded line: the same as a hand entry, or a Planned item. */
+export type ReviewSuggestion<Item, Row> =
+  { kind: "twin"; handEntry: Row } | { kind: "planned"; item: Item }
+
+/**
+ * What To review offers for an uploaded line, or null when it is simply unplanned. A hand-entry
+ * twin comes first: the line is then most likely the Actual a person already entered, which may
+ * itself be Reconciled. Otherwise the best suggested Planned match.
+ */
+export function reviewSuggestion<Item extends PlannedDetails, Row extends MaybeHandEntry>(
+  line: { walletId: string; date: string; amountCents: number },
+  candidates: { outstanding: readonly Item[]; handEntered: readonly Row[] },
+): ReviewSuggestion<Item, Row> | null {
+  const handEntry = findHandEntryTwin(line, candidates.handEntered)
+  if (handEntry) return { kind: "twin", handEntry }
+  const [item] = suggestMatches(line, candidates.outstanding)
+  return item ? { kind: "planned", item } : null
 }
 
 /**
