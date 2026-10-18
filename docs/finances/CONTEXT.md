@@ -53,3 +53,15 @@ _Avoid_: Type, payee type, budget
 **Balance check**:
 A Wallet's actual balance on a date, as entered from the bank.
 _Avoid_: Snapshot, statement, starting balance
+
+**Overdue**:
+A Planned Transaction or Transfer whose date has passed and that is not yet Reconciled or skipped.
+The Forecast counts it today until it is, except an Occurrence dated on or before the Wallet's
+latest Balance check, which that check is taken to include already.
+_Avoid_: Late, missed, past due
+
+**Forecast**:
+One Wallet's projected end-of-day balance for each day from today, starting from its latest
+Balance check and adding what is still Planned. A Wallet has one only when it is in the forecast
+and has a Balance check; there is no combined total.
+_Avoid_: Projection, budget, cash flow
