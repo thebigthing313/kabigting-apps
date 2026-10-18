@@ -32,7 +32,7 @@ import {
   reviewSuggestion,
   TWIN_WINDOW_DAYS,
 } from "@shared/finances/reconcile"
-import { onlySideArrived } from "@shared/finances/transfers"
+import { bankDescriptionOn, onlySideArrived } from "@shared/finances/transfers"
 import { toShown } from "@shared/finances/wallets"
 import { format } from "@shared/money"
 
@@ -214,11 +214,6 @@ function ReviewItem({
 /** The bank's description of the side that already arrived, ready to precede the date. */
 function arrivedDescription(transfer: Transfer): string {
   const arrived = onlySideArrived(transfer)
-  const description =
-    arrived === "from"
-      ? transfer.fromBankDescription
-      : arrived === "to"
-        ? transfer.toBankDescription
-        : null
+  const description = arrived === null ? null : bankDescriptionOn(transfer, arrived)
   return description ? `${description} · ` : ""
 }

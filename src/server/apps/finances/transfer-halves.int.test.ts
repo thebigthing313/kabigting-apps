@@ -163,7 +163,7 @@ describe("mark as Transfer", () => {
     })
   })
 
-  test("a hand-entered Actual becomes a hand-entered Actual Transfer, waiting for nothing", async () => {
+  test("a hand-entered Actual becomes an Actual Transfer with no key on either side", async () => {
     const checking = await newWallet()
     const savings = await newWallet()
     const created = await post("transactions", {
@@ -177,7 +177,7 @@ describe("mark as Transfer", () => {
     const response = await markTransfer(hand.id, savings)
     expect(response.status).toBe(200)
     const [made] = reconcileResult.parse(await response.json()).transfers
-    expect(made).toMatchObject({ fromSource: "manual", toSource: "manual", amountCents: 10_000 })
+    expect(made).toMatchObject({ fromSource: "manual", toSource: null, amountCents: 10_000 })
   })
 
   test("refuses a Planned row, an ignored line, its own Wallet or an unknown one", async () => {

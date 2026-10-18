@@ -288,6 +288,7 @@ describe("reviewSuggestion", () => {
     const suggestion = reviewSuggestion(LINE, {
       outstanding: [planned("rent")],
       handEntered: [actual("twin")],
+      transfers: [],
     })
     expect(suggestion).toMatchObject({ kind: "twin", handEntry: { id: "twin" } })
   })
@@ -296,6 +297,7 @@ describe("reviewSuggestion", () => {
     const suggestion = reviewSuggestion(LINE, {
       outstanding: [planned("far", { amountCents: -9_000 }), planned("best")],
       handEntered: [],
+      transfers: [],
     })
     expect(suggestion).toMatchObject({ kind: "planned", item: { id: "best" } })
   })
@@ -305,6 +307,7 @@ describe("reviewSuggestion", () => {
       reviewSuggestion(LINE, {
         outstanding: [planned("other-wallet", { walletId: CARD })],
         handEntered: [actual("uploaded", { source: "ofx" })],
+        transfers: [],
       }),
     ).toBeNull()
   })

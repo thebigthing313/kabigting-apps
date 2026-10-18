@@ -30,6 +30,19 @@ export function onlySideArrived(
   return from ? "from" : "to"
 }
 
+/** The side across from this one. */
+export function otherSide(side: TransferSide): TransferSide {
+  return side === "from" ? "to" : "from"
+}
+
+/** The bank's description of the line on the given side, if one arrived there. */
+export function bankDescriptionOn(
+  transfer: Pick<TransferRow, "fromBankDescription" | "toBankDescription">,
+  side: TransferSide,
+): string | null {
+  return side === "from" ? transfer.fromBankDescription : transfer.toBankDescription
+}
+
 /** The Wallet on the given side of a Transfer. */
 export function walletOnSide(
   transfer: { fromWalletId: string; toWalletId: string },

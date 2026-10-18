@@ -5,7 +5,7 @@
 import { addDays, daysBetween, today as householdToday } from "../dates.ts"
 import { expandSchedule, type ScheduleTerms, type StoredOccurrence } from "./occurrences.ts"
 import type { TransactionRow, TransferRow } from "./schemas.ts"
-import { onlySideArrived, transferAmountOn, walletOnSide } from "./transfers.ts"
+import { onlySideArrived, otherSide, transferAmountOn, walletOnSide } from "./transfers.ts"
 
 /** How many days either side of an Actual a suggested Planned item may be dated. */
 export const MATCH_WINDOW_DAYS = 7
@@ -134,9 +134,7 @@ export function suggestTransferHalf<Row extends MaybeWaitingTransfer>(
   const daysOff = (row: Row) => Math.abs(daysBetween(line.date, row.date))
   const missingHere = (row: Row) => {
     const arrived = onlySideArrived(row)
-    return (
-      arrived !== null && walletOnSide(row, arrived === "from" ? "to" : "from") === line.walletId
-    )
+    return arrived !== null && walletOnSide(row, otherSide(arrived)) === line.walletId
   }
   return transfers
     .filter(
@@ -152,7 +150,7 @@ export function suggestTransferHalf<Row extends MaybeWaitingTransfer>(
  * What To review offers for an uploaded line: the same as a hand entry, the other side of an
  * Actual Transfer, or a Planned item.
  */
-export type ReviewSuggestion<Item, Row, Transfer = never> =
+export type ReviewSuggestion<Item, Row, Transfer> =
   | { kind: "twin"; handEntry: Row }
   | { kind: "transfer"; transfer: Transfer }
   | { kind: "planned"; item: Item }
@@ -166,18 +164,18 @@ export type ReviewSuggestion<Item, Row, Transfer = never> =
 export function reviewSuggestion<
   Item extends PlannedDetails,
   Row extends MaybeHandEntry,
-  Transfer extends MaybeWaitingTransfer = never,
+  Transfer extends MaybeWaitingTransfer,
 >(
   line: { walletId: string; date: string; amountCents: number },
   candidates: {
     outstanding: readonly Item[]
     handEntered: readonly Row[]
-    transfers?: readonly Transfer[]
+    transfers: readonly Transfer[]
   },
 ): ReviewSuggestion<Item, Row, Transfer> | null {
   const handEntry = findHandEntryTwin(line, candidates.handEntered)
   if (handEntry) return { kind: "twin", handEntry }
-  const transfer = suggestTransferHalf(line, candidates.transfers ?? [])
+  const transfer = suggestTransferHalf(line, candidates.transfers)
   if (transfer) return { kind: "transfer", transfer }
   const [item] = suggestMatches(line, candidates.outstanding)
   return item ? { kind: "planned", item } : null

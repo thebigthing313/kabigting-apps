@@ -242,7 +242,7 @@ export function EditActivityDialog({
                 onDone={onClose}
               />
             ) : null}
-            {shown.kind === "transaction" && shown.row.status === "actual" ? (
+            {shown.kind === "transaction" && shown.row.status === "actual" && !shown.row.ignored ? (
               <MarkTransferSection actual={shown.row} onDone={onClose} />
             ) : null}
             <Button

@@ -377,9 +377,9 @@ grouped by collection:
   Actual Transfer with one side keyed. (Details settled for #52.)
   - Money out of the Actual's Wallet goes to `otherWalletId`; money in comes from it. The amount
     is the absolute amount, the date, Account and note carry over, and there is no Category.
-  - An imported line's key, source and bank description move to its own side; the other side
-    stays empty, waiting for that Wallet's line. A hand-entered Actual becomes a hand-entered
-    Actual Transfer (`manual` on both sides), which waits for nothing.
+  - The Actual's source, key and bank description move to its own side; the other side stays
+    empty, waiting for that Wallet's line. A hand-entered Actual has no key, so its Transfer has
+    no keyed side and isn't flagged or offered for pairing.
   - It refuses a Planned row, an ignored line, its own Wallet or an unknown one
     (`validation_failed`), and a Reconciled Actual (409). The Transaction row is deleted, and the
     result has the same shape as `/reconcile`'s.

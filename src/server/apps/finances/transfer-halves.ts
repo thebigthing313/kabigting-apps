@@ -20,7 +20,7 @@ import {
   pairTransfer,
   type ReconcileResult,
 } from "#shared/finances/schemas.ts"
-import { onlySideArrived, type TransferSide } from "#shared/finances/transfers.ts"
+import { onlySideArrived, otherSide, type TransferSide } from "#shared/finances/transfers.ts"
 import { id } from "#shared/schemas/primitives.ts"
 
 type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0]
@@ -37,7 +37,7 @@ function conflict(message: string): never {
 }
 
 /** The columns of one side of a Transfer that a line from a Wallet fills: its source and key. */
-export function sideFrom(
+export function sideColumns(
   side: TransferSide,
   line: Pick<TransactionRecord, "source" | "sourceKey" | "bankDescription">,
 ) {
@@ -77,7 +77,11 @@ function raced(error: unknown): never {
   throw error
 }
 
-function changed(lineId: string, transfer: typeof financesTransfers.$inferSelect): ReconcileResult {
+/** What a command changed: the line is gone, now one side of the Transfer. */
+function lineJoined(
+  lineId: string,
+  transfer: typeof financesTransfers.$inferSelect,
+): ReconcileResult {
   return {
     occurrences: [],
     deletedOccurrences: [],
@@ -121,11 +125,6 @@ export function transferHalfRoutes(db: Db) {
               side === "from"
                 ? { fromWalletId: line.walletId, toWalletId: otherWalletId }
                 : { fromWalletId: otherWalletId, toWalletId: line.walletId }
-            // An uploaded line keys its own side, and the other side waits for that Wallet's
-            // line. A hand entry was a person's on both sides, like a Transfer entered by hand.
-            const sides = isImported(line)
-              ? sideFrom(side, line)
-              : { fromSource: "manual" as const, toSource: "manual" as const }
             const [made] = await tx
               .insert(financesTransfers)
               .values({
@@ -135,12 +134,14 @@ export function transferHalfRoutes(db: Db) {
                 ...wallets,
                 accountId: line.accountId,
                 note: line.note,
-                ...sides,
+                // The Actual's side keeps where it came from (an uploaded line's key with it); the
+                // other side stays empty, waiting for that Wallet's own line.
+                ...sideColumns(side, line),
               })
               .returning()
             if (!made) throw new Error("Marking as a Transfer wrote nothing")
             await tx.delete(financesTransactions).where(eq(financesTransactions.id, line.id))
-            return changed(line.id, made)
+            return lineJoined(line.id, made)
           })
           .catch(raced)
         return c.json(result)
@@ -174,13 +175,12 @@ export function transferHalfRoutes(db: Db) {
             }
             await refuseReconciled(tx, line)
 
-            const missing: TransferSide = arrived === "from" ? "to" : "from"
             await tx.delete(financesTransactions).where(eq(financesTransactions.id, line.id))
             // The first line's amount and date stay; the line's labels fill only what is empty.
             const [paired] = await tx
               .update(financesTransfers)
               .set({
-                ...sideFrom(missing, line),
+                ...sideColumns(otherSide(arrived), line),
                 accountId: transfer.accountId ?? line.accountId,
                 note: transfer.note || line.note,
                 updatedAt: sql`now()`,
@@ -188,7 +188,7 @@ export function transferHalfRoutes(db: Db) {
               .where(eq(financesTransfers.id, transfer.id))
               .returning()
             if (!paired) throw new Error("Pairing the Transfer wrote nothing")
-            return changed(line.id, paired)
+            return lineJoined(line.id, paired)
           })
           .catch(raced)
         return c.json(result)
