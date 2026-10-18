@@ -11,10 +11,10 @@ async function post(page: Page, path: string, data: Record<string, unknown>) {
   return id
 }
 
-/** A forecast Wallet with a $1,000 Balance check today and a $100 monthly bill from tomorrow. */
+/** A forecast Wallet with a $1,000 Balance check yesterday and a $100 monthly bill from tomorrow. */
 async function forecastWallet(page: Page, name: string) {
   const walletId = await post(page, "wallets", { name, inForecast: true })
-  await post(page, "balance-checks", { walletId, date: today(), amountCents: 100_000 })
+  await post(page, "balance-checks", { walletId, date: addDays(today(), -1), amountCents: 100_000 })
   await post(page, "schedules", {
     walletId,
     amountCents: -10_000,
@@ -33,6 +33,21 @@ test("the All tab shows a card per Wallet, and a forecast Wallet's card opens it
   const inForecast = `E2E card ${run}`
   const outside = `E2E outside ${run}`
   const walletId = await forecastWallet(page, inForecast)
+  // An Actual since the check and a one-off Planned count on the card as on the Wallet view.
+  await post(page, "transactions", {
+    status: "actual",
+    walletId,
+    date: today(),
+    amountCents: -2_500,
+    note: `${inForecast} lunch`,
+  })
+  await post(page, "transactions", {
+    status: "planned",
+    walletId,
+    date: addDays(today(), 2),
+    amountCents: -4_000,
+    note: `${inForecast} gift`,
+  })
   const outsideId = await post(page, "wallets", { name: outside })
   await post(page, "balance-checks", { walletId: outsideId, date: today(), amountCents: 5_000 })
 
@@ -41,10 +56,12 @@ test("the All tab shows a card per Wallet, and a forecast Wallet's card opens it
   const card = cards.getByRole("link", { name: inForecast })
   // Every run's Wallets share the e2e database, so All loads dozens of cards, each with its own
   // Balance check query; with four browsers at once that can take longer than the usual wait.
-  await expect(card).toContainText("$1,000.00", { timeout: 20_000 })
+  await expect(card).toContainText("$975.00", { timeout: 20_000 })
   await expect(card).toContainText("Lowest")
   await expect(card).toContainText(`${inForecast} bill`)
   await expect(card).toContainText("-$100.00")
+  await expect(card).toContainText(`${inForecast} gift`)
+  await expect(card).toContainText("-$40.00")
   const greyed = cards.getByRole("region", { name: outside })
   await expect(greyed).toContainText("Not in the forecast")
   await expect(greyed).toContainText("$50.00", { timeout: 20_000 })
@@ -65,7 +82,7 @@ test("the All tab shows a card per Wallet, and a forecast Wallet's card opens it
 
   await card.click()
   await expect(page).toHaveURL(new RegExp(`wallet=${walletId}`))
-  await expect(page.getByTestId("today-balance")).toHaveText("$1,000.00")
+  await expect(page.getByTestId("today-balance")).toHaveText("$975.00")
 })
 
 test("Open here by default makes home open on a Wallet, then on All again", async ({
