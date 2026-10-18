@@ -3,6 +3,7 @@ import { ChevronRightIcon, PlusIcon } from "lucide-react"
 import { useState } from "react"
 import { useBalanceDetails } from "@/apps/finances/wallets/wallet-balance"
 import { WalletForm } from "@/apps/finances/wallets/wallet-form"
+import { FinancesHeader } from "@/apps/finances/finances-header"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import {
@@ -26,13 +27,12 @@ export function WalletsPage() {
 
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-4">
-      <div className="flex items-center justify-between gap-4">
-        <h1 className="text-2xl font-semibold">Wallets</h1>
+      <FinancesHeader title="Wallets">
         <Button className="h-11" onClick={() => setCreating(true)}>
           <PlusIcon />
           New Wallet
         </Button>
-      </div>
+      </FinancesHeader>
 
       {isLoading ? (
         <div className="flex flex-col gap-2">

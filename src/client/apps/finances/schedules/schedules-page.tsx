@@ -3,6 +3,7 @@ import { ChevronRightIcon, PlusIcon } from "lucide-react"
 import { useState } from "react"
 import { scheduleLabel, shownOnWallet } from "@/apps/finances/schedules/schedule-display"
 import { ScheduleForm } from "@/apps/finances/schedules/schedule-form"
+import { FinancesHeader } from "@/apps/finances/finances-header"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -66,13 +67,12 @@ export function SchedulesPage() {
 
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-4">
-      <div className="flex items-center justify-between gap-4">
-        <h1 className="text-2xl font-semibold">Schedules</h1>
+      <FinancesHeader title="Schedules">
         <Button className="h-11" onClick={() => setCreating(true)}>
           <PlusIcon />
           New Schedule
         </Button>
-      </div>
+      </FinancesHeader>
 
       {isLoading ? (
         <div className="flex flex-col gap-2">

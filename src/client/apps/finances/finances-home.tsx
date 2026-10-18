@@ -4,6 +4,7 @@ import { EllipsisVerticalIcon, PinIcon } from "lucide-react"
 import { useState } from "react"
 import { toast } from "sonner"
 import { AddButton } from "@/apps/finances/add-button"
+import { FinancesHeader } from "@/apps/finances/finances-header"
 import { AllWallets } from "@/apps/finances/home/all-wallets"
 import { ALL_TAB, openOnHomeTab, selectedTab } from "@/apps/finances/home/home-tab"
 import { WalletForecast } from "@/apps/finances/home/wallet-forecast"
@@ -49,7 +50,7 @@ export function FinancesHome({
   return (
     // Room at the foot for the + button.
     <div className="mx-auto flex max-w-3xl flex-col gap-4 pb-24">
-      <h1 className="text-2xl font-semibold">Finances</h1>
+      <FinancesHeader title="Finances" days={days} />
       {isLoading || settingsLoading ? (
         <Skeleton className="h-64" />
       ) : (

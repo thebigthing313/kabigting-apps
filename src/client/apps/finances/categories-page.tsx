@@ -1,6 +1,7 @@
 import { PlusIcon } from "lucide-react"
 import { useState } from "react"
 import { NameDialog } from "@/apps/finances/name-dialog"
+import { FinancesHeader } from "@/apps/finances/finances-header"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
@@ -17,13 +18,12 @@ export function CategoriesPage() {
 
   return (
     <div className="mx-auto flex max-w-2xl flex-col gap-4">
-      <div className="flex items-center justify-between gap-4">
-        <h1 className="text-2xl font-semibold">Categories</h1>
+      <FinancesHeader title="Categories">
         <Button className="h-11" onClick={() => setAdding(true)}>
           <PlusIcon />
           Add
         </Button>
-      </div>
+      </FinancesHeader>
 
       {isLoading ? (
         <div className="flex flex-col gap-2">

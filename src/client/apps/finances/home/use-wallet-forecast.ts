@@ -58,7 +58,7 @@ export function useWalletForecast(wallet: Wallet, days: number) {
   const scheduleById = new Map(schedules.map((schedule) => [schedule.id, schedule]))
   const transactionById = new Map([...transactions, ...oneOffs].map((row) => [row.id, row]))
   const transferById = new Map([...transfers, ...plannedTransfers].map((row) => [row.id, row]))
-  const labelOf = (item: ForecastItem): string => {
+  const labelOf = (item: LabelledItem): string => {
     if (item.kind === "occurrence") {
       const schedule = scheduleById.get(item.scheduleId)
       return schedule ? scheduleLabel(schedule, walletName, accountName, wallet.id) : "Schedule"
@@ -72,6 +72,11 @@ export function useWalletForecast(wallet: Wallet, days: number) {
 
   return { result, isLoading: loading, today, labelOf }
 }
+
+/** What names a Forecast item: its Schedule, or its own row. Every ForecastItem is one. */
+export type LabelledItem =
+  | { kind: "occurrence"; scheduleId: string }
+  | { kind: "actual" | "planned" | "plannedTransfer"; id: string }
 
 /** A stable key for a Forecast item within one Wallet's Forecast. */
 export function forecastItemKey(item: ForecastItem): string {

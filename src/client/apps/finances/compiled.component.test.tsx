@@ -1,5 +1,9 @@
 import { describe, expect, test } from "vitest"
+import { AttentionBanner } from "@/apps/finances/attention/attention-banner"
+import { AttentionBell } from "@/apps/finances/attention/attention-bell"
+import { AttentionItemRow } from "@/apps/finances/attention/attention-item"
 import { CategoriesPage, CategoryList } from "@/apps/finances/categories-page"
+import { FinancesHeader } from "@/apps/finances/finances-header"
 import { FinancesHome } from "@/apps/finances/finances-home"
 import { AllWallets } from "@/apps/finances/home/all-wallets"
 import { ForecastChart } from "@/apps/finances/home/forecast-chart"
@@ -47,6 +51,10 @@ describe("React Compiler", () => {
     ["WalletForm", WalletForm],
     ["SchedulesPage", SchedulesPage],
     ["ScheduleForm", ScheduleForm],
+    ["FinancesHeader", FinancesHeader],
+    ["AttentionBell", AttentionBell],
+    ["AttentionBanner", AttentionBanner],
+    ["AttentionItemRow", AttentionItemRow],
   ])("compiled %s", (_name, component) => {
     expect(isCompiled(component)).toBe(true)
   })

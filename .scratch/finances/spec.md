@@ -567,6 +567,17 @@ There is no Accounts screen. Accounts are created inline from the Account picker
   - **Overdue one-off** → the Wallet's Activity tab at Upcoming one-offs
   - **No Balance check** → the Balance check dialog for that Wallet
   - **Low balance** → that Wallet's home tab, scrolled to the day
+- As built for #53 (`src/shared/finances/attention.ts`, `walletAttention`):
+  - Each uploaded line To review is one item. Every Wallet that isn't archived can have them.
+  - Overdue items, the missing Balance check and low balance belong to forecast Wallets only.
+    Overdue items are the Forecast's, so only those dated after the latest Balance check count;
+    a Wallet with no check has the "no Balance check" item instead.
+  - Low balance is the first day under the threshold and the first day under $0, as the home
+    warnings show them (a $0 threshold gives one item). The horizon is home's `?days=`, else 90.
+  - The links: `/finances/schedules/<id>?occurrence=<nominal date>` opens that editor, even for an
+    Occurrence older than the page's 3 months; `#upcoming-one-offs` on the Activity tab; and
+    `/finances?wallet=<id>&days=<n>#day-<date>` on home.
+  - The banner shows the counts, one link for To review and a row per Overdue item.
 
 ## 8. One-time import
 

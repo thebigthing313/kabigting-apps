@@ -1,12 +1,12 @@
 import { Link } from "@tanstack/react-router"
 import { cn } from "cn"
 import { TriangleAlertIcon } from "lucide-react"
+import { AttentionBanner } from "@/apps/finances/attention/attention-banner"
+import { dayAnchor } from "@/apps/finances/attention/attention-item"
+import { useForecastWalletAttention } from "@/apps/finances/attention/use-attention"
 import { ForecastChart } from "@/apps/finances/home/forecast-chart"
-import {
-  forecastItemKey,
-  isOverdue,
-  useWalletForecast,
-} from "@/apps/finances/home/use-wallet-forecast"
+import { forecastItemKey, isOverdue } from "@/apps/finances/home/use-wallet-forecast"
+import { useScrollToHash } from "@/hooks/use-scroll-to-hash"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import type { Wallet } from "@/data/finances-wallets"
@@ -26,7 +26,15 @@ export function WalletForecast({
   /** Opens the Balance check dialog on this Wallet. */
   onEnterBalance: (walletId: string) => void
 }) {
-  const { result, isLoading, today, labelOf } = useWalletForecast(wallet, days)
+  const {
+    items: attention,
+    isLoading: attentionLoading,
+    forecast: { result, isLoading: forecastLoading, today, labelOf },
+  } = useForecastWalletAttention(wallet, days)
+  // The banner sits on top, so everything waits for it rather than jumping down when it appears.
+  const isLoading = forecastLoading || attentionLoading
+  // A low-balance item opens this tab at its day.
+  useScrollToHash(!isLoading)
 
   if (isLoading) return <Skeleton className="h-64" />
   if (!result) {
@@ -50,6 +58,12 @@ export function WalletForecast({
 
   return (
     <div className="flex flex-col gap-4">
+      <AttentionBanner
+        wallet={wallet}
+        items={attention}
+        days={days}
+        onEnterBalance={onEnterBalance}
+      />
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div className="min-w-0">
           <p className="text-sm text-muted-foreground">{wallet.name} today</p>
@@ -80,7 +94,7 @@ export function WalletForecast({
 
       <ol aria-label="Day by day" className="flex flex-col">
         {listed.map((day) => (
-          <li key={day.date} className="border-b py-2">
+          <li key={day.date} id={dayAnchor(day.date)} className="scroll-mt-20 border-b py-2">
             <div className="flex items-baseline justify-between gap-3 text-sm">
               <span className="font-medium">
                 {day.date === today ? "Today" : formatDisplayDate(day.date)}
