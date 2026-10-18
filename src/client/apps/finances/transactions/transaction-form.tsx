@@ -1,5 +1,5 @@
 import { useForm } from "@tanstack/react-form"
-import { useState } from "react"
+import { type ComponentType, useState } from "react"
 import { z } from "zod"
 import {
   Choice,
@@ -18,6 +18,7 @@ import type { NewTransaction } from "@/data/finances-transactions"
 import type { NewTransfer } from "@/data/finances-transfers"
 import { inlineAddsSaved } from "@/data/inline-adds"
 import { today } from "@shared/dates"
+import { type PlannedItem, plannedKey, suggestMatches } from "@shared/finances/reconcile"
 import { transactionStatus } from "@shared/finances/schemas"
 import { fromShown, toShown } from "@shared/finances/wallets"
 
@@ -39,6 +40,8 @@ type TransactionFormValues = {
   accountId: string | null
   categoryId: string | null
   note: string
+  /** The suggested Planned match ticked to Reconcile on save. */
+  match: PlannedItem | null
 }
 
 const formSchema = z
@@ -56,6 +59,7 @@ const formSchema = z
     accountId: z.string().nullable(),
     categoryId: z.string().nullable(),
     note: z.string().max(1000, "Keep the note under 1,000 characters"),
+    match: z.custom<PlannedItem>().nullable(),
   })
   .superRefine((values, context) => {
     if (values.kind !== "transfer") return
@@ -83,6 +87,22 @@ function toTransaction(
     categoryId: values.categoryId,
     note: values.note.trim(),
   }
+}
+
+/** What the suggested matches are worked out from, and the tick. */
+export type MatchesProps = {
+  walletId: string
+  date: string
+  amountCents: number
+  /** The ticked match's key, if any. */
+  selected: string | null
+  onSelect: (item: PlannedItem | null) => void
+}
+
+/** The ticked match, if it still suits the Actual as saved; a changed Wallet or sign drops it. */
+function stillMatching(entry: NewTransaction, match: PlannedItem | null): PlannedItem | null {
+  if (match === null || entry.status !== "actual") return null
+  return suggestMatches(entry, [match]).length === 1 ? match : null
 }
 
 /** The form's values as a Transfer: a positive amount from one Wallet to the other, no Category. */
@@ -115,6 +135,7 @@ export function TransactionForm({
   initial,
   initialTransfer,
   locked = false,
+  matches: Matches,
   onSave,
   onSaveTransfer,
 }: {
@@ -130,8 +151,13 @@ export function TransactionForm({
   initialTransfer?: NewTransfer
   /** Imported: its amount, date and Wallets came from the bank and can't change. */
   locked?: boolean
-  /** May return a promise; the submit button stays disabled until it settles. */
-  onSave?: (entry: NewTransaction) => void | Promise<unknown>
+  /** The suggested Planned matches for a new Actual, from what has been typed so far. */
+  matches?: ComponentType<MatchesProps>
+  /**
+   * May return a promise; the submit button stays disabled until it settles. `match` is the
+   * suggested Planned item ticked to Reconcile the new Actual to, if any.
+   */
+  onSave?: (entry: NewTransaction, match: PlannedItem | null) => void | Promise<unknown>
   /** Saves a Transfer; without it, the form enters Transactions only. */
   onSaveTransfer?: (entry: NewTransfer) => void | Promise<unknown>
 }) {
@@ -148,6 +174,7 @@ export function TransactionForm({
         shownSign: "minus",
         amount: amountCents,
         categoryId: null,
+        match: null,
       }
     }
     if (initial) {
@@ -158,6 +185,7 @@ export function TransactionForm({
         toWalletId: "",
         shownSign: shown > 0 ? "plus" : "minus",
         amount: Math.abs(initial.amountCents),
+        match: null,
       }
     }
     const startOn = walletId ?? (wallets.length === 1 ? (wallets[0]?.id ?? "") : "")
@@ -173,6 +201,7 @@ export function TransactionForm({
       accountId: null,
       categoryId: null,
       note: "",
+      match: null,
     }
   })
 
@@ -180,13 +209,16 @@ export function TransactionForm({
     defaultValues,
     validators: { onSubmit: formSchema },
     onSubmit: async ({ value }) => {
-      // A refused inline add clears its picker; the form stays open with the rest.
+      // Nothing is sent, Reconcile included, until any name added inline is stored. A refused
+      // inline add clears its picker; the form stays open with the rest.
       if (value.kind === "transfer") {
         const transfer = toTransfer(value)
         if (await inlineAddsSaved([transfer.accountId])) await onSaveTransfer?.(transfer)
       } else {
         const entry = toTransaction(value, { shownAsOwed: isOwed(value.walletId) })
-        if (await inlineAddsSaved([entry.accountId, entry.categoryId])) await onSave?.(entry)
+        if (await inlineAddsSaved([entry.accountId, entry.categoryId])) {
+          await onSave?.(entry, stillMatching(entry, value.match))
+        }
       }
     },
   })
@@ -420,6 +452,29 @@ export function TransactionForm({
             )
           }}
         </form.Field>
+
+        {Matches && !editing ? (
+          <form.Subscribe selector={(state) => state.values}>
+            {(values) => {
+              const entry = toTransaction(values, { shownAsOwed: isOwed(values.walletId) })
+              const ready =
+                values.kind === "transaction" &&
+                values.status === "actual" &&
+                values.walletId !== "" &&
+                z.iso.date().safeParse(values.date).success &&
+                entry.amountCents !== 0
+              return ready ? (
+                <Matches
+                  walletId={entry.walletId}
+                  date={entry.date}
+                  amountCents={entry.amountCents}
+                  selected={values.match ? plannedKey(values.match) : null}
+                  onSelect={(item) => form.setFieldValue("match", item)}
+                />
+              ) : null
+            }}
+          </form.Subscribe>
+        ) : null}
 
         <form.Subscribe
           selector={(state) =>

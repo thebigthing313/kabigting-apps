@@ -20,7 +20,7 @@ import { MAX_QUERY_IDS } from "#shared/schemas/query.ts"
 
 type TransferRecord = typeof financesTransfers.$inferSelect
 
-function toRow(transfer: TransferRecord): TransferRow {
+export function transferToRow(transfer: TransferRecord): TransferRow {
   return {
     id: transfer.id,
     status: transfer.status,
@@ -42,6 +42,24 @@ function toRow(transfer: TransferRecord): TransferRow {
 }
 
 const params = z.strictObject({ id })
+
+/** True when an Occurrence or a one-off Planned Transfer is Reconciled to this Actual Transfer. */
+export async function isReconciledTransfer(
+  db: Pick<Db, "select">,
+  transferId: string,
+): Promise<boolean> {
+  const [occurrence] = await db
+    .select({ id: financesOccurrences.id })
+    .from(financesOccurrences)
+    .where(eq(financesOccurrences.reconciledTransferId, transferId))
+    .limit(1)
+  const [planned] = await db
+    .select({ id: financesTransfers.id })
+    .from(financesTransfers)
+    .where(eq(financesTransfers.reconciledActualId, transferId))
+    .limit(1)
+  return occurrence !== undefined || planned !== undefined
+}
 
 function notFound(): never {
   throw new ApiError("not_found", "No such Transfer")
@@ -104,7 +122,7 @@ export function transferRoutes(db: Db) {
         )
         .orderBy(direction(table.date), direction(table.id))
         .limit(limit ?? MAX_QUERY_IDS)
-      return c.json({ rows: transfers.map(toRow) })
+      return c.json({ rows: transfers.map(transferToRow) })
     })
     .post("/", validate("json", createTransfer), async (c) => {
       const input = c.req.valid("json")
@@ -117,7 +135,7 @@ export function transferRoutes(db: Db) {
         .returning()
         .catch(refusedLink)
       if (!transfer) throw new ApiError("conflict", "A Transfer with this id already exists")
-      return c.json(toRow(transfer), 201)
+      return c.json(transferToRow(transfer), 201)
     })
     .patch("/:id", validate("param", params), validate("json", updateTransfer), async (c) => {
       const transferId = c.req.valid("param").id
@@ -143,13 +161,20 @@ export function transferRoutes(db: Db) {
           "An imported Transfer keeps the amount, date and Wallet the bank gave it",
         )
       }
+      // A Reconcile pairs Transfers between the same two Wallets; moving either side would split it.
+      if (
+        (changed("fromWalletId") || changed("toWalletId")) &&
+        (found.reconciledActualId !== null || (await isReconciledTransfer(db, transferId)))
+      ) {
+        reconciledConflict()
+      }
       const [transfer] = await db
         .update(table)
         .set({ ...changes, updatedAt: sql`now()` })
         .where(eq(table.id, transferId))
         .returning()
         .catch(refusedLink)
-      return transfer ? c.json(toRow(transfer)) : notFound()
+      return transfer ? c.json(transferToRow(transfer)) : notFound()
     })
     .delete("/:id", validate("param", params), async (c) => {
       const transferId = c.req.valid("param").id
@@ -158,23 +183,13 @@ export function transferRoutes(db: Db) {
       // An imported Transfer is kept as ignored, so uploading the same file again adds nothing.
       // Like a deleted one, an ignored Transfer can't stay the target of a Reconcile.
       if (isImportedTransfer(found)) {
-        const [occurrence] = await db
-          .select({ id: financesOccurrences.id })
-          .from(financesOccurrences)
-          .where(eq(financesOccurrences.reconciledTransferId, transferId))
-          .limit(1)
-        const [planned] = await db
-          .select({ id: table.id })
-          .from(table)
-          .where(eq(table.reconciledActualId, transferId))
-          .limit(1)
-        if (occurrence || planned) reconciledConflict()
+        if (await isReconciledTransfer(db, transferId)) reconciledConflict()
         const [ignored] = await db
           .update(table)
           .set({ ignored: true, updatedAt: sql`now()` })
           .where(eq(table.id, transferId))
           .returning()
-        return ignored ? c.json(toRow(ignored)) : notFound()
+        return ignored ? c.json(transferToRow(ignored)) : notFound()
       }
       const [deleted] = await db
         .delete(table)
@@ -184,6 +199,6 @@ export function transferRoutes(db: Db) {
           if (isForeignKeyViolation(error)) reconciledConflict()
           throw error
         })
-      return deleted ? c.json(toRow(deleted)) : notFound()
+      return deleted ? c.json(transferToRow(deleted)) : notFound()
     })
 }

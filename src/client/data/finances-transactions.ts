@@ -1,11 +1,18 @@
-import { and, eq, gt, gte, lte, useLiveQuery } from "@tanstack/react-db"
+import { and, eq, gt, gte, inArray, lte, useLiveQuery } from "@tanstack/react-db"
 import { api } from "@/data/api"
 import { defineOnDemandCollection } from "@/data/collection-factory"
 import { readJson, reportError } from "@/data/error-handler"
-import { useActualTransfersSince } from "@/data/finances-transfers"
+import { applyOccurrenceChanges } from "@/data/finances-occurrences"
+import { useActualTransfersSince, writeTransfers } from "@/data/finances-transfers"
 import { settled } from "@/data/settled"
 import { nowInstant } from "@shared/dates"
-import { isImported, type TransactionRow, type UpdateTransaction } from "@shared/finances/schemas"
+import {
+  isImported,
+  type Reconcile,
+  type ReconcileResult,
+  type TransactionRow,
+  type UpdateTransaction,
+} from "@shared/finances/schemas"
 import { transferAmountOn } from "@shared/finances/transfers"
 import { newId } from "@shared/ids"
 
@@ -107,8 +114,9 @@ export function useActualsSince(walletId: string, after: string | undefined) {
 export type WalletMove = { id: string; date: string; amountCents: number }
 
 /**
- * A Wallet's outstanding one-off Planned Transactions, soonest first: upcoming ones, and Overdue
- * ones whose date has passed. A Reconciled one is no longer outstanding.
+ * A Wallet's one-off Planned Transactions, soonest first. `oneOffs` are the outstanding ones:
+ * upcoming, and Overdue once their date has passed. A Reconciled one is no longer outstanding;
+ * `planned` keeps those too, to show what an Actual is Reconciled to.
  */
 export function useOutstandingOneOffs(walletId: string) {
   const transactions = financesTransactions()
@@ -121,7 +129,25 @@ export function useOutstandingOneOffs(walletId: string) {
     [transactions, walletId],
   )
   // Few enough to filter here; the server has no filter for the Reconcile link.
-  return { oneOffs: data.filter((row) => row.reconciledActualId === null), isLoading }
+  return {
+    oneOffs: data.filter((row) => row.reconciledActualId === null),
+    planned: data,
+    isLoading,
+  }
+}
+
+/** The Transactions with these ids, such as the Actuals a Schedule's Occurrences are Reconciled to. */
+export function useTransactionsById(ids: readonly string[]) {
+  const transactions = financesTransactions()
+  const key = ids.toSorted().join(",")
+  const { data } = useLiveQuery(
+    (q) =>
+      key === ""
+        ? undefined
+        : q.from({ row: transactions }).where(({ row }) => inArray(row.id, key.split(","))),
+    [transactions, key],
+  )
+  return new Map((data ?? []).map((row) => [row.id, row]))
 }
 
 /**
@@ -203,13 +229,16 @@ export function useFirstActual() {
   return { first: data[0], isLoading }
 }
 
-/** Shows the row at once; resolves false after a refusal rolled it back (with a toast). */
-export function addTransaction(input: NewTransaction): Promise<boolean> {
+/**
+ * Shows the row at once; resolves false after a refusal rolled it back (with a toast). `id` is
+ * the new row's, given when something else will refer to it.
+ */
+export function addTransaction(input: NewTransaction, id: string = newId()): Promise<boolean> {
   const now = nowInstant()
   const actual = input.status === "actual"
   return settled(
     financesTransactions().insert({
-      id: newId(),
+      id,
       ...input,
       bankDescription: null,
       source: actual ? "manual" : null,
@@ -255,5 +284,41 @@ export function restoreTransaction(id: string): Promise<boolean> {
     financesTransactions().update(id, (draft) => {
       draft.ignored = false
     }),
+  )
+}
+
+/** Writes a Reconcile command's changed rows into the collections it touched. */
+async function applyReconcile(result: ReconcileResult): Promise<void> {
+  const transactions = financesTransactions()
+  if (result.transactions.length > 0) await transactions.utils.writeUpsert(result.transactions)
+  // A line Reconciled to a Planned Transfer became an Actual Transfer.
+  const gone = result.deletedTransactions.filter((id) => transactions.has(id))
+  if (gone.length > 0) await transactions.utils.writeDelete(gone)
+  await writeTransfers(result.transfers)
+  await applyOccurrenceChanges(result.occurrences, result.deletedOccurrences)
+}
+
+/** Runs a Reconcile command; false after a refusal, which is reported with a toast. */
+async function reconcileCommand(run: () => Promise<ReconcileResult>): Promise<boolean> {
+  let result: ReconcileResult
+  try {
+    result = await run()
+  } catch (error) {
+    reportError(error, "Saving")
+    return false
+  }
+  await applyReconcile(result)
+  return true
+}
+
+/** Reconciles an Actual to an outstanding Planned item, one to one. */
+export function reconcileActual(body: Reconcile): Promise<boolean> {
+  return reconcileCommand(async () => readJson(await api.finances.reconcile.$post({ json: body })))
+}
+
+/** Un-Reconciles an Actual: its Planned item is outstanding again, at its own amount. */
+export function unreconcileActual(actualId: string): Promise<boolean> {
+  return reconcileCommand(async () =>
+    readJson(await api.finances.unreconcile.$post({ json: { actualId } })),
   )
 }
