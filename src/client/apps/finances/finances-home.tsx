@@ -1,29 +1,47 @@
 import { Link } from "@tanstack/react-router"
 import { cn } from "cn"
+import { EllipsisVerticalIcon, PinIcon } from "lucide-react"
 import { useState } from "react"
+import { toast } from "sonner"
+import { AllWallets } from "@/apps/finances/home/all-wallets"
+import { ALL_TAB, selectedTab } from "@/apps/finances/home/home-tab"
 import { WalletForecast } from "@/apps/finances/home/wallet-forecast"
 import { BalanceCheckDialog } from "@/apps/finances/wallets/balance-check-dialog"
+import { Button } from "@/components/ui/button"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useLatestBalanceCheck } from "@/data/finances-balance-checks"
+import { setOpenOnHome, useOpenOnHome } from "@/data/finances-settings"
 import { useWallets, type Wallet } from "@/data/finances-wallets"
 import type { ForecastHorizon } from "@shared/finances/forecast"
 
 /**
- * The Finances home: a tab per forecast Wallet, and the selected Wallet's Forecast. A forecast
- * Wallet with no Balance check shows as a dashed tab that asks for one.
+ * The Finances home: an All tab of Wallet cards, then a tab per forecast Wallet with its Forecast.
+ * A forecast Wallet with no Balance check shows as a dashed tab that asks for one. With no tab in
+ * the address, home opens on the household's "Open here by default" choice.
  */
 export function FinancesHome({
   walletId,
   days,
 }: {
-  /** The selected Wallet's tab; the first forecast Wallet when absent or not in the forecast. */
+  /** `?wallet=`: "all", a forecast Wallet's id, or absent for the household's default. */
   walletId?: string
   days: ForecastHorizon
 }) {
   const { data: wallets, isLoading } = useWallets()
-  const forecastWallets = wallets.filter((wallet) => wallet.inForecast && !wallet.archived)
-  const selected =
-    forecastWallets.find((wallet) => wallet.id === walletId) ?? forecastWallets[0] ?? null
+  const { walletId: openOnHome, isLoading: settingsLoading } = useOpenOnHome()
+  const active = wallets.filter((wallet) => !wallet.archived)
+  const forecastWallets = active.filter((wallet) => wallet.inForecast)
+  const forecastWalletIds = forecastWallets.map((wallet) => wallet.id)
+  const tab = selectedTab({ tab: walletId, openOnHome, forecastWalletIds })
+  const selected = forecastWallets.find((wallet) => wallet.id === tab) ?? null
+  // The default only counts while it has a tab; otherwise home opens on All.
+  const pinned = selectedTab({ tab: undefined, openOnHome, forecastWalletIds })
   // The Wallet is kept while the dialog closes, so it never flips to another as it fades.
   const [entering, setEntering] = useState<{ open: boolean; walletId?: string }>({ open: false })
   const enterBalance = (id: string) => setEntering({ open: true, walletId: id })
@@ -31,35 +49,42 @@ export function FinancesHome({
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-4 pb-8">
       <h1 className="text-2xl font-semibold">Finances</h1>
-      {isLoading ? (
+      {isLoading || settingsLoading ? (
         <Skeleton className="h-64" />
-      ) : selected === null ? (
-        <p className="rounded-xl border p-6 text-center text-muted-foreground">
-          No Wallets are in the forecast yet. Turn on “In the forecast” for a Wallet in{" "}
-          <Link to="/finances/wallets" className="underline">
-            Wallets
-          </Link>{" "}
-          to see its Forecast here.
-        </p>
       ) : (
         <>
-          {/* The tabs scroll sideways on a phone rather than widening the page. */}
-          <nav aria-label="Forecast Wallets" className="-mx-1 flex gap-1 overflow-x-auto px-1">
+          {/* The tabs scroll sideways on a phone rather than widening the page. `relative` keeps
+              their screen-reader-only text, which is positioned absolutely, inside that scroll. */}
+          <nav
+            aria-label="Forecast Wallets"
+            className="relative -mx-1 flex items-center gap-1 overflow-x-auto px-1"
+          >
+            <HomeTab
+              name="All"
+              tab={ALL_TAB}
+              selected={tab === ALL_TAB}
+              pinned={pinned === ALL_TAB}
+            />
             {forecastWallets.map((wallet) => (
               <WalletTab
                 key={wallet.id}
                 wallet={wallet}
-                selected={wallet.id === selected.id}
+                selected={wallet.id === tab}
+                pinned={wallet.id === pinned}
                 onEnterBalance={enterBalance}
               />
             ))}
           </nav>
-          <WalletForecast
-            key={selected.id}
-            wallet={selected}
-            days={days}
-            onEnterBalance={enterBalance}
-          />
+          {selected ? (
+            <WalletForecast
+              key={selected.id}
+              wallet={selected}
+              days={days}
+              onEnterBalance={enterBalance}
+            />
+          ) : (
+            <AllWallets wallets={active} days={days} onEnterBalance={enterBalance} />
+          )}
         </>
       )}
       {/* One dialog for the page: a tab asking for a check turns into a plain tab once it is
@@ -78,10 +103,12 @@ const TAB = "flex h-11 shrink-0 items-center rounded-full border px-4 text-sm wh
 function WalletTab({
   wallet,
   selected,
+  pinned,
   onEnterBalance,
 }: {
   wallet: Wallet
   selected: boolean
+  pinned: boolean
   onEnterBalance: (walletId: string) => void
 }) {
   const { check, isLoading } = useLatestBalanceCheck(wallet.id)
@@ -98,14 +125,70 @@ function WalletTab({
       </button>
     )
   }
+  return <HomeTab name={wallet.name} tab={wallet.id} selected={selected} pinned={pinned} />
+}
+
+/**
+ * One tab: a link to it, a pin when home opens there by default, and, while selected, its
+ * overflow menu.
+ */
+function HomeTab({
+  name,
+  tab,
+  selected,
+  pinned,
+}: {
+  name: string
+  /** ALL_TAB or a forecast Wallet's id. */
+  tab: string
+  selected: boolean
+  pinned: boolean
+}) {
   return (
-    <Link
-      to="/finances"
-      search={(previous) => ({ ...previous, wallet: wallet.id })}
-      aria-current={selected ? "page" : undefined}
-      className={cn(TAB, selected && "border-primary bg-primary text-primary-foreground")}
-    >
-      {wallet.name}
-    </Link>
+    <>
+      <Link
+        to="/finances"
+        search={(previous) => ({ ...previous, wallet: tab })}
+        aria-current={selected ? "page" : undefined}
+        className={cn(
+          TAB,
+          "gap-1",
+          selected && "border-primary bg-primary text-primary-foreground",
+        )}
+      >
+        {name}
+        {pinned ? (
+          <>
+            <PinIcon aria-hidden className="size-3.5" />
+            <span className="sr-only">{" (opens here by default)"}</span>
+          </>
+        ) : null}
+      </Link>
+      {selected ? <TabMenu name={name} tab={tab} pinned={pinned} /> : null}
+    </>
+  )
+}
+
+function TabMenu({ name, tab, pinned }: { name: string; tab: string; pinned: boolean }) {
+  const openHere = async () => {
+    if (await setOpenOnHome(tab === ALL_TAB ? null : tab)) {
+      toast.success(`Finances now opens on ${name}`)
+    }
+  }
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        render={<Button variant="ghost" size="icon" className="size-11 shrink-0" />}
+      >
+        <EllipsisVerticalIcon />
+        <span className="sr-only">More for {name}</span>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent className="min-w-56">
+        <DropdownMenuItem className="min-h-11" disabled={pinned} onClick={() => void openHere()}>
+          <PinIcon />
+          {pinned ? "Opens here by default" : "Open here by default"}
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   )
 }

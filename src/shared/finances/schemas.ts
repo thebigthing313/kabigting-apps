@@ -296,3 +296,29 @@ export const occurrenceRows = rowsResponse(occurrenceRow)
 export type CreateOccurrence = z.input<typeof createOccurrence>
 export type UpdateOccurrence = z.infer<typeof updateOccurrence>
 export type OccurrenceRow = z.infer<typeof occurrenceRow>
+
+// Settings: the household's one row of Finances choices, id "household".
+
+export const SETTINGS_ID = "household"
+
+export const updateSettings = z
+  .strictObject({
+    /** The forecast Wallet home opens on; null means All. */
+    openOnHomeWalletId: id.nullable(),
+  })
+  .partial()
+  .refine(atLeastOneField, "Change at least one field")
+
+export const settingsRow = z.object({
+  id: z.literal(SETTINGS_ID),
+  openOnHomeWalletId: id.nullable(),
+  createdAt: instant,
+  updatedAt: instant,
+})
+
+/** There is one row, so there is nothing to filter by. */
+export const settingsQuery = z.strictObject({})
+export const settingsRows = rowsResponse(settingsRow)
+
+export type UpdateSettings = z.infer<typeof updateSettings>
+export type SettingsRow = z.infer<typeof settingsRow>

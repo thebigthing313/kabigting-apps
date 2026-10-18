@@ -64,6 +64,13 @@
       "when": 1792249347762,
       "tag": "0008_finances_occurrences",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1792286972290,
+      "tag": "0010_finances_settings",
+      "breakpoints": true
     }
   ]
 }

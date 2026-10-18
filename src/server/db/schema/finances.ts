@@ -168,3 +168,19 @@ export const financesOccurrences = pgTable(
     ),
   ],
 )
+
+/**
+ * The household's one row of Finances settings, id `'household'`, seeded by its migration.
+ * `openOnHomeWalletId` is the forecast Wallet home opens on; null means All.
+ */
+export const financesSettings = pgTable(
+  "finances_settings",
+  {
+    id: text().primaryKey(),
+    // Deleting the Wallet puts home back on All rather than refusing the delete.
+    openOnHomeWalletId: uuid().references(() => financesWallets.id, { onDelete: "set null" }),
+    ...timestamps(),
+  },
+  // There is only ever the household's row.
+  (table) => [check("finances_settings_household", sql`${table.id} = 'household'`)],
+)
