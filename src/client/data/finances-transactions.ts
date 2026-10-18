@@ -116,6 +116,40 @@ export function useActualsSince(walletId: string, after: string | undefined) {
 export type WalletMove = { id: string; date: string; amountCents: number }
 
 /**
+ * Every Wallet's outstanding one-off Planned Transactions, soonest first, in one request however
+ * many Wallets there are. Each Forecast and the bell take their Wallet's from these.
+ */
+export function useHouseholdOutstandingOneOffs() {
+  const transactions = financesTransactions()
+  const { data, isLoading } = useLiveQuery(
+    (q) =>
+      q
+        .from({ row: transactions })
+        .where(({ row }) => eq(row.status, "planned"))
+        .orderBy(({ row }) => row.date, OLDEST_FIRST),
+    [transactions],
+  )
+  // The server has no filter for the Reconcile link.
+  return { oneOffs: data.filter((row) => row.reconciledActualId === null), isLoading }
+}
+
+/** Every Wallet's uploaded lines waiting in To review, oldest first, in one request. */
+export function useHouseholdToReview() {
+  const transactions = financesTransactions()
+  const { data, isLoading } = useLiveQuery(
+    (q) =>
+      q
+        .from({ row: transactions })
+        .where(({ row }) =>
+          and(eq(row.status, "actual"), eq(row.ignored, false), isNull(row.reviewedAt)),
+        )
+        .orderBy(({ row }) => row.date, OLDEST_FIRST),
+    [transactions],
+  )
+  return { lines: data, isLoading }
+}
+
+/**
  * A Wallet's one-off Planned Transactions, soonest first. `oneOffs` are the outstanding ones:
  * upcoming, and Overdue once their date has passed. A Reconciled one is no longer outstanding;
  * `planned` keeps those too, to show what an Actual is Reconciled to.

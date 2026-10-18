@@ -1,6 +1,6 @@
 import type { Page } from "@playwright/test"
 import { formatMonth, shiftMonth, thisMonth } from "../src/shared/dates.ts"
-import { expect, MEMBER_STATE, test } from "./fixtures.ts"
+import { expect, MEMBER_STATE, runName, test } from "./fixtures.ts"
 
 test.use({ storageState: MEMBER_STATE })
 
@@ -15,7 +15,7 @@ test("a Category page opens from the summary, merges into another and returns to
   page,
 }, testInfo) => {
   test.slow()
-  const run = `${testInfo.project.name} ${Date.now()}`
+  const run = runName(testInfo)
   const lastMonth = shiftMonth(thisMonth(), -1)
 
   const walletId = await post(page, "wallets", { name: `E2E category wallet ${run}` })
@@ -74,7 +74,7 @@ test("a Category page opens from the summary, merges into another and returns to
 })
 
 test("Uncategorised has a page but no actions", async ({ page }, testInfo) => {
-  const run = `${testInfo.project.name} ${Date.now()}`
+  const run = runName(testInfo)
   const lastMonth = shiftMonth(thisMonth(), -1)
   const walletId = await post(page, "wallets", { name: `E2E uncategorised wallet ${run}` })
   const note = `E2E no category ${run}`

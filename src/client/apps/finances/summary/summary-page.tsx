@@ -1,5 +1,6 @@
 import { Link, useNavigate } from "@tanstack/react-router"
 import { ChevronLeftIcon, ChevronRightIcon } from "lucide-react"
+import { FinancesHeader } from "@/apps/finances/finances-header"
 import type { ReactNode } from "react"
 import { UNCATEGORISED_PARAM } from "@/apps/finances/categories/category-route"
 import { Button } from "@/components/ui/button"
@@ -27,7 +28,7 @@ export function SummaryPage({ month }: { month: string | undefined }) {
 
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-4 pb-8">
-      <h1 className="text-2xl font-semibold">Summary</h1>
+      <FinancesHeader title="Summary" />
       {isLoading ? (
         <SummarySkeleton />
       ) : (

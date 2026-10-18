@@ -1,6 +1,6 @@
 import type { Page } from "@playwright/test"
 import { addDays, addMonthsClamped, formatDisplayDate, today } from "../src/shared/dates.ts"
-import { expect, MEMBER_STATE, test } from "./fixtures.ts"
+import { expect, MEMBER_STATE, runName, test } from "./fixtures.ts"
 
 test.use({ storageState: MEMBER_STATE })
 
@@ -27,7 +27,7 @@ test("a forecast Wallet's Balance check and Schedules make its Forecast on home"
 }, testInfo) => {
   // A Wallet, a check and two Schedules through the screens: a long walk on a phone WebKit.
   test.slow()
-  const run = `${testInfo.project.name} ${Date.now()}`
+  const run = runName(testInfo)
   const name = `E2E forecast ${run}`
   const checkDate = addDays(today(), -10)
   const lateFeeDate = addDays(today(), -5)
@@ -122,7 +122,7 @@ async function post(page: Page, path: string, data: Record<string, unknown>) {
 test("an overridden Occurrence and a skipped one show on the Forecast straight away", async ({
   page,
 }, testInfo) => {
-  const run = `${testInfo.project.name} ${Date.now()}`
+  const run = runName(testInfo)
   const walletId = await post(page, "wallets", { name: `E2E overrides ${run}`, inForecast: true })
   await post(page, "balance-checks", { walletId, date: today(), amountCents: 100_000 })
   const first = addDays(today(), 3)
@@ -152,9 +152,12 @@ test("an overridden Occurrence and a skipped one show on the Forecast straight a
   await occurrence(first).getByLabel("Amount").fill("125")
   await occurrence(first).getByRole("button", { name: "Save" }).click()
   await expect(occurrence(first)).toContainText("Overridden")
+  // The badge shows at once; the editor closes once the server has the change.
+  await expect(occurrence(first).getByRole("button", { name: "Save" })).toBeHidden()
   await occurrence(second).getByRole("button").first().click()
   await occurrence(second).getByRole("button", { name: "Skip" }).click()
   await expect(occurrence(second)).toContainText("Skipped")
+  await expect(occurrence(second).getByRole("button", { name: "Save" })).toBeHidden()
 
   // Back on home, the Forecast has both.
   await page.goto(`/finances?wallet=${walletId}`)

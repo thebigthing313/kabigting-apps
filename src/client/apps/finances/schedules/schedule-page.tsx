@@ -1,6 +1,7 @@
 import { Link } from "@tanstack/react-router"
 import { ChevronLeftIcon } from "lucide-react"
-import { useState } from "react"
+import { useEffect, useState } from "react"
+import { FinancesHeader } from "@/apps/finances/finances-header"
 import { OccurrenceEditor } from "@/apps/finances/schedules/occurrence-editor"
 import { ScheduleActions } from "@/apps/finances/schedules/schedule-actions"
 import { scheduleLabel, shownOnWallet } from "@/apps/finances/schedules/schedule-display"
@@ -38,11 +39,23 @@ function occurrenceKey(scheduleId: string, nominalDate: string) {
   return `${scheduleId}:${nominalDate}`
 }
 
+/** The element id of an Occurrence's row, by its key. */
+function occurrenceAnchor(key: string) {
+  return `occurrence-${key}`
+}
+
 /**
  * One Schedule: who and what, its terms, its recent and upcoming Occurrences to edit, and its
  * History. A chain of Schedules changed from a date reads as one, under its newest.
  */
-export function SchedulePage({ scheduleId }: { scheduleId: string }) {
+export function SchedulePage({
+  scheduleId,
+  occurrence,
+}: {
+  scheduleId: string
+  /** The nominal date of one of this Schedule's Occurrences to open its editor, as from the bell. */
+  occurrence?: string | undefined
+}) {
   const { data: schedules, isLoading } = useSchedules()
   const { data: wallets, isLoading: walletsLoading } = useWallets()
 
@@ -63,7 +76,14 @@ export function SchedulePage({ scheduleId }: { scheduleId: string }) {
       {isLoading || walletsLoading ? (
         <Skeleton className="h-20" />
       ) : schedule && wallet ? (
-        <ScheduleDetail chain={chain} schedule={schedule} wallet={wallet} wallets={wallets} />
+        <ScheduleDetail
+          chain={chain}
+          schedule={schedule}
+          wallet={wallet}
+          wallets={wallets}
+          // The Occurrence may be an older Schedule's in the chain: the one in the address.
+          opening={occurrence === undefined ? undefined : { scheduleId, nominalDate: occurrence }}
+        />
       ) : (
         <p className="rounded-xl border p-6 text-center text-muted-foreground">
           There is no such Schedule.
@@ -78,12 +98,15 @@ function ScheduleDetail({
   schedule,
   wallet,
   wallets,
+  opening,
 }: {
   /** Newest first; `schedule` is the newest. */
   chain: readonly Schedule[]
   schedule: Schedule
   wallet: Wallet
   wallets: readonly Wallet[]
+  /** The Occurrence of a Schedule in the chain whose editor opens with the page. */
+  opening: { scheduleId: string; nominalDate: string } | undefined
 }) {
   const { data: accounts } = useFinancesAccounts()
   const { data: categories } = useCategories()
@@ -109,8 +132,11 @@ function ScheduleDetail({
   const actuals = new Map<string, ReconciledActual>([...transactions, ...transfers])
 
   const now = today()
+  const monthsBack = addMonthsClamped(now, -MONTHS_BACK)
   const range = {
-    from: addMonthsClamped(now, -MONTHS_BACK),
+    // An Overdue Occurrence opened from the bell is listed even when older than that.
+    from:
+      opening !== undefined && opening.nominalDate < monthsBack ? opening.nominalDate : monthsBack,
     to: addMonthsClamped(now, MONTHS_AHEAD),
   }
   // Each Schedule in the chain contributes the Occurrences on its own terms.
@@ -130,9 +156,7 @@ function ScheduleDetail({
   return (
     <>
       <div className="flex flex-col gap-1">
-        <h1 className="text-2xl font-semibold break-words">
-          {scheduleLabel(schedule, walletName, accountName)}
-        </h1>
+        <FinancesHeader title={scheduleLabel(schedule, walletName, accountName)} />
         <p className="text-sm text-muted-foreground">
           {toWallet ? `${wallet.name} → ${toWallet.name}` : wallet.name}
           {toWallet ? null : ` · ${category?.name ?? "Uncategorised"}`}
@@ -169,6 +193,11 @@ function ScheduleDetail({
           </p>
         ) : (
           <OccurrenceList
+            // Another Occurrence to open starts the list afresh, with its editor open.
+            key={opening === undefined ? undefined : opening.nominalDate}
+            opening={
+              opening === undefined ? null : occurrenceKey(opening.scheduleId, opening.nominalDate)
+            }
             wallet={wallet}
             toWallet={toWallet}
             occurrences={occurrences}
@@ -204,12 +233,15 @@ function ScheduleDetail({
 }
 
 function OccurrenceList({
+  opening,
   wallet,
   toWallet,
   occurrences,
   stored,
   actuals,
 }: {
+  /** The key of the Occurrence whose editor is open at first. */
+  opening: string | null
   wallet: Wallet
   toWallet: Wallet | undefined
   occurrences: readonly ChainOccurrence[]
@@ -218,7 +250,13 @@ function OccurrenceList({
   actuals: ReadonlyMap<string, ReconciledActual>
 }) {
   // The key of the Occurrence whose editor is open.
-  const [editing, setEditing] = useState<string | null>(null)
+  const [editing, setEditing] = useState<string | null>(opening)
+  // The Occurrence opened with the page is brought into view.
+  useEffect(() => {
+    if (opening !== null) {
+      document.getElementById(occurrenceAnchor(opening))?.scrollIntoView({ block: "center" })
+    }
+  }, [opening])
   const storedByKey = new Map(
     stored.map((row) => [occurrenceKey(row.scheduleId, row.nominalDate), row]),
   )
@@ -242,7 +280,7 @@ function OccurrenceList({
           />
         )
         return (
-          <li key={key} aria-label={formatDisplayDate(occurrence.date)}>
+          <li key={key} id={occurrenceAnchor(key)} aria-label={formatDisplayDate(occurrence.date)}>
             {occurrence.state === "reconciled" ? (
               // A Reconciled Occurrence is the Actual's now; it is changed from the Wallet.
               <Link

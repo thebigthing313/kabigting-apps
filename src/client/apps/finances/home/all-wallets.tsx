@@ -1,17 +1,15 @@
 import { Link } from "@tanstack/react-router"
 import { cn } from "cn"
 import { useId } from "react"
-import {
-  forecastItemKey,
-  isOverdue,
-  useWalletForecast,
-} from "@/apps/finances/home/use-wallet-forecast"
+import { useForecastWalletAttention } from "@/apps/finances/attention/use-attention"
+import { forecastItemKey } from "@/apps/finances/home/use-wallet-forecast"
 import { ForecastWarnings, ItemAmount } from "@/apps/finances/home/wallet-forecast"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useLatestBalanceCheck } from "@/data/finances-balance-checks"
 import type { Wallet } from "@/data/finances-wallets"
 import { formatDisplayDate } from "@shared/dates"
+import { attentionCounts } from "@shared/finances/attention"
 import type { ForecastHorizon } from "@shared/finances/forecast"
 import { formatShown } from "@shared/finances/wallets"
 
@@ -69,10 +67,14 @@ function ForecastCard({
   days: ForecastHorizon
   onEnterBalance: (walletId: string) => void
 }) {
-  const { result, isLoading, labelOf } = useWalletForecast(wallet, days)
+  const {
+    items: attention,
+    isLoading: attentionLoading,
+    forecast: { result, isLoading: forecastLoading, labelOf },
+  } = useForecastWalletAttention(wallet, days)
   const nameId = useId()
 
-  if (isLoading) return <Skeleton className="h-40" />
+  if (forecastLoading || attentionLoading) return <Skeleton className="h-40" />
   if (!result) {
     return (
       <section aria-labelledby={nameId} className={cn(CARD, "flex-1")}>
@@ -90,7 +92,11 @@ function ForecastCard({
   const shown = (cents: number) => formatShown(wallet, cents)
   const { low } = result
   const items = result.days.flatMap((day) => day.items).filter((item) => item.kind !== "actual")
-  const overdue = items.filter(isOverdue).length
+  const counts = attentionCounts(attention.map((named) => named.item))
+  const waiting = [
+    counts.toReview > 0 ? `${counts.toReview} To review` : null,
+    counts.overdue > 0 ? `${counts.overdue} Overdue` : null,
+  ].filter((part) => part !== null)
 
   return (
     <Link
@@ -104,8 +110,8 @@ function ForecastCard({
           <h2 id={nameId} className="truncate font-medium">
             {wallet.name}
           </h2>
-          {overdue > 0 ? (
-            <p className="text-sm text-amber-700 dark:text-amber-400">{overdue} Overdue</p>
+          {waiting.length > 0 ? (
+            <p className="text-sm text-amber-700 dark:text-amber-400">{waiting.join(" · ")}</p>
           ) : null}
         </div>
         <p

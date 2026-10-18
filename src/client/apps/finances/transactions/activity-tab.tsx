@@ -14,6 +14,7 @@ import {
   transferLabel,
 } from "@/apps/finances/transactions/transaction-display"
 import { Button } from "@/components/ui/button"
+import { useScrollToHash } from "@/hooks/use-scroll-to-hash"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useFinancesAccounts } from "@/data/finances-accounts"
 import { useCategories } from "@/data/finances-categories"
@@ -26,6 +27,9 @@ import { toShown } from "@shared/finances/wallets"
 import { format } from "@shared/money"
 
 const PAGE_SIZE = 25
+
+/** The id of the Upcoming one-offs heading, which an Overdue one-off links to. */
+export const UPCOMING_ONE_OFFS = "upcoming-one-offs"
 
 type Names = {
   account: ReadonlyMap<string, string>
@@ -87,6 +91,8 @@ export function ActivityTab({ wallet }: { wallet: Wallet }) {
   )
   const upcomingLoading = oneOffsLoading || plannedTransfersLoading
   const pastLoading = actualsLoading || transfersLoading
+  // An Overdue one-off in the bell opens this tab at Upcoming one-offs, once they are in place.
+  useScrollToHash(!toReviewLoading && !upcomingLoading)
 
   // To review sits on top; the lists below wait for it, so they don't jump down when it appears.
   if (toReviewLoading) {
@@ -101,8 +107,8 @@ export function ActivityTab({ wallet }: { wallet: Wallet }) {
   return (
     <div className="flex flex-col gap-6">
       <ToReviewPanel wallet={wallet} lines={toReview} />
-      <section aria-labelledby="upcoming-one-offs" className="flex flex-col gap-2">
-        <h2 id="upcoming-one-offs" className="font-medium">
+      <section aria-labelledby={UPCOMING_ONE_OFFS} className="flex flex-col gap-2">
+        <h2 id={UPCOMING_ONE_OFFS} className="scroll-mt-20 font-medium">
           Upcoming one-offs
         </h2>
         {upcomingLoading && upcoming.length === 0 ? (

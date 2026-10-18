@@ -1,4 +1,4 @@
-import { accounts, expect, openAccountMenu, signIn, test } from "./fixtures.ts"
+import { accounts, expect, openAccountMenu, runName, signIn, test } from "./fixtures.ts"
 
 test("a wrong password is refused without saying which part was wrong", async ({ page }) => {
   await signIn(page, accounts().member.email, "not-the-password")
@@ -47,7 +47,7 @@ test("signing out leaves no signed-in data behind", async ({ page }, testInfo) =
   const { member } = accounts()
   await signIn(page, member.email, member.password)
   await expect(page.getByRole("heading", { name: "Hello, Member" })).toBeVisible()
-  const text = `Sign-out wallet ${testInfo.project.name} ${Date.now()}`
+  const text = `Sign-out wallet ${runName(testInfo)}`
   const created = await page.request.post("/api/finances/wallets", {
     data: { id: crypto.randomUUID(), name: text },
   })

@@ -3,6 +3,7 @@ import { cn } from "cn"
 import { ChevronLeftIcon } from "lucide-react"
 import { toast } from "sonner"
 import { AddButton } from "@/apps/finances/add-button"
+import { FinancesHeader } from "@/apps/finances/finances-header"
 import { ActivityTab } from "@/apps/finances/transactions/activity-tab"
 import { BalanceChecksTab } from "@/apps/finances/wallets/balance-checks-tab"
 import { WalletBalance } from "@/apps/finances/wallets/wallet-balance"
@@ -41,7 +42,7 @@ export function WalletPage({ walletId, tab }: { walletId: string; tab: WalletTab
       ) : wallet ? (
         <>
           <div>
-            <h1 className="text-2xl font-semibold break-words">{wallet.name}</h1>
+            <FinancesHeader title={wallet.name} />
             <WalletBalance wallet={wallet} />
             {wallet.archived ? <p className="text-sm text-muted-foreground">Archived</p> : null}
           </div>

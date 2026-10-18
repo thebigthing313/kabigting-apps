@@ -1,6 +1,6 @@
 import type { Page } from "@playwright/test"
 import { addDays, formatDisplayDate, today } from "../src/shared/dates.ts"
-import { expect, MEMBER_STATE, test } from "./fixtures.ts"
+import { expect, MEMBER_STATE, runName, test } from "./fixtures.ts"
 
 test.use({ storageState: MEMBER_STATE })
 
@@ -21,7 +21,7 @@ async function add(page: Page, action: string) {
 test("an Actual added from a Wallet's + button shows in its Activity and can be edited and deleted", async ({
   page,
 }, testInfo) => {
-  const run = `${testInfo.project.name} ${Date.now()}`
+  const run = runName(testInfo)
   const walletId = await post(page, "wallets", { name: `E2E activity ${run}` })
   await post(page, "balance-checks", { walletId, date: addDays(today(), -3), amountCents: 100_000 })
   await page.goto(`/finances/wallets/${walletId}`)
@@ -73,7 +73,7 @@ test("one-off Planned items land in the Forecast, Overdue ones today, and are ed
   page,
 }, testInfo) => {
   test.slow()
-  const run = `${testInfo.project.name} ${Date.now()}`
+  const run = runName(testInfo)
   const name = `E2E one-offs ${run}`
   const walletId = await post(page, "wallets", { name, inForecast: true })
   const checkDate = addDays(today(), -10)
@@ -157,7 +157,7 @@ test("the + button offers Enter Balance check on the selected Wallet", async ({
   page,
 }, testInfo) => {
   const walletId = await post(page, "wallets", {
-    name: `E2E plus check ${testInfo.project.name} ${Date.now()}`,
+    name: `E2E plus check ${runName(testInfo)}`,
   })
   await page.goto(`/finances/wallets/${walletId}`)
   const dialog = await add(page, "Enter Balance check")

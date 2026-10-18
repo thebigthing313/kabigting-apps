@@ -5,6 +5,7 @@ import { useState } from "react"
 import { CategoryActions } from "@/apps/finances/categories/category-actions"
 import { CategoryChart } from "@/apps/finances/categories/category-chart"
 import { StateMark } from "@/apps/finances/categories/state-mark"
+import { FinancesHeader } from "@/apps/finances/finances-header"
 import {
   type ActivityRow,
   EditActivityDialog,
@@ -102,12 +103,11 @@ function CategoryHeader({
   const target = categories.find((candidate) => candidate.id === category?.mergedIntoId)
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex flex-wrap items-center gap-2">
-        <h1 className={cn("text-2xl font-semibold break-words", !category && "italic")}>
-          {category?.name ?? "Uncategorised"}
-        </h1>
-        {category ? <StateMark category={category} /> : null}
-      </div>
+      <FinancesHeader
+        title={category?.name ?? "Uncategorised"}
+        titleClassName={category ? undefined : "italic"}
+        beside={category ? <StateMark category={category} /> : null}
+      />
       {target ? (
         <p className="text-sm text-muted-foreground">
           Merged into{" "}

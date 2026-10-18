@@ -1,5 +1,11 @@
 import { readFileSync } from "node:fs"
-import { test as base, expect, type Page } from "@playwright/test"
+import {
+  type APIRequestContext,
+  test as base,
+  expect,
+  type Page,
+  type TestInfo,
+} from "@playwright/test"
 import { z } from "zod"
 
 const accountsFile = z.object({
@@ -19,11 +25,42 @@ export const MEMBER_STATE = "e2e/.auth/member.json"
 
 let ipCounter = 0
 
+/** Each test's run names, by test id, for archiving what it made once it ends. */
+const runNames = new Map<string, string[]>()
+
+/**
+ * A name part unique to this test: its project and the time. Every e2e run shares one database,
+ * so the Wallets a test names with it are archived when the test ends. Otherwise every Finances
+ * page would keep loading the Forecasts of every Wallet that earlier tests made.
+ */
+export function runName(testInfo: TestInfo): string {
+  const run = `${testInfo.project.name} ${Date.now()}`
+  runNames.set(testInfo.testId, [...(runNames.get(testInfo.testId) ?? []), run])
+  return run
+}
+
+const walletRows = z.object({
+  rows: z.array(z.object({ id: z.string(), name: z.string(), archived: z.boolean() })),
+})
+
+/** Archives the Wallets named with any of `runs`. A signed-out session archives nothing. */
+async function archiveWallets(request: APIRequestContext, runs: readonly string[]) {
+  const response = await request.post("/api/finances/wallets/query", { data: {} })
+  if (!response.ok()) return
+  const { rows } = walletRows.parse(await response.json())
+  const made = rows.filter((row) => !row.archived && runs.some((run) => row.name.includes(run)))
+  await Promise.all(
+    made.map((row) =>
+      request.patch(`/api/finances/wallets/${row.id}`, { data: { archived: true } }),
+    ),
+  )
+}
+
 /**
  * The server runs the production auth config, which rate-limits sign-in per client address.
  * Each test presents its own address, as separate devices would.
  */
-export const test = base.extend({
+export const test = base.extend<{ archiveRunWallets: void }>({
   // oxlint-disable-next-line no-empty-pattern -- Playwright fixtures must take an object pattern
   extraHTTPHeaders: async ({}, use, testInfo) => {
     ipCounter += 1
@@ -31,6 +68,15 @@ export const test = base.extend({
       "x-forwarded-for": `10.${testInfo.workerIndex % 250}.${ipCounter % 250}.${testInfo.repeatEachIndex + 1}`,
     })
   },
+  archiveRunWallets: [
+    async ({ context }, use, testInfo) => {
+      await use()
+      const runs = runNames.get(testInfo.testId) ?? []
+      runNames.delete(testInfo.testId)
+      if (runs.length > 0) await archiveWallets(context.request, runs)
+    },
+    { auto: true },
+  ],
 })
 
 export { expect }
