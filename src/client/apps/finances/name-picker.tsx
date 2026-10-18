@@ -10,6 +10,7 @@ import {
   ComboboxItem,
   ComboboxList,
 } from "@/components/ui/combobox"
+import type { InlineAdd } from "@/data/inline-adds"
 
 export type PickerOption = { id: string; name: string; archived: boolean }
 
@@ -26,7 +27,7 @@ export type NamePickerProps = {
   value: string | null
   onValueChange: (id: string | null) => void
   /** Creates an entry with this name: its id at once, and whether the server stored it. */
-  onAdd: (name: string) => { id: string; saved: Promise<boolean> }
+  onAdd: (name: string) => InlineAdd
   onRename: (id: string, name: string) => void
 }
 
@@ -50,9 +51,9 @@ export function NamePicker({
   const [query, setQuery] = useState("")
   const [renaming, setRenaming] = useState(false)
   // What is picked now, for an add the server refuses after the pick has moved on.
-  const current = useRef(value)
+  const pickedNow = useRef(value)
   useEffect(() => {
-    current.current = value
+    pickedNow.current = value
   })
 
   const picked = options.find((option) => option.id === value) ?? null
@@ -76,7 +77,7 @@ export function NamePicker({
             onValueChange(added)
             // A refused add is rolled back; clear it, unless something else was picked since.
             void saved.then((ok) => {
-              if (!ok && current.current === added) onValueChange(null)
+              if (!ok && pickedNow.current === added) onValueChange(null)
             })
           } else onValueChange(item?.id ?? null)
         }}

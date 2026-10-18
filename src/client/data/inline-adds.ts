@@ -1,6 +1,6 @@
 // An Account or Category added inline from a picker shows at once, before the server has stored
 // it. A form must not save a row naming it until then, or the foreign key refuses the save.
-import { settled } from "@/data/settled"
+import { type Settling, settled } from "@/data/settled"
 
 /** A name added inline: its id at once, and whether the server stored it once it answers. */
 export type InlineAdd = { id: string; saved: Promise<boolean> }
@@ -9,10 +9,7 @@ export type InlineAdd = { id: string; saved: Promise<boolean> }
 const unconfirmed = new Map<string, Promise<boolean>>()
 
 /** Remembers an optimistic insert until the server stores it. */
-export function trackInlineAdd(
-  id: string,
-  transaction: { when: (state: "settled") => Promise<unknown> },
-): InlineAdd {
+export function trackInlineAdd(id: string, transaction: Settling): InlineAdd {
   const saved = settled(transaction)
   unconfirmed.set(id, saved)
   void saved.then((ok) => {

@@ -62,6 +62,10 @@ function fakeServer() {
   }
 }
 
+function pause(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
 async function addInline(
   screen: Awaited<ReturnType<typeof render>>,
   label: string,
@@ -90,10 +94,10 @@ describe("saving right after an inline add", () => {
     await addInline(screen, "Category", "Made-up Groceries")
     await screen.getByRole("button", { name: "Add Actual" }).click()
 
-    await new Promise((resolve) => setTimeout(resolve, 100))
+    await pause(100)
     expect(onSave).not.toHaveBeenCalled()
     await server.answer("/api/finances/accounts")
-    await new Promise((resolve) => setTimeout(resolve, 100))
+    await pause(100)
     expect(onSave).not.toHaveBeenCalled()
     await server.answer("/api/finances/categories")
 
@@ -134,7 +138,7 @@ describe("saving right after an inline add", () => {
     await addInline(screen, "Category", "Made-up Housing")
     await screen.getByRole("button", { name: "Add Schedule" }).click()
 
-    await new Promise((resolve) => setTimeout(resolve, 100))
+    await pause(100)
     expect(onSave).not.toHaveBeenCalled()
     await server.answer("/api/finances/categories")
     await vi.waitFor(() =>
