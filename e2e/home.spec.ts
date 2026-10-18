@@ -39,13 +39,15 @@ test("the All tab shows a card per Wallet, and a forecast Wallet's card opens it
   await page.goto("/finances?wallet=all")
   const cards = page.getByRole("list", { name: "Wallets" })
   const card = cards.getByRole("link", { name: inForecast })
-  await expect(card).toContainText("$1,000.00")
+  // Every run's Wallets share the e2e database, so All loads dozens of cards, each with its own
+  // Balance check query; with four browsers at once that can take longer than the usual wait.
+  await expect(card).toContainText("$1,000.00", { timeout: 20_000 })
   await expect(card).toContainText("Lowest")
   await expect(card).toContainText(`${inForecast} bill`)
   await expect(card).toContainText("-$100.00")
   const greyed = cards.getByRole("region", { name: outside })
   await expect(greyed).toContainText("Not in the forecast")
-  await expect(greyed).toContainText("$50.00")
+  await expect(greyed).toContainText("$50.00", { timeout: 20_000 })
 
   // On a phone the cards stack, one above the other, and the page never scrolls sideways.
   if ((page.viewportSize()?.width ?? 0) < 768) {
@@ -87,6 +89,8 @@ test("Open here by default makes home open on a Wallet, then on All again", asyn
   await expect(tabs.getByRole("link", { name })).toHaveAccessibleName(
     `${name} (opens here by default)`,
   )
+  // The pin shows at once; the toast says the household's row is saved.
+  await expect(page.getByText(`Finances now opens on ${name}`)).toBeVisible()
 
   await page.goto("/finances")
   await expect(tabs.getByRole("link", { name })).toHaveAttribute("aria-current", "page")
@@ -98,6 +102,7 @@ test("Open here by default makes home open on a Wallet, then on All again", asyn
   await expect(tabs.getByRole("link", { name: /^All/ })).toHaveAccessibleName(
     "All (opens here by default)",
   )
+  await expect(page.getByText("Finances now opens on All")).toBeVisible()
 
   await page.goto("/finances")
   await expect(page.getByRole("list", { name: "Wallets" })).toBeVisible()
