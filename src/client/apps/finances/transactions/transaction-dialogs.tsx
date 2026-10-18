@@ -59,6 +59,8 @@ async function add(entry: NewTransaction, match: PlannedItem | null): Promise<bo
     toast.success(entry.status === "actual" ? "Actual added" : "Planned added")
   } else if (await reconcileActual(reconcileBody(match, id))) {
     toast.success("Actual added and Reconciled")
+  } else {
+    toast.info("Actual added but not Reconciled; Reconcile it from its Wallet's Activity")
   }
   return true
 }

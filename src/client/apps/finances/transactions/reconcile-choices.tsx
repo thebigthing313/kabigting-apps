@@ -2,6 +2,7 @@ import { useState } from "react"
 import { toast } from "sonner"
 import { scheduleLabel } from "@/apps/finances/schedules/schedule-display"
 import { transactionLabel } from "@/apps/finances/transactions/transaction-display"
+import type { MatchesProps } from "@/apps/finances/transactions/transaction-form"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Field, FieldContent, FieldLabel, FieldLegend, FieldSet } from "@/components/ui/field"
@@ -29,13 +30,13 @@ import { format } from "@shared/money"
 /** An outstanding Planned item with the name it is shown by. */
 export type LabelledPlanned = PlannedItem & { label: string }
 
-/** How far either side of an Actual's date a Planned item may be picked by hand, in months. */
+/** At least how far either side of an Actual's date Planned items are listed, in months. */
 const MONTHS_BACK = 3
 const MONTHS_AHEAD = 6
 
 /**
- * A Wallet's outstanding Planned Transactions around `date`, by date: its Schedules' Occurrences
- * and its one-off Planned items, from 3 months before to 6 months after.
+ * A Wallet's outstanding Planned Transactions, by date: every outstanding one-off, and its
+ * Schedules' Occurrences from their start to 6 months after `date`.
  */
 export function useOutstandingPlanned(walletId: string, date: string): LabelledPlanned[] {
   const { data: schedules } = useSchedules()
@@ -47,23 +48,28 @@ export function useOutstandingPlanned(walletId: string, date: string): LabelledP
   const walletName = new Map(wallets.map((wallet) => [wallet.id, wallet.name]))
   const scheduleOf = new Map(schedules.map((schedule) => [schedule.id, schedule]))
   const oneOffOf = new Map(oneOffs.map((row) => [row.id, row]))
+  // Back to the Wallet's first Schedule, so any Overdue Occurrence can be picked; every
+  // outstanding one-off, however far off.
+  const dates = [
+    addMonthsClamped(date, -MONTHS_BACK),
+    addMonthsClamped(date, MONTHS_AHEAD),
+    ...schedules.filter((schedule) => schedule.walletId === walletId).map((s) => s.startDate),
+    ...oneOffs.map((row) => row.date),
+  ].toSorted()
   const items = outstandingPlanned({
     walletId,
     schedules,
     occurrences,
     planned: oneOffs,
-    range: { from: addMonthsClamped(date, -MONTHS_BACK), to: addMonthsClamped(date, MONTHS_AHEAD) },
+    range: { from: dates[0] ?? date, to: dates.at(-1) ?? date },
   })
   return items.map((item) => {
-    const source =
-      item.kind === "occurrence" ? scheduleOf.get(item.scheduleId) : oneOffOf.get(item.id)
-    const label =
-      source === undefined
-        ? "Planned"
-        : "unit" in source
-          ? scheduleLabel(source, walletName, accountName)
-          : transactionLabel(source, accountName)
-    return { ...item, label }
+    if (item.kind === "occurrence") {
+      const schedule = scheduleOf.get(item.scheduleId)
+      return { ...item, label: schedule ? scheduleLabel(schedule, walletName, accountName) : "" }
+    }
+    const oneOff = oneOffOf.get(item.id)
+    return { ...item, label: oneOff ? transactionLabel(oneOff, accountName) : "" }
   })
 }
 
@@ -112,14 +118,7 @@ export function SuggestedMatches({
   amountCents,
   selected,
   onSelect,
-}: {
-  walletId: string
-  date: string
-  amountCents: number
-  /** The ticked match's key, if any. */
-  selected: string | null
-  onSelect: (item: LabelledPlanned | null) => void
-}) {
+}: MatchesProps) {
   const outstanding = useOutstandingPlanned(walletId, date)
   const { data: wallets } = useWallets()
   const wallet = wallets.find((candidate) => candidate.id === walletId) ?? { shownAsOwed: false }
@@ -154,25 +153,39 @@ export function SuggestedMatches({
   )
 }
 
-/** What an Actual is Reconciled to: an Occurrence of a Schedule, or a one-off Planned item. */
-export function useReconciledTo(actual: Transaction): { label: string; date: string } | null {
+/** The Planned item an Actual is Reconciled to, by name and the date it was planned for. */
+export type ReconciledTo = { label: string; date: string }
+
+/**
+ * What each of a Wallet's Reconciled Actuals is Reconciled to, by the Actual's id: an
+ * Occurrence of one of its Schedules, or one of its one-off Planned items.
+ */
+export function useReconciledTo(walletId: string): ReadonlyMap<string, ReconciledTo> {
   const { data: occurrences } = useStoredOccurrences()
   const { data: schedules } = useSchedules()
-  const { planned } = useOutstandingOneOffs(actual.walletId)
+  const { planned } = useOutstandingOneOffs(walletId)
   const { data: accounts } = useFinancesAccounts()
   const { data: wallets } = useWallets()
   const accountName = new Map(accounts.map((account) => [account.id, account.name]))
   const walletName = new Map(wallets.map((wallet) => [wallet.id, wallet.name]))
-  const occurrence = occurrences.find((row) => row.reconciledTransactionId === actual.id)
-  if (occurrence) {
-    const schedule = schedules.find((row) => row.id === occurrence.scheduleId)
-    return {
-      label: schedule ? scheduleLabel(schedule, walletName, accountName) : "a Schedule",
-      date: occurrence.overrideDate ?? occurrence.nominalDate,
-    }
+  const scheduleOf = new Map(schedules.map((schedule) => [schedule.id, schedule]))
+  const reconciled = new Map<string, ReconciledTo>()
+  for (const row of occurrences) {
+    const schedule = scheduleOf.get(row.scheduleId)
+    if (row.reconciledTransactionId === null || schedule?.walletId !== walletId) continue
+    reconciled.set(row.reconciledTransactionId, {
+      label: scheduleLabel(schedule, walletName, accountName),
+      date: row.overrideDate ?? row.nominalDate,
+    })
   }
-  const oneOff = planned.find((row) => row.reconciledActualId === actual.id)
-  return oneOff ? { label: transactionLabel(oneOff, accountName), date: oneOff.date } : null
+  for (const row of planned) {
+    if (row.reconciledActualId === null) continue
+    reconciled.set(row.reconciledActualId, {
+      label: transactionLabel(row, accountName),
+      date: row.date,
+    })
+  }
+  return reconciled
 }
 
 /**
@@ -189,7 +202,7 @@ export function ReconcileSection({
   /** After a Reconcile or Un-Reconcile the server accepted. */
   onDone: () => void
 }) {
-  const reconciledTo = useReconciledTo(actual)
+  const reconciledTo = useReconciledTo(actual.walletId).get(actual.id)
   const outstanding = useOutstandingPlanned(actual.walletId, actual.date)
   const [picking, setPicking] = useState(false)
   const [pending, setPending] = useState(false)

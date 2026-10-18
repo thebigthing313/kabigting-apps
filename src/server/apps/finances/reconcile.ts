@@ -2,7 +2,7 @@ import { and, eq, sql } from "drizzle-orm"
 import { Hono } from "hono"
 import { isUniqueViolation } from "#server/apps/finances/db-errors.ts"
 import { occurrenceToRow } from "#server/apps/finances/occurrences.ts"
-import { transactionToRow } from "#server/apps/finances/transactions.ts"
+import { isReconciledActual, transactionToRow } from "#server/apps/finances/transactions.ts"
 import type { AppEnv } from "#server/core/context.ts"
 import { ApiError } from "#server/core/errors.ts"
 import { validate } from "#server/core/validate.ts"
@@ -12,7 +12,7 @@ import {
   financesSchedules,
   financesTransactions,
 } from "#server/db/schema/index.ts"
-import { isOccurrenceDate, isReconciled } from "#shared/finances/occurrences.ts"
+import { hasOverride, isOccurrenceDate, isReconciled } from "#shared/finances/occurrences.ts"
 import { reconcile, type ReconcileResult, unreconcile } from "#shared/finances/schemas.ts"
 
 type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0]
@@ -38,22 +38,10 @@ async function actualForUpdate(tx: Tx, actualId: string): Promise<TransactionRec
   return actual
 }
 
-/** One Reconcile per Actual: refused when an Occurrence or a one-off already points to it. */
-async function refuseReconciledActual(tx: Tx, actualId: string) {
-  const [occurrence] = await tx
-    .select({ id: financesOccurrences.id })
-    .from(financesOccurrences)
-    .where(eq(financesOccurrences.reconciledTransactionId, actualId))
-    .limit(1)
-  const [planned] = await tx
-    .select({ id: financesTransactions.id })
-    .from(financesTransactions)
-    .where(eq(financesTransactions.reconciledActualId, actualId))
-    .limit(1)
-  if (occurrence || planned) conflict("This Actual is already Reconciled; un-Reconcile it first")
-}
-
-/** Links the Occurrence to the Actual, storing it if it was only computed; returns its row. */
+/**
+ * Links the Occurrence to the Actual, storing it if it was only computed. Returns the changed
+ * row and the Category the Actual takes when it has none.
+ */
 async function linkOccurrence(
   tx: Tx,
   actual: TransactionRecord,
@@ -98,10 +86,13 @@ async function linkOccurrence(
       .returning()
   }
   if (!linked) throw new Error("Reconciling the Occurrence wrote nothing")
-  return { occurrence: linked, categoryId: schedule.categoryId }
+  return { occurrences: [occurrenceToRow(linked)], planned: [], categoryId: schedule.categoryId }
 }
 
-/** Points the one-off Planned at the Actual; returns its row. */
+/**
+ * Points the one-off Planned at the Actual. Returns the changed row and the Category the Actual
+ * takes when it has none.
+ */
 async function linkOneOff(tx: Tx, actual: TransactionRecord, plannedId: string) {
   const [planned] = await tx
     .select()
@@ -118,7 +109,7 @@ async function linkOneOff(tx: Tx, actual: TransactionRecord, plannedId: string) 
     .where(eq(financesTransactions.id, planned.id))
     .returning()
   if (!linked) throw new Error("Reconciling the Planned item wrote nothing")
-  return { planned: linked, categoryId: planned.categoryId }
+  return { occurrences: [], planned: [transactionToRow(linked)], categoryId: planned.categoryId }
 }
 
 /** Two people Reconciling the same unstored Occurrence at once: the second is refused. */
@@ -140,7 +131,9 @@ export function reconcileRoutes(db: Db) {
           const actual = await actualForUpdate(tx, body.actualId)
           if (actual.status !== "actual") invalid("Reconcile an Actual to a Planned item")
           if (actual.ignored) invalid("An ignored line can't be Reconciled; restore it first")
-          await refuseReconciledActual(tx, actual.id)
+          if (await isReconciledActual(tx, actual.id)) {
+            conflict("This Actual is already Reconciled; un-Reconcile it first")
+          }
 
           const linked =
             body.plannedKind === "occurrence"
@@ -159,12 +152,9 @@ export function reconcileRoutes(db: Db) {
             .returning()
           if (!updated) throw new Error("Reconciling the Actual wrote nothing")
           return {
-            occurrences: "occurrence" in linked ? [occurrenceToRow(linked.occurrence)] : [],
+            occurrences: linked.occurrences,
             deletedOccurrences: [],
-            transactions: [
-              ...("planned" in linked ? [transactionToRow(linked.planned)] : []),
-              transactionToRow(updated),
-            ],
+            transactions: [...linked.planned, transactionToRow(updated)],
           }
         })
         .catch(raced)
@@ -186,11 +176,7 @@ export function reconcileRoutes(db: Db) {
           .where(eq(financesOccurrences.reconciledTransactionId, actualId))
           .for("update")
         if (occurrence) {
-          const overridden =
-            occurrence.overrideAmountCents !== null ||
-            occurrence.overrideDate !== null ||
-            occurrence.skipped
-          if (overridden) {
+          if (hasOverride(occurrence)) {
             // Back to outstanding with the override it had before.
             const [unlinked] = await tx
               .update(financesOccurrences)

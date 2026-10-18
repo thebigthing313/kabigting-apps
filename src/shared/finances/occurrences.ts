@@ -114,9 +114,12 @@ export function overrideFor(
     overrideDate: edit.date === nominalDate ? null : edit.date,
     skipped: edit.skipped,
   }
-  const untouched =
-    override.overrideAmountCents === null && override.overrideDate === null && !override.skipped
-  return untouched ? null : override
+  return hasOverride(override) ? override : null
+}
+
+/** True when a person changed the Occurrence's amount or date, or skipped it. */
+export function hasOverride(row: OccurrenceOverride): boolean {
+  return row.overrideAmountCents !== null || row.overrideDate !== null || row.skipped
 }
 
 /**

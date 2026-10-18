@@ -397,6 +397,32 @@ describe("unreconcile", () => {
   })
 })
 
+function patch(id: string, body: unknown) {
+  return server.app.request(`/api/finances/transactions/${id}`, json("PATCH", body, headers))
+}
+
+describe("a Reconciled Actual", () => {
+  test("stays in its Wallet, but its amount, date and labels can change", async () => {
+    const walletId = await newWallet()
+    const otherWallet = await newWallet()
+    const schedule = await rent(walletId)
+    const actual = await transaction(walletId, "actual")
+    const oneOffActual = await transaction(walletId, "actual")
+    const oneOff = await transaction(walletId, "planned")
+    await reconcileOccurrence(schedule.id, "2026-11-01", actual.id)
+    await reconcileOneOff(oneOff.id, oneOffActual.id)
+
+    for (const id of [actual.id, oneOffActual.id, oneOff.id]) {
+      await expectStatus(await patch(id, { walletId: otherWallet }), 409, "conflict")
+    }
+    const changed = await patch(actual.id, { amountCents: -149_000, walletId, note: "Paid" })
+    expect(changed.status).toBe(200)
+    // Un-Reconciled, it can move.
+    await unreconcile(actual.id)
+    expect((await patch(actual.id, { walletId: otherWallet })).status).toBe(200)
+  })
+})
+
 describe("access", () => {
   test("both commands need Finances access, which the Admin holds", async () => {
     const walletId = await newWallet()

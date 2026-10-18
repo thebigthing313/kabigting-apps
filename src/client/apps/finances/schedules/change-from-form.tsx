@@ -300,7 +300,9 @@ export function ChangeFromForm({
         </form.Subscribe>
 
         <form.Subscribe
-          selector={(state) => [state.isSubmitting, changeOf(state.values).blocking.length > 0]}
+          selector={(state) =>
+            [state.isSubmitting, changeOf(state.values).blocking.length > 0] as const
+          }
         >
           {([isSubmitting, blocked]) => (
             <Button type="submit" className="h-11 self-start" disabled={isSubmitting || blocked}>
