@@ -34,7 +34,7 @@ import { MAX_QUERY_IDS } from "#shared/schemas/query.ts"
 type ScheduleRecord = typeof financesSchedules.$inferSelect
 type OccurrenceRecord = typeof financesOccurrences.$inferSelect
 
-function toRow(schedule: ScheduleRecord): ScheduleRow {
+export function toScheduleRow(schedule: ScheduleRecord): ScheduleRow {
   return {
     id: schedule.id,
     walletId: schedule.walletId,
@@ -160,7 +160,7 @@ export function scheduleRoutes(db: Db) {
         )
         .orderBy(asc(financesSchedules.id))
         .limit(limit ?? MAX_QUERY_IDS)
-      return c.json({ rows: schedules.map(toRow) })
+      return c.json({ rows: schedules.map(toScheduleRow) })
     })
     .post("/", validate("json", createSchedule), async (c) => {
       // The client supplies the id; an existing id is a conflict, never an overwrite.
@@ -171,7 +171,7 @@ export function scheduleRoutes(db: Db) {
         .returning()
         .catch(refused)
       if (!schedule) throw new ApiError("conflict", "A Schedule with this id already exists")
-      return c.json(toRow(schedule), 201)
+      return c.json(toScheduleRow(schedule), 201)
     })
     .patch("/:id", validate("param", params), validate("json", updateSchedule), async (c) => {
       const scheduleId = c.req.valid("param").id
@@ -188,7 +188,7 @@ export function scheduleRoutes(db: Db) {
           return updated
         })
         .catch(refused)
-      return schedule ? c.json(toRow(schedule)) : notFound()
+      return schedule ? c.json(toScheduleRow(schedule)) : notFound()
     })
     .post(
       "/:id/change-from",
@@ -238,7 +238,7 @@ export function scheduleRoutes(db: Db) {
               )
               .returning()
             return {
-              schedules: [ended, successor].map(toRow),
+              schedules: [ended, successor].map(toScheduleRow),
               occurrences: moved.map(occurrenceToRow),
               deletedOccurrences: deleted,
             }
@@ -266,7 +266,7 @@ export function scheduleRoutes(db: Db) {
             .where(eq(financesSchedules.id, schedule.id))
             .returning()
           if (!ended) throw new Error("Ending the Schedule wrote nothing")
-          return { schedules: [toRow(ended)], occurrences: [], deletedOccurrences: deleted }
+          return { schedules: [toScheduleRow(ended)], occurrences: [], deletedOccurrences: deleted }
         })
         .catch(refused)
       return c.json(result)
@@ -302,6 +302,6 @@ export function scheduleRoutes(db: Db) {
         }
         return deleted
       })
-      return schedule ? c.json(toRow(schedule)) : notFound()
+      return schedule ? c.json(toScheduleRow(schedule)) : notFound()
     })
 }

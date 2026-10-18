@@ -52,8 +52,12 @@ export const AVERAGE_MONTHS = 12
 
 const UNCATEGORISED = "Uncategorised"
 
-/** A merged Category counts under the one it was merged into, following a chain of merges. */
-function mergeTarget(byId: ReadonlyMap<string, SummaryCategory>) {
+/**
+ * Maps a Category id to the one its Actuals count under: a merged Category counts under the one
+ * it was merged into, following a chain of merges. Uncategorised (null) stays null.
+ */
+export function countedUnder(categories: readonly SummaryCategory[]) {
+  const byId = new Map(categories.map((category) => [category.id, category]))
   return (id: string | null): string | null => {
     let current = id
     const seen = new Set<string>()
@@ -82,6 +86,24 @@ function figures(nets: Iterable<number>): Figures {
 }
 
 /**
+ * The Actuals that count (ignored lines and Planned rows never do), the first month with any of
+ * them, and the months before `month` that its average covers: the 12 before it, from the first
+ * month on. The average divides by their number, at least 1.
+ */
+function averageWindow(actuals: readonly SummaryActual[], month: string) {
+  const counted = actuals.filter((row) => row.status === "actual" && !row.ignored)
+  const firstMonth = counted.reduce<string | null>((first, row) => {
+    const rowMonth = monthOfDate(row.date)
+    return first === null || rowMonth < first ? rowMonth : first
+  }, null)
+  const windowStart = shiftMonth(month, -AVERAGE_MONTHS)
+  const averaged = Array.from({ length: AVERAGE_MONTHS }, (_, index) =>
+    shiftMonth(windowStart, index),
+  ).filter((m) => firstMonth !== null && m >= firstMonth)
+  return { counted, firstMonth, windowStart, averaged, divisor: Math.max(1, averaged.length) }
+}
+
+/**
  * The summary for `month` (`YYYY-MM`) from the Actuals in it and the 12 months before it. The 12
  * months before it give the average, which divides by the months among them on or after the first
  * month with any Actual (at least 1). `actuals` may hold older rows too, such as the very first
@@ -92,28 +114,18 @@ export function monthlySummary(
   categories: readonly SummaryCategory[],
   month: string,
 ): MonthlySummary {
-  const counted = actuals.filter((row) => row.status === "actual" && !row.ignored)
-  const firstMonth = counted.reduce<string | null>((first, row) => {
-    const rowMonth = monthOfDate(row.date)
-    return first === null || rowMonth < first ? rowMonth : first
-  }, null)
-
+  const { counted, firstMonth, windowStart, averaged, divisor } = averageWindow(actuals, month)
   const lastMonth = shiftMonth(month, -1)
-  const windowStart = shiftMonth(month, -AVERAGE_MONTHS)
-  const averaged = Array.from({ length: AVERAGE_MONTHS }, (_, index) =>
-    shiftMonth(windowStart, index),
-  ).filter((m) => firstMonth !== null && m >= firstMonth)
-  const divisor = Math.max(1, averaged.length)
 
   // Net per month, per Category (null for Uncategorised).
   const byId = new Map(categories.map((category) => [category.id, category]))
-  const countedUnder = mergeTarget(byId)
+  const under = countedUnder(categories)
   const nets = new Map<string, Map<string | null, number>>()
   for (const row of counted) {
     const rowMonth = monthOfDate(row.date)
     if (rowMonth < windowStart || rowMonth > month) continue
     const byCategory = nets.get(rowMonth) ?? new Map<string | null, number>()
-    const id = countedUnder(row.categoryId)
+    const id = under(row.categoryId)
     byCategory.set(id, (byCategory.get(id) ?? 0) + row.amountCents)
     nets.set(rowMonth, byCategory)
   }
@@ -158,6 +170,38 @@ export function monthlySummary(
       ),
     uncategorised: lines.find((line) => line.categoryId === null) ?? null,
   }
+}
+
+/** One month's net for a Category on its page. */
+export type CategoryBar = { month: string; cents: number }
+
+/** A Category's year: 12 monthly bars ending at its month, and the 12-month average. */
+export type CategoryYear = { bars: CategoryBar[]; averageCents: number }
+
+/**
+ * The 12 monthly nets of one Category (`null` for Uncategorised) ending at `month`, and its
+ * average, the same as the summary's: over the 12 months before `month`, from the household's
+ * first month with Actuals. Pass every Actual, as for `monthlySummary`, with each `categoryId`
+ * already mapped through `countedUnder` when merged Categories should count under their target.
+ */
+export function categoryYear(
+  actuals: readonly SummaryActual[],
+  categoryId: string | null,
+  month: string,
+): CategoryYear {
+  const { counted, windowStart, averaged, divisor } = averageWindow(actuals, month)
+  const nets = new Map<string, number>()
+  for (const row of counted) {
+    const rowMonth = monthOfDate(row.date)
+    if (row.categoryId !== categoryId || rowMonth < windowStart || rowMonth > month) continue
+    nets.set(rowMonth, (nets.get(rowMonth) ?? 0) + row.amountCents)
+  }
+  const bars = Array.from({ length: AVERAGE_MONTHS }, (_, index) => {
+    const barMonth = shiftMonth(month, index - (AVERAGE_MONTHS - 1))
+    return { month: barMonth, cents: nets.get(barMonth) ?? 0 }
+  })
+  const total = averaged.reduce((sum, m) => sum + (nets.get(m) ?? 0), 0)
+  return { bars, averageCents: roundHalfUp(total / divisor) }
 }
 
 /**

@@ -1,5 +1,7 @@
 import { describe, expect, test } from "vitest"
 import {
+  categoryYear,
+  countedUnder,
   isFarOverAverage,
   monthlySummary,
   summaryMonths,
@@ -208,6 +210,67 @@ describe("monthlySummary", () => {
 
     expect(summary.spending.map((line) => line.name)).toEqual(["Shopping", "Groceries"])
     expect(summary.income.map((line) => line.name)).toEqual(["Refunds", "Paycheck"])
+  })
+})
+
+describe("categoryYear", () => {
+  test("gives 12 monthly bars ending at the month, and the summary's average", () => {
+    const year = categoryYear(
+      [
+        // The household's first Actual, in another Category, places the first month.
+        actual("2026-03-02", 500_000, "Paycheck"),
+        actual("2026-05-10", -6_000, "Groceries"),
+        actual("2026-05-20", 1_000, "Groceries"),
+        actual("2026-08-04", -9_000, "Groceries"),
+        actual("2026-09-01", -12_000, "Groceries"),
+        actual("2026-09-02", -40_000, "Shopping"),
+        actual("2026-09-03", -3_000, "Groceries", { status: "planned" }),
+        actual("2026-09-04", -3_000, "Groceries", { ignored: true }),
+      ],
+      "Groceries",
+      MONTH,
+    )
+
+    expect(year.bars.map((bar) => bar.month)).toEqual([
+      "2025-10",
+      "2025-11",
+      "2025-12",
+      "2026-01",
+      "2026-02",
+      "2026-03",
+      "2026-04",
+      "2026-05",
+      "2026-06",
+      "2026-07",
+      "2026-08",
+      "2026-09",
+    ])
+    expect(year.bars.map((bar) => bar.cents)).toEqual([
+      0, 0, 0, 0, 0, 0, 0, -5_000, 0, 0, -9_000, -12_000,
+    ])
+    // March to August is 6 months since the first Actual: (-5,000 - 9,000) / 6, rounded.
+    expect(year.averageCents).toBe(-2_333)
+  })
+
+  test("Uncategorised is the null Category", () => {
+    const year = categoryYear([actual("2026-09-05", -700, null)], null, MONTH)
+    expect(year.bars.at(-1)).toEqual({ month: MONTH, cents: -700 })
+    expect(year.averageCents).toBe(0)
+  })
+
+  test("Actuals of a merged Category count under its target once mapped by countedUnder", () => {
+    const categories = [
+      category("Groceries"),
+      category("Food", { archived: true, mergedIntoId: "Groceries" }),
+    ]
+    const under = countedUnder(categories)
+    const rows = [actual("2026-09-01", -1_000, "Food"), actual("2026-09-02", -2_000, "Groceries")]
+    const year = categoryYear(
+      rows.map((row) => ({ ...row, categoryId: under(row.categoryId) })),
+      "Groceries",
+      MONTH,
+    )
+    expect(year.bars.at(-1)?.cents).toBe(-3_000)
   })
 })
 
