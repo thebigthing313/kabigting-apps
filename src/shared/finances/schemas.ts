@@ -224,14 +224,15 @@ export const createSchedule = z
   .superRefine(scheduleRules)
 
 /**
- * Only the labels change in place. Terms change from a date, which ends the Schedule and starts a
- * successor, so its history stays true.
+ * Only the labels change in place, and Reopen clears the end date. Terms change from a date, which
+ * ends the Schedule and starts a successor, so its history stays true.
  */
 export const updateSchedule = z
   .strictObject({
     accountId: scheduleFields.accountId,
     categoryId: scheduleFields.categoryId,
     note,
+    endDate: z.null(),
   })
   .partial()
   .refine(atLeastOneField, "Change at least one field")
@@ -249,9 +250,39 @@ export const scheduleRow = z.object({
 export const scheduleQuery = queryBody({})
 export const scheduleRows = rowsResponse(scheduleRow)
 
+/**
+ * Change from a date: the Schedule ends the day before `date`, and a successor carries the new
+ * terms. Its first Occurrence is `startDate`, on or after `date`, and `date` when left out; any
+ * term left out stays as it was. `confirmDeleteOverrides` names the later stored Occurrences the
+ * new terms never fall on, which the person agreed to delete; it must be exactly the ones there are.
+ */
+export const changeScheduleFrom = z.strictObject({
+  date: isoDate,
+  confirmDeleteOverrides: z.array(id).max(1000),
+  changes: z
+    .strictObject({
+      amountCents: scheduleFields.amountCents,
+      unit: scheduleFields.unit,
+      every: scheduleFields.every,
+      startDate: scheduleFields.startDate,
+      endDate: scheduleFields.endDate,
+    })
+    .partial(),
+})
+
+/**
+ * End a Schedule on `endDate`. `confirmDeleteOverrides` names the stored Occurrences after it that
+ * the person agreed to delete; it must be exactly the ones there are.
+ */
+export const endSchedule = z.strictObject({
+  endDate: isoDate,
+  confirmDeleteOverrides: z.array(id).max(1000),
+})
+
 export type CreateSchedule = z.input<typeof createSchedule>
 export type UpdateSchedule = z.infer<typeof updateSchedule>
 export type ScheduleRow = z.infer<typeof scheduleRow>
+export type ChangeScheduleFrom = z.infer<typeof changeScheduleFrom>
 
 // Occurrences: stored only once a person overrides or skips one (or it is Reconciled).
 
@@ -296,3 +327,12 @@ export const occurrenceRows = rowsResponse(occurrenceRow)
 export type CreateOccurrence = z.input<typeof createOccurrence>
 export type UpdateOccurrence = z.infer<typeof updateOccurrence>
 export type OccurrenceRow = z.infer<typeof occurrenceRow>
+
+/** What a Schedule command changed: rows to upsert, and the stored Occurrences it deleted. */
+export const scheduleCommandResult = z.object({
+  schedules: z.array(scheduleRow),
+  occurrences: z.array(occurrenceRow),
+  deletedOccurrences: z.array(id),
+})
+
+export type ScheduleCommandResult = z.infer<typeof scheduleCommandResult>
