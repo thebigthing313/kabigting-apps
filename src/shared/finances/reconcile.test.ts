@@ -6,6 +6,7 @@ import {
   reconcilableTo,
   reviewSuggestion,
   suggestMatches,
+  suggestTransferHalf,
 } from "./reconcile.ts"
 
 const CHECKING = "wallet-checking"
@@ -306,5 +307,103 @@ describe("reviewSuggestion", () => {
         handEntered: [actual("uploaded", { source: "ofx" })],
       }),
     ).toBeNull()
+  })
+})
+
+/** A made-up card payment, from Checking to the card, whose Checking line has arrived. */
+function waitingTransfer(
+  id: string,
+  changes: Partial<{
+    status: "planned" | "actual"
+    date: string
+    amountCents: number
+    fromWalletId: string
+    toWalletId: string
+    fromSource: "manual" | "ofx" | "access" | null
+    toSource: "manual" | "ofx" | "access" | null
+    ignored: boolean
+  }> = {},
+) {
+  return {
+    id,
+    status: "actual" as const,
+    date: "2026-03-10",
+    amountCents: 25_000,
+    fromWalletId: CHECKING,
+    toWalletId: CARD,
+    fromSource: "ofx" as const,
+    toSource: null,
+    ignored: false,
+    ...changes,
+  }
+}
+
+/** The card's own line for that payment: money into the card. */
+const CARD_LINE = { walletId: CARD, date: "2026-03-12", amountCents: 25_000 }
+
+describe("suggestTransferHalf", () => {
+  test("finds the Actual Transfer waiting for this Wallet's side, for the amount, within 7 days", () => {
+    for (const date of ["2026-03-05", "2026-03-12", "2026-03-19"]) {
+      expect(suggestTransferHalf(CARD_LINE, [waitingTransfer("payment", { date })])?.id).toBe(
+        "payment",
+      )
+    }
+  })
+
+  test("a line out of the from Wallet is the other half of one whose to side arrived", () => {
+    const transfer = waitingTransfer("payment", { fromSource: null, toSource: "ofx" })
+    const checkingLine = { walletId: CHECKING, date: "2026-03-10", amountCents: -25_000 }
+    expect(suggestTransferHalf(checkingLine, [transfer])?.id).toBe("payment")
+  })
+
+  test("passes over other amounts, dates further off, the arrived side's Wallet and the wrong way", () => {
+    const others = [
+      waitingTransfer("a-cent-off", { amountCents: 25_001 }),
+      waitingTransfer("eight-days-before", { date: "2026-03-04" }),
+      waitingTransfer("eight-days-after", { date: "2026-03-20" }),
+      waitingTransfer("card-side-arrived", { fromSource: null, toSource: "ofx" }),
+      waitingTransfer("other-wallets", { fromWalletId: "savings", toWalletId: CHECKING }),
+    ]
+    expect(suggestTransferHalf(CARD_LINE, others)).toBeUndefined()
+    const purchase = { ...CARD_LINE, amountCents: -25_000 }
+    expect(suggestTransferHalf(purchase, [waitingTransfer("payment")])).toBeUndefined()
+  })
+
+  test("passes over Transfers not waiting: both sides in, by hand, Planned or ignored", () => {
+    const others = [
+      waitingTransfer("both-arrived", { toSource: "ofx" }),
+      waitingTransfer("by-hand", { fromSource: "manual", toSource: "manual" }),
+      waitingTransfer("planned", { status: "planned", fromSource: null }),
+      waitingTransfer("ignored", { ignored: true }),
+    ]
+    expect(suggestTransferHalf(CARD_LINE, others)).toBeUndefined()
+  })
+
+  test("picks the closest date", () => {
+    const transfers = [
+      waitingTransfer("far", { date: "2026-03-06" }),
+      waitingTransfer("near", { date: "2026-03-11" }),
+    ]
+    expect(suggestTransferHalf(CARD_LINE, transfers)?.id).toBe("near")
+  })
+})
+
+describe("reviewSuggestion with Transfers", () => {
+  test("the other side of a waiting Transfer comes before a Planned match", () => {
+    const suggestion = reviewSuggestion(CARD_LINE, {
+      outstanding: [planned("refund", { walletId: CARD, amountCents: 25_000 })],
+      handEntered: [],
+      transfers: [waitingTransfer("payment")],
+    })
+    expect(suggestion).toMatchObject({ kind: "transfer", transfer: { id: "payment" } })
+  })
+
+  test("a hand-entry twin still comes first", () => {
+    const suggestion = reviewSuggestion(CARD_LINE, {
+      outstanding: [],
+      handEntered: [actual("twin", { walletId: CARD, amountCents: 25_000, date: "2026-03-12" })],
+      transfers: [waitingTransfer("payment")],
+    })
+    expect(suggestion).toMatchObject({ kind: "twin", handEntry: { id: "twin" } })
   })
 })

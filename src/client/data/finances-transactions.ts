@@ -400,6 +400,33 @@ export async function markLinesReviewed(ids: readonly string[]): Promise<boolean
 }
 
 /**
+ * The Actual was money moved to or from another Wallet: it becomes an Actual Transfer. An
+ * uploaded line keys its own side, and the other side waits for that Wallet's line.
+ */
+export function markAsTransfer(actualId: string, otherWalletId: string): Promise<boolean> {
+  return reconcileCommand(async () =>
+    readJson(
+      await api.finances.transactions[":id"]["mark-transfer"].$post({
+        param: { id: actualId },
+        json: { otherWalletId },
+      }),
+    ),
+  )
+}
+
+/** The uploaded line is the Transfer's missing side: it joins the Transfer and goes. */
+export function pairTransferSide(transferId: string, lineId: string): Promise<boolean> {
+  return reconcileCommand(async () =>
+    readJson(
+      await api.finances.transfers[":id"].pair.$post({
+        param: { id: transferId },
+        json: { actualId: lineId },
+      }),
+    ),
+  )
+}
+
+/**
  * The uploaded line repeats a hand-entered Actual: the line stays with the hand entry's Account,
  * Category, note and Reconcile, and the hand entry goes.
  */

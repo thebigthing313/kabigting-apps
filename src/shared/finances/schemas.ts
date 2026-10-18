@@ -602,5 +602,17 @@ export const markReviewed = z.strictObject({ ids: z.array(id).min(1).max(MAX_QUE
  */
 export const sameAsHandEntry = z.strictObject({ handEntryId: id })
 
+// Transfer halves: a Transfer seen from both Wallets, such as a card payment in the checking file
+// and in the card file, stays one Transfer.
+
+/**
+ * The Actual was money moved to or from `otherWalletId`: it becomes an Actual Transfer. An
+ * uploaded line keys its own side, and the other side waits for that Wallet's line.
+ */
+export const markTransfer = z.strictObject({ otherWalletId: id })
+
+/** The uploaded line is the Transfer's missing side: its key moves onto that side and it goes. */
+export const pairTransfer = z.strictObject({ actualId: id })
+
 export type Reconcile = z.infer<typeof reconcile>
 export type ReconcileResult = z.infer<typeof reconcileResult>

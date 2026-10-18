@@ -292,7 +292,10 @@ These are pure functions, tested with unit tests on made-up data. Dates go throu
   - `findHandEntryTwin(line, handEntered)` checks for the same Wallet, the exact amount, within ±3
     days, and no key on the hand-entered Actual.
   - `suggestTransferHalf(line, transfers)` looks for an Actual Transfer on the other Wallet with
-    one side missing, the same absolute amount, and a date within ±7 days.
+    one side missing, the same absolute amount, and a date within ±7 days. The missing side is
+    the line's Wallet, and the line moves it the Transfer's way (money into the to Wallet, out of
+    the from Wallet). The closest date wins. In To review a hand-entry twin comes first, then a
+    Transfer half, then a Planned match. (Details settled for #52.)
 - **`summary.ts`**: `monthlySummary(actuals, categories, month)` covers the month M and the 12
   months before it.
   - Per Category plus Uncategorised, it gives the month's net, last month's net and the 12-month
@@ -371,9 +374,23 @@ grouped by collection:
     note, falling back to its own where the hand entry has none. It sets `reviewedAt`.
   - The hand entry is deleted. The result has the same shape as `/reconcile`'s.
 - `POST /transactions/:id/mark-transfer` with `{ otherWalletId }`: converts the Actual into an
-  Actual Transfer with one side keyed.
+  Actual Transfer with one side keyed. (Details settled for #52.)
+  - Money out of the Actual's Wallet goes to `otherWalletId`; money in comes from it. The amount
+    is the absolute amount, the date, Account and note carry over, and there is no Category.
+  - An imported line's key, source and bank description move to its own side; the other side
+    stays empty, waiting for that Wallet's line. A hand-entered Actual becomes a hand-entered
+    Actual Transfer (`manual` on both sides), which waits for nothing.
+  - It refuses a Planned row, an ignored line, its own Wallet or an unknown one
+    (`validation_failed`), and a Reconciled Actual (409). The Transaction row is deleted, and the
+    result has the same shape as `/reconcile`'s.
 - `POST /transfers/:id/pair` with `{ actualId }`: moves that Actual's key onto the Transfer's
-  missing side and deletes the Actual.
+  missing side and deletes the Actual. (Details settled for #52.)
+  - It checks the rule again with `suggestTransferHalf`: the Transfer is an Actual waiting for
+    its other side, and the Actual is an imported line that isn't ignored, in the missing side's
+    Wallet, moving it by the Transfer's amount the same way, within ±7 days. Otherwise it refuses
+    with `validation_failed`. A Reconciled line is refused with 409.
+  - The Transfer keeps its amount and date, and takes the line's Account and note only where it
+    has none. The result has the same shape as `/reconcile`'s.
 - `POST /schedules/:id/change-from` with `{ date, changes, confirmDeleteOverrides: string[] }`:
   ends the Schedule on `date − 1` and creates the successor with `predecessorId`. Stored
   Occurrences dated on or after `date` (by nominal date) that aren't Reconciled move to the

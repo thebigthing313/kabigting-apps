@@ -47,9 +47,9 @@ export async function uploadStatement(
 }
 
 /**
- * Marks the new lines with no Planned match and no hand-entry twin reviewed, so only those with a
- * suggestion wait in To review. Returns how many wait. If this fails, every new line waits, each
- * still with Unplanned to clear it.
+ * Marks the new lines with no Planned match, no hand-entry twin and no Transfer they are the other
+ * side of reviewed, so only those with a suggestion wait in To review. Returns how many wait. If
+ * this fails, every new line waits, each still with Unplanned to clear it.
  */
 async function sortForReview(walletId: string, lines: readonly TransactionRow[]): Promise<number> {
   // Every suggestion is dated within a week of its line.
@@ -57,19 +57,23 @@ async function sortForReview(walletId: string, lines: readonly TransactionRow[])
   if (range === null) return 0
   const inRange = { walletId, dateFrom: range.from, dateTo: range.to }
   try {
-    const [schedules, occurrences, planned, plannedTransfers, actuals] = await Promise.all([
-      api.finances.schedules.query.$post({ json: {} }).then(readJson),
-      api.finances.occurrences.query.$post({ json: {} }).then(readJson),
-      api.finances.transactions.query
-        .$post({ json: { ...inRange, status: "planned" } })
-        .then(readJson),
-      api.finances.transfers.query
-        .$post({ json: { ...inRange, status: "planned" } })
-        .then(readJson),
-      api.finances.transactions.query
-        .$post({ json: { ...inRange, status: "actual" } })
-        .then(readJson),
-    ])
+    const [schedules, occurrences, planned, plannedTransfers, actuals, transfers] =
+      await Promise.all([
+        api.finances.schedules.query.$post({ json: {} }).then(readJson),
+        api.finances.occurrences.query.$post({ json: {} }).then(readJson),
+        api.finances.transactions.query
+          .$post({ json: { ...inRange, status: "planned" } })
+          .then(readJson),
+        api.finances.transfers.query
+          .$post({ json: { ...inRange, status: "planned" } })
+          .then(readJson),
+        api.finances.transactions.query
+          .$post({ json: { ...inRange, status: "actual" } })
+          .then(readJson),
+        api.finances.transfers.query
+          .$post({ json: { ...inRange, status: "actual" } })
+          .then(readJson),
+      ])
     const outstanding = outstandingPlanned({
       walletId,
       schedules: schedules.rows,
@@ -78,7 +82,7 @@ async function sortForReview(walletId: string, lines: readonly TransactionRow[])
       plannedTransfers: plannedTransfers.rows,
       range,
     })
-    const candidates = { outstanding, handEntered: actuals.rows }
+    const candidates = { outstanding, handEntered: actuals.rows, transfers: transfers.rows }
     const unplanned = lines.filter((line) => reviewSuggestion(line, candidates) === null)
     if (unplanned.length > 0 && !(await markLinesReviewed(unplanned.map((line) => line.id)))) {
       return lines.length

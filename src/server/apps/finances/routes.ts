@@ -7,6 +7,7 @@ import { reviewRoutes } from "#server/apps/finances/review.ts"
 import { scheduleRoutes } from "#server/apps/finances/schedules.ts"
 import { settingsRoutes } from "#server/apps/finances/settings.ts"
 import { transactionRoutes } from "#server/apps/finances/transactions.ts"
+import { transferHalfRoutes } from "#server/apps/finances/transfer-halves.ts"
 import { transferRoutes } from "#server/apps/finances/transfers.ts"
 import { uploadRoutes } from "#server/apps/finances/uploads.ts"
 import type { Deps } from "#server/core/context.ts"
@@ -28,4 +29,5 @@ export function financesRoutes(deps: Deps) {
     .route("/transfers", transferRoutes(deps.db))
     .route("/uploads", uploadRoutes(deps.db))
     .route("/", reconcileRoutes(deps.db))
+    .route("/", transferHalfRoutes(deps.db))
 }

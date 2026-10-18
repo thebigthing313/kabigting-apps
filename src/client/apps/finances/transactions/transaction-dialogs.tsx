@@ -6,6 +6,7 @@ import {
   reconcileBody,
   SuggestedMatches,
 } from "@/apps/finances/transactions/reconcile-choices"
+import { MarkTransferSection } from "@/apps/finances/transactions/mark-transfer"
 import { TransactionForm } from "@/apps/finances/transactions/transaction-form"
 import {
   AlertDialog,
@@ -240,6 +241,9 @@ export function EditActivityDialog({
                 wallet={wallet ?? { shownAsOwed: false }}
                 onDone={onClose}
               />
+            ) : null}
+            {shown.kind === "transaction" && shown.row.status === "actual" ? (
+              <MarkTransferSection actual={shown.row} onDone={onClose} />
             ) : null}
             <Button
               variant="outline"

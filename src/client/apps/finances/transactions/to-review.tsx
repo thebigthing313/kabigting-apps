@@ -7,29 +7,45 @@ import {
   reconcileBody,
   useOutstandingPlanned,
 } from "@/apps/finances/transactions/reconcile-choices"
-import { categoryLabel, transactionLabel } from "@/apps/finances/transactions/transaction-display"
+import {
+  categoryLabel,
+  transactionLabel,
+  transferLabel,
+} from "@/apps/finances/transactions/transaction-display"
 import { Button } from "@/components/ui/button"
 import { useFinancesAccounts } from "@/data/finances-accounts"
 import { useCategories } from "@/data/finances-categories"
 import {
   confirmSameAsHandEntry,
   markLinesReviewed,
+  pairTransferSide,
   reconcileActual,
   type Transaction,
   useWalletActualsBetween,
 } from "@/data/finances-transactions"
-import type { Wallet } from "@/data/finances-wallets"
+import { type Transfer, useActualTransfersBetween } from "@/data/finances-transfers"
+import { useWallets, type Wallet } from "@/data/finances-wallets"
 import { formatDisplayDate } from "@shared/dates"
-import { datesAround, reviewSuggestion, TWIN_WINDOW_DAYS } from "@shared/finances/reconcile"
+import {
+  datesAround,
+  MATCH_WINDOW_DAYS,
+  reviewSuggestion,
+  TWIN_WINDOW_DAYS,
+} from "@shared/finances/reconcile"
+import { onlySideArrived } from "@shared/finances/transfers"
 import { toShown } from "@shared/finances/wallets"
 import { format } from "@shared/money"
 
-type Names = { account: ReadonlyMap<string, string>; category: ReadonlyMap<string, string> }
+type Names = {
+  account: ReadonlyMap<string, string>
+  category: ReadonlyMap<string, string>
+  wallet: ReadonlyMap<string, string>
+}
 
 /**
  * To review: a Wallet's uploaded lines that had a suggestion when they arrived. Each shows its
- * best suggestion (a hand entry it repeats, else a suggested Planned item) with Confirm, Pick another and
- * Unplanned. Hidden when nothing waits.
+ * best suggestion (a hand entry it repeats, else the Transfer it is the other side of, else a
+ * suggested Planned item) with Confirm, Pick another and Unplanned. Hidden when nothing waits.
  */
 export function ToReviewPanel({
   wallet,
@@ -39,11 +55,14 @@ export function ToReviewPanel({
   lines: readonly Transaction[]
 }) {
   const handEntered = useWalletActualsBetween(wallet.id, datesAround(lines, TWIN_WINDOW_DAYS))
+  const transfers = useActualTransfersBetween(wallet.id, datesAround(lines, MATCH_WINDOW_DAYS))
   const { data: accounts } = useFinancesAccounts()
   const { data: categories } = useCategories()
+  const { data: wallets } = useWallets()
   const names: Names = {
     account: new Map(accounts.map((account) => [account.id, account.name])),
     category: new Map(categories.map((category) => [category.id, category.name])),
+    wallet: new Map(wallets.map((each) => [each.id, each.name])),
   }
   if (lines.length === 0) return null
   return (
@@ -58,6 +77,7 @@ export function ToReviewPanel({
             line={line}
             wallet={wallet}
             handEntered={handEntered}
+            transfers={transfers}
             names={names}
           />
         ))}
@@ -70,15 +90,17 @@ function ReviewItem({
   line,
   wallet,
   handEntered,
+  transfers,
   names,
 }: {
   line: Transaction
   wallet: Wallet
   handEntered: readonly Transaction[]
+  transfers: readonly Transfer[]
   names: Names
 }) {
   const outstanding = useOutstandingPlanned(wallet.id, line.date)
-  const suggestion = reviewSuggestion(line, { outstanding, handEntered })
+  const suggestion = reviewSuggestion(line, { outstanding, handEntered, transfers })
   const [picking, setPicking] = useState(false)
   const [pending, setPending] = useState(false)
   const shown = toShown(wallet, line.amountCents)
@@ -96,6 +118,8 @@ function ReviewItem({
         () => confirmSameAsHandEntry(line.id, suggestion.handEntry.id),
         "Kept the uploaded line",
       )
+    } else if (suggestion?.kind === "transfer") {
+      void run(() => pairTransferSide(suggestion.transfer.id, line.id), "Joined to the Transfer")
     } else if (suggestion?.kind === "planned") {
       void run(() => reconcileActual(reconcileBody(suggestion.item, line.id)), "Reconciled")
     }
@@ -126,6 +150,16 @@ function ReviewItem({
             {transactionLabel(suggestion.handEntry, names.account)} ·{" "}
             {categoryLabel(suggestion.handEntry, names.category)} ·{" "}
             {formatDisplayDate(suggestion.handEntry.date)}
+          </p>
+        </div>
+      ) : suggestion?.kind === "transfer" ? (
+        <div className="rounded-lg bg-muted/50 px-3 py-2 text-sm">
+          <p className="font-medium">
+            Other side of {transferLabel(suggestion.transfer, wallet.id, names.wallet)}?
+          </p>
+          <p className="truncate text-muted-foreground">
+            {arrivedDescription(suggestion.transfer)}
+            {formatDisplayDate(suggestion.transfer.date)}
           </p>
         </div>
       ) : suggestion?.kind === "planned" ? (
@@ -175,4 +209,16 @@ function ReviewItem({
       ) : null}
     </li>
   )
+}
+
+/** The bank's description of the side that already arrived, ready to precede the date. */
+function arrivedDescription(transfer: Transfer): string {
+  const arrived = onlySideArrived(transfer)
+  const description =
+    arrived === "from"
+      ? transfer.fromBankDescription
+      : arrived === "to"
+        ? transfer.toBankDescription
+        : null
+  return description ? `${description} · ` : ""
 }
