@@ -3,6 +3,7 @@ import { cn } from "cn"
 import { EllipsisVerticalIcon, PinIcon } from "lucide-react"
 import { useState } from "react"
 import { toast } from "sonner"
+import { AddButton } from "@/apps/finances/add-button"
 import { AllWallets } from "@/apps/finances/home/all-wallets"
 import { ALL_TAB, openOnHomeTab, selectedTab } from "@/apps/finances/home/home-tab"
 import { WalletForecast } from "@/apps/finances/home/wallet-forecast"
@@ -46,7 +47,8 @@ export function FinancesHome({
   const enterBalance = (id: string) => setEntering({ open: true, walletId: id })
 
   return (
-    <div className="mx-auto flex max-w-3xl flex-col gap-4 pb-8">
+    // Room at the foot for the + button.
+    <div className="mx-auto flex max-w-3xl flex-col gap-4 pb-24">
       <h1 className="text-2xl font-semibold">Finances</h1>
       {isLoading || settingsLoading ? (
         <Skeleton className="h-64" />
@@ -93,6 +95,7 @@ export function FinancesHome({
         onOpenChange={(open) => setEntering((previous) => ({ ...previous, open }))}
         walletId={entering.walletId}
       />
+      <AddButton walletId={selected?.id} />
     </div>
   )
 }

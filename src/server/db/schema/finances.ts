@@ -6,6 +6,7 @@ import {
   boolean,
   check,
   date,
+  index,
   integer,
   pgTable,
   text,
@@ -147,8 +148,10 @@ export const financesOccurrences = pgTable(
     overrideAmountCents: bigint({ mode: "number" }),
     overrideDate: date({ mode: "string" }),
     skipped: boolean().notNull().default(false),
-    // The Transactions and Transfers tables come with hand entry, and these foreign keys with them.
-    reconciledTransactionId: uuid().unique("finances_occurrences_reconciled_transaction_unique"),
+    reconciledTransactionId: uuid()
+      .unique("finances_occurrences_reconciled_transaction_unique")
+      .references((): AnyPgColumn => financesTransactions.id),
+    // The Transfers table comes with Transfers by hand, and this foreign key with it.
     reconciledTransferId: uuid().unique("finances_occurrences_reconciled_transfer_unique"),
     ...timestamps(),
   },
@@ -165,6 +168,60 @@ export const financesOccurrences = pgTable(
     check(
       "finances_occurrences_one_link",
       sql`${table.reconciledTransactionId} is null or ${table.reconciledTransferId} is null`,
+    ),
+  ],
+)
+
+/**
+ * A row of money in or out of one Wallet: Planned (a one-off entered by hand) or Actual (entered
+ * by hand or imported). Signed cents, money out negative.
+ */
+export const financesTransactions = pgTable(
+  "finances_transactions",
+  {
+    id: idColumn(),
+    status: text({ enum: ["planned", "actual"] }).notNull(),
+    walletId: uuid()
+      .notNull()
+      .references(() => financesWallets.id),
+    date: date({ mode: "string" }).notNull(),
+    amountCents: bigint({ mode: "number" }).notNull(),
+    accountId: uuid().references(() => financesAccounts.id),
+    categoryId: uuid().references(() => financesCategories.id),
+    note: text().notNull().default(""),
+    bankDescription: text(),
+    /** Where an Actual came from; null on a Planned row. */
+    source: text({ enum: ["manual", "ofx", "access"] }),
+    /** The FITID, a content hash or the old id; null on hand-entered rows. */
+    sourceKey: text(),
+    /** An imported Actual a person deleted: kept, so a re-upload does not add it again. */
+    ignored: boolean().notNull().default(false),
+    /** When a person resolved its To review entry. */
+    reviewedAt: timestamp({ withTimezone: true }),
+    /** Set on a one-off Planned row once it is Reconciled to this Actual. */
+    reconciledActualId: uuid()
+      .unique("finances_transactions_reconciled_actual_unique")
+      .references((): AnyPgColumn => financesTransactions.id),
+    ...timestamps(),
+  },
+  (table) => [
+    uniqueIndex("finances_transactions_source_key_unique")
+      .on(table.walletId, table.source, table.sourceKey)
+      .where(sql`${table.sourceKey} is not null`),
+    index("finances_transactions_wallet_date").on(table.walletId, table.date),
+    check("finances_transactions_status", sql`${table.status} in ('planned', 'actual')`),
+    check(
+      "finances_transactions_source",
+      sql`${table.source} is null or ${table.source} in ('manual', 'ofx', 'access')`,
+    ),
+    // Only an Actual came from somewhere, can be ignored or be the target of a Reconcile.
+    check(
+      "finances_transactions_planned_has_no_source",
+      sql`${table.status} = 'actual' or (${table.source} is null and ${table.sourceKey} is null and not ${table.ignored})`,
+    ),
+    check(
+      "finances_transactions_only_planned_reconciles",
+      sql`${table.reconciledActualId} is null or ${table.status} = 'planned'`,
     ),
   ],
 )

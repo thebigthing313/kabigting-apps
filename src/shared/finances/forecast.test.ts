@@ -54,6 +54,23 @@ function stored(
   }
 }
 
+/** A made-up outstanding one-off bill of $1.00 on Checking. */
+function oneOff(id: string, date: string): ForecastInput["planned"][number] {
+  return { id, walletId: CHECKING, date, amountCents: -100, reconciledActualId: null }
+}
+
+/** A made-up outstanding one-off Transfer of $10.00 from Savings into Checking. */
+function transferIn(id: string, date: string): ForecastInput["plannedTransfers"][number] {
+  return {
+    id,
+    fromWalletId: SAVINGS,
+    toWalletId: CHECKING,
+    date,
+    amountCents: 1_000,
+    reconciledActualId: null,
+  }
+}
+
 function balanceOn(result: ReturnType<typeof forecast>, date: string) {
   return result?.days.find((day) => day.date === date)?.balanceCents
 }
@@ -267,6 +284,46 @@ describe("one-off Planned items", () => {
         { kind: "planned", id: "p2", date: "2026-03-12", amountCents: 2_000, overdue: false },
       ],
     })
+  })
+
+  test("Overdue ones dated on or before the Balance check are taken as already in it", () => {
+    // The check is on Mar 5: Mar 4 and Mar 5 are in it, Mar 6 is not.
+    const result = forecast(
+      input({
+        latestCheck: { date: "2026-03-05", amountCents: 100_000 },
+        planned: [
+          oneOff("p1", "2026-03-04"),
+          oneOff("p2", "2026-03-05"),
+          oneOff("p3", "2026-03-06"),
+        ],
+      }),
+    )
+    expect(result?.days[0]?.items).toEqual([
+      { kind: "planned", id: "p3", date: "2026-03-06", amountCents: -100, overdue: true },
+    ])
+    expect(result?.days[0]?.balanceCents).toBe(99_900)
+  })
+
+  test("upcoming ones count even when the Balance check is dated ahead of them", () => {
+    const result = forecast(
+      input({
+        latestCheck: { date: "2026-03-12", amountCents: 100_000 },
+        planned: [oneOff("p1", "2026-03-11")],
+      }),
+    )
+    expect(balanceOn(result, "2026-03-11")).toBe(99_900)
+  })
+
+  test("Overdue Transfers dated on or before the Balance check are left out too", () => {
+    const result = forecast(
+      input({
+        latestCheck: { date: "2026-03-05", amountCents: 100_000 },
+        plannedTransfers: [transferIn("t1", "2026-03-05"), transferIn("t2", "2026-03-06")],
+      }),
+    )
+    expect(result?.days[0]?.items).toEqual([
+      { kind: "plannedTransfer", id: "t2", date: "2026-03-06", amountCents: 1_000, overdue: true },
+    ])
   })
 
   test("Transfers move money out of the from Wallet and into the to Wallet", () => {

@@ -1,6 +1,6 @@
 {
-  "id": "66c4e7d5-9b35-46e5-bc54-92a4e8f54af5",
-  "prevId": "e770abe5-d150-4b82-93d5-95c2b846d839",
+  "id": "07ab2c55-c000-4943-8ae9-63b69cb662ef",
+  "prevId": "dd805885-827d-421c-8689-5bd9bb2e156b",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -843,6 +843,19 @@
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
+        },
+        "finances_occurrences_reconciled_transaction_id_finances_transactions_id_fk": {
+          "name": "finances_occurrences_reconciled_transaction_id_finances_transactions_id_fk",
+          "tableFrom": "finances_occurrences",
+          "tableTo": "finances_transactions",
+          "columnsFrom": [
+            "reconciled_transaction_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -1121,6 +1134,248 @@
         "finances_settings_household": {
           "name": "finances_settings_household",
           "value": "\"finances_settings\".\"id\" = 'household'"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.finances_transactions": {
+      "name": "finances_transactions",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "uuidv7()"
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "wallet_id": {
+          "name": "wallet_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "date": {
+          "name": "date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "amount_cents": {
+          "name": "amount_cents",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "account_id": {
+          "name": "account_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "category_id": {
+          "name": "category_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "note": {
+          "name": "note",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "''"
+        },
+        "bank_description": {
+          "name": "bank_description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "source": {
+          "name": "source",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "source_key": {
+          "name": "source_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "ignored": {
+          "name": "ignored",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "reviewed_at": {
+          "name": "reviewed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "reconciled_actual_id": {
+          "name": "reconciled_actual_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "finances_transactions_source_key_unique": {
+          "name": "finances_transactions_source_key_unique",
+          "columns": [
+            {
+              "expression": "wallet_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "source",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "source_key",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"finances_transactions\".\"source_key\" is not null",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "finances_transactions_wallet_date": {
+          "name": "finances_transactions_wallet_date",
+          "columns": [
+            {
+              "expression": "wallet_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "date",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "finances_transactions_wallet_id_finances_wallets_id_fk": {
+          "name": "finances_transactions_wallet_id_finances_wallets_id_fk",
+          "tableFrom": "finances_transactions",
+          "tableTo": "finances_wallets",
+          "columnsFrom": [
+            "wallet_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "finances_transactions_account_id_finances_accounts_id_fk": {
+          "name": "finances_transactions_account_id_finances_accounts_id_fk",
+          "tableFrom": "finances_transactions",
+          "tableTo": "finances_accounts",
+          "columnsFrom": [
+            "account_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "finances_transactions_category_id_finances_categories_id_fk": {
+          "name": "finances_transactions_category_id_finances_categories_id_fk",
+          "tableFrom": "finances_transactions",
+          "tableTo": "finances_categories",
+          "columnsFrom": [
+            "category_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "finances_transactions_reconciled_actual_id_finances_transactions_id_fk": {
+          "name": "finances_transactions_reconciled_actual_id_finances_transactions_id_fk",
+          "tableFrom": "finances_transactions",
+          "tableTo": "finances_transactions",
+          "columnsFrom": [
+            "reconciled_actual_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "finances_transactions_reconciled_actual_unique": {
+          "name": "finances_transactions_reconciled_actual_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "reconciled_actual_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "finances_transactions_status": {
+          "name": "finances_transactions_status",
+          "value": "\"finances_transactions\".\"status\" in ('planned', 'actual')"
+        },
+        "finances_transactions_source": {
+          "name": "finances_transactions_source",
+          "value": "\"finances_transactions\".\"source\" is null or \"finances_transactions\".\"source\" in ('manual', 'ofx', 'access')"
+        },
+        "finances_transactions_planned_has_no_source": {
+          "name": "finances_transactions_planned_has_no_source",
+          "value": "\"finances_transactions\".\"status\" = 'actual' or (\"finances_transactions\".\"source\" is null and \"finances_transactions\".\"source_key\" is null and not \"finances_transactions\".\"ignored\")"
+        },
+        "finances_transactions_only_planned_reconciles": {
+          "name": "finances_transactions_only_planned_reconciles",
+          "value": "\"finances_transactions\".\"reconciled_actual_id\" is null or \"finances_transactions\".\"status\" = 'planned'"
         }
       },
       "isRLSEnabled": false
