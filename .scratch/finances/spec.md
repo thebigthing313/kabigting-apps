@@ -69,7 +69,7 @@ of the old database. Tests use made-up data. The Access file and its JSON extrac
 | D22 | Loading: the small collections load eagerly, including `occurrences`. Transactions, Transfers and Balance checks load on demand through each screen's live query. One-off Planned and Actual Transactions share one collection, with a `status` field. ([What data does the client load, and where is the forecast computed?](https://github.com/thebigthing313/kabigting-apps/issues/31)) |
 | D23 | The client computes the Forecast, the Monthly summary and Reconcile suggestions with pure `src/shared` functions. The server parses uploads and de-duplicates them. (#31) |
 | D24 | Debts get no special treatment. Loan and mortgage payments are ordinary spending under Loans and mortgage. ([Does v1 track debts, and how?](https://github.com/thebigthing313/kabigting-apps/issues/28)) |
-| D25 | The import brings all history since 2019, through a local extract and `pnpm finances:import`. The full mapping is in section 8. ([What does the one-time import bring over, and how does it map?](https://github.com/thebigthing313/kabigting-apps/issues/24)) |
+| D25 | The import brings all history since 2019 onto one Wallet, Checking, through a normalised local extract and `pnpm finances:import`. It makes no card Wallets, Transfers or Schedules; the user creates those by hand. The full mapping is in section 8. ([What does the one-time import bring over, and how does it map?](https://github.com/thebigthing313/kabigting-apps/issues/24), amended on [#56](https://github.com/thebigthing313/kabigting-apps/issues/56)) |
 | D26 | The prototype branches `prototype/finances-home` and `prototype/finances-screens` are visual references only and are never merged. Match the picked variants, but don't copy their stub code. (#32) |
 | D27 | Uploads accept `.ofx`, `.qfx` and `.qbo`. All three are OFX with different headers, so one parser reads them. Bank of America and American Express cards offer QBO but not QFX. CSV-only issuers are hand entry in v1. Discover cards are moving to Capital One's site, where file downloads exist. (checked after #32) |
 
@@ -621,92 +621,99 @@ There is no Accounts screen. Accounts are created inline from the Account picker
 ## 8. One-time import
 
 This section holds the full mapping, from
-[What does the one-time import bring over, and how does it map?](https://github.com/thebigthing313/kabigting-apps/issues/24).
-Only counts are ever printed or committed.
+[What does the one-time import bring over, and how does it map?](https://github.com/thebigthing313/kabigting-apps/issues/24)
+as amended by the import decisions on
+[#56](https://github.com/thebigthing313/kabigting-apps/issues/56) (option b, a normalised
+extract). Only counts are ever printed or committed.
 
-**Extract.** `scripts/finances-extract.ps1` reads the Access file read-only and writes every
-table as JSON to `exports/finances-extract/`.
+**Scope.** All history since 2019 comes over as unplanned Actuals on one Wallet, Checking. The
+import makes no card Wallets, no Transfers and no Schedules: the user creates card Wallets and
+recreates the Schedules by hand. Old Schedule names still become Accounts where history uses them.
 
-- It takes the file path as an argument. Never hard-code a local path.
-- It names no data, only the table names it finds.
+**Extract.** `scripts/finances-extract.ps1 <path to the Access file>` opens the file read-only and
+writes neutral JSON to `exports/finances-extract/`.
+
+- It renames the old tables and columns through `scripts/finances-extract.map.json`. That file is
+  git-ignored and filled in locally by the user. Only `scripts/finances-extract.map.example.json`,
+  with placeholder names, is committed. The real table and column names never appear in the repo.
+- It takes the file path as an argument and hard-codes no local path, table or column.
+- It prints only the files it wrote and their row counts.
+- Not extracted: account numbers, URLs, the two-person shares, amortizations, investments,
+  caches, the change log and import errors.
+
+| File | Fields |
+| --- | --- |
+| `categories.json` | `{ id, name }` |
+| `schedules.json` | `{ id, kind: "expense"\|"income", name, categoryId }`, names only |
+| `transactions.json` | `{ id, kind: "expense"\|"income", scheduleId, date, amount, note, pending, posted }`, `amount` unsigned as stored |
+| `ledger.json` | `{ id, isExpense, transactionId \| null, date, payee, amount, categoryId, note, bankDescription, bankDate }`, `amount` is the full figure |
+| `balances.json` | `{ id, enteredAt, amount }` |
+
+The ledger's `transactionId` points into expense transactions when `isExpense` is true, and into
+income transactions when it is false. Amounts are decimal dollars; dates are `YYYY-MM-DD`;
+`enteredAt` is the household's local time, `YYYY-MM-DDTHH:mm:ss`.
 
 **Load.** Run `pnpm finances:import [--dry-run] [--wipe] <extract dir>`.
 
-- It writes to `DATABASE_URL`, like `pnpm admin:*`.
-- It refuses when any Finances table has rows, unless `--wipe` is given, which clears Finances
-  first.
+- It writes to `DATABASE_URL`, like `pnpm admin:*`. `--dry-run` writes nothing and needs no
+  database.
+- It refuses when any Finances table has rows (the seeded settings row aside), unless `--wipe` is
+  given, which clears Finances first.
 - The mapping is pure functions in `scripts/finances-import/`, unit-tested on made-up extracts,
   and the write runs in one database transaction.
 
 **Order.** Run on a local database first, then on production after a manual Railway backup
 (section 11).
 
-**Report.** Counts only:
-
-- Rows read and written, per table and per year.
-- Old and new monthly totals per Category, side by side, computed with
-  `src/shared/finances/summary.ts`.
-- How many card rows each branch of the card rule caught, per year.
-- Every skipped row, as a reason and a count.
-
-Any mismatch exits non-zero. There is no balance-equality check.
-
 **Left behind:**
 
-- generated future rows
+- generated future rows (old transactions dated after the import day)
 - amortization rows
 - caches, the change log and the import-error table
 - investments
 - the two-person shares
-- inactive Schedules (their names still become Accounts where history uses them)
+- Schedules (their names still become Accounts where history uses them)
 - account numbers and URLs
 
-**Wallets.** Checking (in the forecast) plus one card Wallet per card (not in the forecast, shown
-as owed).
-
-**Card rows.** Rows under card Schedules are classified one at a time:
-
-- A payment word in the bank description (`ONLINE`, `PAYMENT`, `AUTOPAY`, `TRANSFER` and so on)
-  makes the row an Actual Transfer from Checking to the card, with no Category.
-- Any other description makes it a charge: an Actual on the card.
-- With no description, the row is a payment when it is the only row in its schedule-month, or
-  when it is within max($1, 10%) of the minimum payment. Otherwise it is a charge.
-
-Ledger-only rows that look like card-statement lines go to the card whose lines share an issuer
-word, worked out at run time and never hard-coded. When that is unclear, they go to Checking and
-are listed in the report.
+**Wallet.** Checking, in the forecast, is the only Wallet. Every Actual and Balance check is on it.
 
 **Actuals.**
 
-- A linked ledger row and its old transaction become one Actual:
-  - its date and signed amount from the old transaction (an expense is negative, income positive,
-    and a negative expense becomes money in)
-  - its Category from the ledger row
-  - its note from the old note
-  - its `bankDescription` from the old raw description
-  - `source: 'access'`, with the old id as `sourceKey`
-- Unlinked rows on either side each become an Actual.
-- An old transaction linked from several ledger rows becomes one Actual per ledger row.
-- Stale pending rows come in as ordinary Actuals. Zero-amount rows and the row dated year 425
-  drop.
-- Every imported Actual is unplanned, with `reviewedAt` set.
+- **One per row:** every ledger row becomes one Actual, linked or not. So does every expense or
+  income transaction that no ledger row points to.
+- **Import key:** `source: 'access'`, with `sourceKey` set to `ledger:<id>` for every ledger row,
+  `expense:<id>` for an unlinked expense transaction and `income:<id>` for an unlinked income
+  transaction.
+- **Amount:**
+  - A ledger row uses its own full amount, signed by `isExpense` (an expense is negative).
+  - An unlinked transaction uses its own amount, signed by its kind.
+  - A negative expense becomes money in.
+  - A split transaction therefore comes in as one Actual per ledger row, with that row's amount.
+- **Date:**
+  - The bank posting date (`ledger.bankDate`) when present.
+  - Otherwise the ledger row's own `date`.
+  - Otherwise the linked transaction's `date`.
+  - An unlinked transaction uses its own `date`.
+- **Category:**
+  - A ledger row takes its own `categoryId`.
+  - An unlinked transaction takes its Schedule's `categoryId`.
+  - Both are mapped through the table below. An unmapped old category fails the dry run.
+- **Account:**
+  - The linked Schedule's name when there is one, reached through the transaction's
+    `scheduleId`.
+  - Otherwise the `payee`, when that payee appears on 5 or more rows (trimmed and compared
+    ignoring case).
+  - Otherwise no Account, and the payee text goes into the note.
+- **Note and description:**
+  - The ledger note and the transaction note, joined with " · " when both exist.
+  - `bankDescription` is `ledger.bankDescription`.
+- **Status:** every imported Actual is unplanned, with `reviewedAt` set, so history never lands
+  in To review. Stale pending rows come in as ordinary Actuals. Zero-amount rows and the row dated
+  year 425 drop.
 
-**Accounts.** One per Schedule name used in history, plus any payee name on 5 or more rows. Other
-rows get no Account, and their payee text goes into the note.
-
-**Schedules.** The 35 active ones (an old row in the last 12 months, or a generated future row)
-come over:
-
-- monthly becomes every 1 month, annually every 12 months, bi-weekly every 2 weeks
-- the amount is the minimum payment for expenses, the income amount for income
-- the start date is the old next generated date
-- notes carry over
-- card Schedules become Transfer Schedules from Checking to the card
-- the one active "once only" Schedule becomes a one-off Planned, if its date is still ahead
-
-**Categories.** The 17 below. The import ticket's text says 16, but its table lists 17, and the
-table is what was agreed. Loan payments are spending under Loans and mortgage. Old
-"Credit Cards" rows become Transfers. Rows with no category, and Savings, are Uncategorised.
+**Categories.** The 18 below. Loan payments are spending under Loans and mortgage. Card payments
+is spending too: old "Credit Cards" rows become ordinary Actuals on Checking under it, not
+Transfers. Rows with no category, and Savings, are Uncategorised.
 
 | New Category | Old ones merged in |
 | --- | --- |
@@ -727,12 +734,31 @@ table is what was agreed. Loan payments are spending under Loans and mortgage. O
 | Paycheck | Paycheck |
 | Reimbursements | Reimbursements, Deposits, Freelance, Sales, Selling Stuff, Crossword Income |
 | Tax refund | Tax Refund |
+| Card payments | Credit Cards |
 
 An old category not in this table fails the dry run, and the table is then amended with the
 user.
 
-**Balance checks.** For each day, the last hand-typed balance becomes that day's Balance check on
-Checking, dated in the household zone.
+**Balance checks.** Each day's Balance check on Checking is the last entry for that day. The day
+is the date part of `enteredAt`, read as household time.
+
+**Report.** Counts only:
+
+- Rows read, written and skipped, per table and per year.
+- Old and new monthly totals per Category, side by side. "Old" comes straight from the extract
+  with the mapping applied; "new" is `src/shared/finances/summary.ts` over the Actuals to be
+  written.
+- Counted, never failing: transactions whose ledger rows don't sum to the transaction amount,
+  each date fallback, each skip reason, and payees moved into notes.
+
+**Failure.** The run exits non-zero, and writes nothing even without `--dry-run`, when:
+
+1. For any table and year, rows read ≠ rows written + rows skipped.
+2. An old category is unmapped.
+3. Old and new monthly Category totals differ.
+4. Two Actuals would get the same import key.
+
+There is no balance-equality check.
 
 ## 9. Tests
 
@@ -792,16 +818,18 @@ slice, but must keep this order where a later slice depends on an earlier one.
 11. **Attention**: the banner and the bell with item links (7.8)
 12. **Monthly summary and Category pages**: `summary.ts`, the summary screen, the Category page,
     merge, archive
-13. **One-time import**: the extract script, `pnpm finances:import`, the mapping and the report
+13. **One-time import**: the extract script and its map, `pnpm finances:import`, the mapping and
+    the report. History only: the user recreates the Schedules by hand.
 
 ## 11. Manual steps only the user can do
 
-1. Run the extract against the Access file locally, and keep it in `exports/`.
+1. Fill in `scripts/finances-extract.map.json` from the example, run the extract against the
+   Access file locally, and keep it in `exports/`.
 2. Run `pnpm finances:import --dry-run`, then the real run, against a local database. Check the
    report.
 3. Take a manual Railway backup (`docs/restore.md`), then run the import against production.
-4. Enter today's Balance check for Checking and each card. Review the imported Schedules' next
-   dates.
+4. Enter today's Balance check for Checking. Create the card Wallets and recreate the Schedules
+   by hand, with a Balance check for each card.
 5. Once the household is using the app, delete the Access file and the extract.
 
 ## 12. Out of scope
