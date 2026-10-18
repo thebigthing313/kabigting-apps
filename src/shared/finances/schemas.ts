@@ -1,7 +1,7 @@
 /** Wire schemas for the Finances App's resources. */
 import { z } from "zod"
 import { cents, id, instant, isoDate } from "../schemas/primitives.ts"
-import { queryBody, rowsResponse } from "../schemas/query.ts"
+import { MAX_QUERY_IDS, queryBody, rowsResponse } from "../schemas/query.ts"
 
 /** A unique display name, trimmed; the database enforces uniqueness. */
 const name = z.string().trim().min(1, "Enter a name").max(100)
@@ -602,6 +602,18 @@ export const reconcileResult = z.object({
   deletedTransactions: z.array(id),
   transfers: z.array(transferRow),
 })
+
+// To review: uploaded lines waiting for a person, until Reconciled, called unplanned, or found to
+// repeat a hand entry.
+
+/** Marks uploaded lines reviewed: unplanned, or nothing to suggest for them. */
+export const markReviewed = z.strictObject({ ids: z.array(id).min(1).max(MAX_QUERY_IDS) })
+
+/**
+ * The uploaded line repeats this hand-entered Actual: the line stays, taking the hand entry's
+ * Account, Category, note and Reconcile, and the hand entry goes.
+ */
+export const sameAsHandEntry = z.strictObject({ handEntryId: id })
 
 export type Reconcile = z.infer<typeof reconcile>
 export type ReconcileResult = z.infer<typeof reconcileResult>

@@ -355,6 +355,21 @@ grouped by collection:
     line's key moves to the matching side, and the Transaction row is deleted.
 - `POST /unreconcile` with `{ actualId }`: the link is removed, and the Planned item goes back to
   outstanding at its previous amount.
+- `POST /transactions/mark-reviewed` with `{ ids }` (1 to 5000): sets `reviewedAt` on each Actual
+  that has none yet and returns the rows it changed. Rows already reviewed keep their time. The
+  client uses it right after an upload for lines with nothing to suggest (7.2), and for Unplanned
+  in To review (7.4). (Added for #51.)
+- `POST /transactions/:id/same-as-hand-entry` with `{ handEntryId }`: confirms that the uploaded
+  line `:id` repeats a hand-entered Actual. (Added for #51.)
+  - It checks the twin rule again with `findHandEntryTwin`: the hand entry must be a hand-entered
+    Actual that isn't ignored, in the same Wallet, for the exact amount, within ±3 days of the
+    line. The line must be an imported Actual that isn't ignored. Otherwise it refuses with
+    `validation_failed`.
+  - If the hand entry is Reconciled, its Reconcile (an Occurrence's link or a one-off Planned's
+    `reconciledActualId`) moves to the uploaded line. If both are Reconciled, it refuses with 409.
+  - The line keeps the bank's amount and date and takes the hand entry's Account, Category and
+    note, falling back to its own where the hand entry has none. It sets `reviewedAt`.
+  - The hand entry is deleted. The result has the same shape as `/reconcile`'s.
 - `POST /transactions/:id/mark-transfer` with `{ otherWalletId }`: converts the Actual into an
   Actual Transfer with one side keyed.
 - `POST /transfers/:id/pair` with `{ actualId }`: moves that Actual's key onto the Transfer's

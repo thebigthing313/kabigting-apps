@@ -1,4 +1,4 @@
-import { and, eq, gt, gte, inArray, lte, useLiveQuery } from "@tanstack/react-db"
+import { and, eq, gt, gte, inArray, isNull, lte, useLiveQuery } from "@tanstack/react-db"
 import { api } from "@/data/api"
 import { defineOnDemandCollection } from "@/data/collection-factory"
 import { readJson, reportError } from "@/data/error-handler"
@@ -16,6 +16,7 @@ import {
 import { AVERAGE_MONTHS } from "@shared/finances/summary"
 import { transferAmountOn } from "@shared/finances/transfers"
 import { newId } from "@shared/ids"
+import { MAX_QUERY_IDS } from "@shared/schemas/query"
 
 export type Transaction = TransactionRow
 
@@ -191,6 +192,61 @@ export function useIgnoredLines(walletId: string, enabled: boolean) {
   return { lines: data ?? [], isLoading: enabled && isLoading }
 }
 
+/**
+ * A Wallet's To review: its uploaded lines no one has reviewed yet, oldest first. Hand-entered
+ * Actuals are reviewed as they are saved, so they never wait here.
+ */
+export function useToReview(walletId: string) {
+  const transactions = financesTransactions()
+  const { data, isLoading } = useLiveQuery(
+    (q) =>
+      q
+        .from({ row: transactions })
+        .where(({ row }) =>
+          and(
+            eq(row.walletId, walletId),
+            eq(row.status, "actual"),
+            eq(row.ignored, false),
+            isNull(row.reviewedAt),
+          ),
+        )
+        .orderBy(({ row }) => row.date, OLDEST_FIRST),
+    [transactions, walletId],
+  )
+  return { lines: data, isLoading }
+}
+
+/**
+ * A Wallet's Actuals dated `from` to `to`, inclusive, ignored lines left out; nothing loads
+ * while `range` is null.
+ */
+export function useWalletActualsBetween(
+  walletId: string,
+  range: { from: string; to: string } | null,
+) {
+  const transactions = financesTransactions()
+  const from = range?.from
+  const to = range?.to
+  const { data } = useLiveQuery(
+    (q) =>
+      from === undefined || to === undefined
+        ? undefined
+        : q
+            .from({ row: transactions })
+            .where(({ row }) =>
+              and(
+                eq(row.walletId, walletId),
+                eq(row.status, "actual"),
+                eq(row.ignored, false),
+                gte(row.date, from),
+                lte(row.date, to),
+              ),
+            ),
+    [transactions, walletId, from, to],
+  )
+  return data ?? []
+}
+
 /** Writes rows the server added outside the collection's own writes, such as an upload's. */
 export async function writeTransactions(rows: readonly TransactionRow[]): Promise<void> {
   if (rows.length > 0) await financesTransactions().utils.writeUpsert([...rows])
@@ -360,5 +416,40 @@ export function reconcileActual(body: Reconcile): Promise<boolean> {
 export function unreconcileActual(actualId: string): Promise<boolean> {
   return reconcileCommand(async () =>
     readJson(await api.finances.unreconcile.$post({ json: { actualId } })),
+  )
+}
+
+/**
+ * Marks uploaded lines reviewed, taking them out of To review as unplanned. Resolves false after
+ * a refusal, which is reported with a toast.
+ */
+export async function markLinesReviewed(ids: readonly string[]): Promise<boolean> {
+  try {
+    for (let start = 0; start < ids.length; start += MAX_QUERY_IDS) {
+      const chunk = ids.slice(start, start + MAX_QUERY_IDS)
+      const { rows } = await readJson(
+        await api.finances.transactions["mark-reviewed"].$post({ json: { ids: chunk } }),
+      )
+      await writeTransactions(rows)
+    }
+    return true
+  } catch (error) {
+    reportError(error, "Saving")
+    return false
+  }
+}
+
+/**
+ * The uploaded line repeats a hand-entered Actual: the line stays with the hand entry's Account,
+ * Category, note and Reconcile, and the hand entry goes.
+ */
+export function confirmSameAsHandEntry(lineId: string, handEntryId: string): Promise<boolean> {
+  return reconcileCommand(async () =>
+    readJson(
+      await api.finances.transactions[":id"]["same-as-hand-entry"].$post({
+        param: { id: lineId },
+        json: { handEntryId },
+      }),
+    ),
   )
 }

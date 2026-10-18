@@ -61,6 +61,13 @@ Forecast, and Un-Reconcile puts it back at its own amount. An Actual Reconciled 
 unplanned, which is a normal end state.
 _Avoid_: Match, clear, link
 
+**To review**:
+The uploaded Actuals waiting for a person because the app has a suggestion for them: a Planned
+item to Reconcile to, or a hand-entered Actual the line repeats (its hand-entry twin). Each is
+confirmed, Reconciled to another Planned item, or called unplanned. Uploaded lines with nothing to
+suggest are unplanned at once, and hand-entered Actuals never wait here.
+_Avoid_: Inbox, pending, unmatched
+
 **Overdue**:
 A Planned Transaction or Transfer whose date has passed and that is not yet Reconciled or skipped.
 The Forecast counts it today until it is, except one dated on or before the Wallet's
