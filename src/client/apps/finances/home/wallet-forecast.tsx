@@ -2,24 +2,16 @@ import { Link } from "@tanstack/react-router"
 import { cn } from "cn"
 import { TriangleAlertIcon } from "lucide-react"
 import { ForecastChart } from "@/apps/finances/home/forecast-chart"
-import { scheduleLabel } from "@/apps/finances/schedules/schedule-display"
-import { transactionLabel, transferLabel } from "@/apps/finances/transactions/transaction-display"
+import {
+  forecastItemKey,
+  isOverdue,
+  useWalletForecast,
+} from "@/apps/finances/home/use-wallet-forecast"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
-import { useFinancesAccounts } from "@/data/finances-accounts"
-import { useLatestBalanceCheck } from "@/data/finances-balance-checks"
-import { useStoredOccurrences } from "@/data/finances-occurrences"
-import { useSchedules } from "@/data/finances-schedules"
-import { useActualsSince, useOutstandingOneOffs } from "@/data/finances-transactions"
-import { useOutstandingPlannedTransfers } from "@/data/finances-transfers"
-import { useWallets, type Wallet } from "@/data/finances-wallets"
-import { formatDisplayDate, today as householdToday } from "@shared/dates"
-import {
-  type ForecastHorizon,
-  type ForecastItem,
-  FORECAST_HORIZONS,
-  forecast,
-} from "@shared/finances/forecast"
+import type { Wallet } from "@/data/finances-wallets"
+import { formatDisplayDate } from "@shared/dates"
+import { type Forecast, type ForecastHorizon, FORECAST_HORIZONS } from "@shared/finances/forecast"
 import { formatShown, toShown } from "@shared/finances/wallets"
 import { format } from "@shared/money"
 
@@ -34,45 +26,9 @@ export function WalletForecast({
   /** Opens the Balance check dialog on this Wallet. */
   onEnterBalance: (walletId: string) => void
 }) {
-  const { check, isLoading } = useLatestBalanceCheck(wallet.id)
-  const { data: schedules, isLoading: schedulesLoading } = useSchedules()
-  const { data: wallets } = useWallets()
-  const { data: accounts } = useFinancesAccounts()
-  const { data: occurrences, isLoading: occurrencesLoading } = useStoredOccurrences()
-  const {
-    actuals,
-    transactions,
-    transfers,
-    isLoading: actualsLoading,
-  } = useActualsSince(wallet.id, check?.date)
-  const { oneOffs, isLoading: oneOffsLoading } = useOutstandingOneOffs(wallet.id)
-  const { plannedTransfers, isLoading: plannedTransfersLoading } = useOutstandingPlannedTransfers(
-    wallet.id,
-  )
+  const { result, isLoading, today, labelOf } = useWalletForecast(wallet, days)
 
-  if (
-    isLoading ||
-    schedulesLoading ||
-    occurrencesLoading ||
-    actualsLoading ||
-    oneOffsLoading ||
-    plannedTransfersLoading
-  ) {
-    return <Skeleton className="h-64" />
-  }
-  const today = householdToday()
-  const result = forecast({
-    wallet,
-    latestCheck: check ?? null,
-    actualsSince: actuals,
-    planned: oneOffs,
-    plannedTransfers,
-    schedules,
-    occurrences,
-    today,
-    horizonDays: days,
-  })
-
+  if (isLoading) return <Skeleton className="h-64" />
   if (!result) {
     return (
       <div className="flex flex-col items-start gap-3 rounded-xl border border-dashed p-6">
@@ -87,27 +43,9 @@ export function WalletForecast({
     )
   }
 
-  const walletName = new Map(wallets.map((each) => [each.id, each.name]))
-  const accountName = new Map(accounts.map((account) => [account.id, account.name]))
-  const scheduleById = new Map(schedules.map((schedule) => [schedule.id, schedule]))
-  const transactionById = new Map([...transactions, ...oneOffs].map((row) => [row.id, row]))
-  const transferById = new Map([...transfers, ...plannedTransfers].map((row) => [row.id, row]))
-  const labelOf = (item: ForecastItem): string => {
-    if (item.kind === "occurrence") {
-      const schedule = scheduleById.get(item.scheduleId)
-      return schedule ? scheduleLabel(schedule, walletName, accountName, wallet.id) : "Schedule"
-    }
-    const transfer = transferById.get(item.id)
-    if (transfer) return transferLabel(transfer, wallet.id, walletName)
-    const row = transactionById.get(item.id)
-    if (row) return transactionLabel(row, accountName)
-    return { actual: "Actual", planned: "Planned", plannedTransfer: "Planned Transfer" }[item.kind]
-  }
   const shown = (cents: number) => formatShown(wallet, cents)
-  const { low, firstUnderThreshold, firstUnderZero } = result
+  const { low } = result
   const threshold = wallet.lowBalanceThresholdCents
-  // A $0 threshold is the $0 warning already; it is not said twice.
-  const underThreshold = threshold === 0 ? null : firstUnderThreshold
   const listed = result.days.filter((day, index) => index === 0 || day.items.length > 0)
 
   return (
@@ -138,18 +76,7 @@ export function WalletForecast({
         description={`End-of-day balance over the next ${days} days, lowest ${shown(low.balanceCents)} on ${formatDisplayDate(low.date)}`}
       />
 
-      {firstUnderZero || underThreshold ? (
-        <div role="status" className="flex flex-col gap-1">
-          {underThreshold ? (
-            <Warning tone="warn">
-              Under the {shown(threshold)} threshold on {formatDisplayDate(underThreshold)}
-            </Warning>
-          ) : null}
-          {firstUnderZero ? (
-            <Warning tone="bad">Below $0 on {formatDisplayDate(firstUnderZero)}</Warning>
-          ) : null}
-        </div>
-      ) : null}
+      <ForecastWarnings wallet={wallet} forecast={result} />
 
       <ol aria-label="Day by day" className="flex flex-col">
         {listed.map((day) => (
@@ -171,27 +98,19 @@ export function WalletForecast({
               <ul>
                 {day.items.map((item) => (
                   <li
-                    key={keyOf(item)}
+                    key={forecastItemKey(item)}
                     className="flex justify-between gap-3 pl-3 text-sm text-muted-foreground"
                   >
                     <span className="min-w-0 truncate">
                       {labelOf(item)}
-                      {"overdue" in item && item.overdue ? (
+                      {isOverdue(item) ? (
                         <span className="text-amber-700 dark:text-amber-400">
                           {" "}
                           · Overdue since {formatDisplayDate(item.date)}
                         </span>
                       ) : null}
                     </span>
-                    <span
-                      className={cn(
-                        "shrink-0 tabular-nums",
-                        toShown(wallet, item.amountCents) > 0 &&
-                          "text-emerald-700 dark:text-emerald-400",
-                      )}
-                    >
-                      {format(toShown(wallet, item.amountCents), { sign: "always" })}
-                    </span>
+                    <ItemAmount wallet={wallet} cents={item.amountCents} />
                   </li>
                 ))}
               </ul>
@@ -211,10 +130,51 @@ export function WalletForecast({
   )
 }
 
-function keyOf(item: ForecastItem): string {
-  return item.kind === "occurrence"
-    ? `occurrence:${item.scheduleId}:${item.nominalDate}`
-    : `${item.kind}:${item.id}`
+/**
+ * The warnings for the first day under the Wallet's threshold and the first day under $0. With
+ * `worstOnly`, just the worse of the two: under $0 wins.
+ */
+export function ForecastWarnings({
+  wallet,
+  forecast,
+  worstOnly = false,
+}: {
+  wallet: Wallet
+  forecast: Forecast
+  worstOnly?: boolean
+}) {
+  const threshold = wallet.lowBalanceThresholdCents
+  const underZero = forecast.firstUnderZero
+  // A $0 threshold is the $0 warning already; it is not said twice.
+  const underThreshold =
+    threshold === 0 || (worstOnly && underZero) ? null : forecast.firstUnderThreshold
+  if (!underZero && !underThreshold) return null
+  return (
+    <div role="status" className="flex flex-col gap-1">
+      {underThreshold ? (
+        <Warning tone="warn">
+          Under the {formatShown(wallet, threshold)} threshold on{" "}
+          {formatDisplayDate(underThreshold)}
+        </Warning>
+      ) : null}
+      {underZero ? <Warning tone="bad">Below $0 on {formatDisplayDate(underZero)}</Warning> : null}
+    </div>
+  )
+}
+
+/** A Forecast item's Amount as this Wallet shows it, signed, with money in in green. */
+export function ItemAmount({ wallet, cents }: { wallet: Wallet; cents: number }) {
+  const amount = toShown(wallet, cents)
+  return (
+    <span
+      className={cn(
+        "shrink-0 tabular-nums",
+        amount > 0 && "text-emerald-700 dark:text-emerald-400",
+      )}
+    >
+      {format(amount, { sign: "always" })}
+    </span>
+  )
 }
 
 function Warning({ tone, children }: { tone: "warn" | "bad"; children: React.ReactNode }) {

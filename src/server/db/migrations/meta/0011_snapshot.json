@@ -1,6 +1,6 @@
 {
-  "id": "1189e56f-3ad7-45ea-b289-0bcd40cc1a6e",
-  "prevId": "dd805885-827d-421c-8689-5bd9bb2e156b",
+  "id": "27437fac-64d6-4d81-bb43-29bf94a44660",
+  "prevId": "07ab2c55-c000-4943-8ae9-63b69cb662ef",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -1089,6 +1089,64 @@
         "finances_schedules_transfer_positive": {
           "name": "finances_schedules_transfer_positive",
           "value": "\"finances_schedules\".\"to_wallet_id\" is null or \"finances_schedules\".\"amount_cents\" > 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.finances_settings": {
+      "name": "finances_settings",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "open_on_home_wallet_id": {
+          "name": "open_on_home_wallet_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "finances_settings_open_on_home_wallet_id_finances_wallets_id_fk": {
+          "name": "finances_settings_open_on_home_wallet_id_finances_wallets_id_fk",
+          "tableFrom": "finances_settings",
+          "tableTo": "finances_wallets",
+          "columnsFrom": [
+            "open_on_home_wallet_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "finances_settings_household": {
+          "name": "finances_settings_household",
+          "value": "\"finances_settings\".\"id\" = 'household'"
         }
       },
       "isRLSEnabled": false

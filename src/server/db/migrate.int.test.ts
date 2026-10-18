@@ -76,11 +76,20 @@ test("migrations apply to an empty database and create every table", async () =>
     "finances_categories",
     "finances_occurrences",
     "finances_schedules",
+    "finances_settings",
     "finances_transactions",
     "finances_transfers",
     "finances_wallets",
     "temporary_password",
   ])
+})
+
+test("the household's settings row is seeded, so home opens on All", async () => {
+  const rows = await query<{ id: string; open_on_home_wallet_id: string | null }>(
+    url,
+    "select id, open_on_home_wallet_id from finances_settings",
+  )
+  expect(rows).toEqual([{ id: "household", open_on_home_wallet_id: null }])
 })
 
 test("running migrations again is a no-op", async () => {
