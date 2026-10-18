@@ -20,7 +20,14 @@ const MAPPING: readonly (readonly [newName: string, oldNames: readonly string[]]
   ["Paycheck", ["Paycheck"]],
   [
     "Reimbursements",
-    ["Reimbursements", "Deposits", "Freelance", "Sales", "Selling Stuff", "Crossword Income"],
+    [
+      "Reimbursements",
+      "Deposits",
+      "Freelance Income",
+      "Sales Income",
+      "Selling Stuff",
+      "Crossword Income",
+    ],
   ],
   ["Tax refund", ["Tax Refund"]],
   ["Card payments", ["Credit Cards"]],
