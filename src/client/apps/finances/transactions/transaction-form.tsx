@@ -16,6 +16,7 @@ import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import type { NewTransaction } from "@/data/finances-transactions"
 import type { NewTransfer } from "@/data/finances-transfers"
+import { inlineAddsSaved } from "@/data/inline-adds"
 import { today } from "@shared/dates"
 import { transactionStatus } from "@shared/finances/schemas"
 import { fromShown, toShown } from "@shared/finances/wallets"
@@ -179,8 +180,14 @@ export function TransactionForm({
     defaultValues,
     validators: { onSubmit: formSchema },
     onSubmit: async ({ value }) => {
-      if (value.kind === "transfer") await onSaveTransfer?.(toTransfer(value))
-      else await onSave?.(toTransaction(value, { shownAsOwed: isOwed(value.walletId) }))
+      // A refused inline add clears its picker; the form stays open with the rest.
+      if (value.kind === "transfer") {
+        const transfer = toTransfer(value)
+        if (await inlineAddsSaved([transfer.accountId])) await onSaveTransfer?.(transfer)
+      } else {
+        const entry = toTransaction(value, { shownAsOwed: isOwed(value.walletId) })
+        if (await inlineAddsSaved([entry.accountId, entry.categoryId])) await onSave?.(entry)
+      }
     },
   })
 
