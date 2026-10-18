@@ -6,7 +6,8 @@
  * the writer gives them ids.
  */
 import { CATEGORY_NAMES, mapOldCategory } from "./categories.ts"
-import type { Extract, Kind, OldLedgerRow, OldTransaction } from "./extract.ts"
+import type { Extract, OldTransaction } from "./extract.ts"
+import { hasPlausibleYear, kindOf, ref, signed } from "./rows.ts"
 import { categoryTotals, type CategoryTotal } from "./totals.ts"
 
 export const CHECKING = "Checking"
@@ -64,22 +65,6 @@ export type ImportPlan = {
   report: ImportReport
 }
 
-function signed(kind: Kind, storedCents: number): number {
-  const cents = kind === "expense" ? -storedCents : storedCents
-  return cents === 0 ? 0 : cents
-}
-
-function kindOf(row: OldLedgerRow): Kind {
-  return row.isExpense ? "expense" : "income"
-}
-
-/** A real calendar date in a plausible year; the old data holds one row dated year 425. */
-function isPlausible(date: string | null): date is string {
-  if (date === null) return false
-  const year = Number(date.slice(0, 4))
-  return year >= 1900 && year <= 2999
-}
-
 function yearOf(date: string | null): string {
   return date === null ? "no date" : date.slice(0, 4)
 }
@@ -94,11 +79,6 @@ function joinNote(parts: readonly (string | null)[]): string {
     .map(clean)
     .filter((part): part is string => part !== null)
     .join(NOTE_SEPARATOR)
-}
-
-/** Keyed by kind and id: expense and income rows number their ids separately. */
-function ref(kind: Kind, id: string): string {
-  return `${kind}:${id}`
 }
 
 /** Case-insensitive name registry keeping each name's first spelling. */
@@ -188,17 +168,18 @@ export function planImport(extract: Extract, options: { today: string }): Import
     notes: (string | null)[]
   }
   const drafts: Drafted[] = []
-  // A transaction any ledger row points to is carried by its ledger rows.
+  // A transaction any ledger row points to is carried by its ledger rows, even ones skipped
+  // later; when those don't add up to it, it is counted under linkedSumsDiffer.
   const linkedLedgerSums = new Map<string, number>()
   for (const row of extract.ledger) {
     if (row.transactionId !== null) linkedLedgerSums.set(ref(kindOf(row), row.transactionId), 0)
   }
   for (const row of extract.ledger) {
-    if (!isPlausible(row.date) && row.date !== null) {
+    if (!hasPlausibleYear(row.date) && row.date !== null) {
       skip("ledger", row.date, "impossible date")
       continue
     }
-    if (row.bankDate !== null && !isPlausible(row.bankDate)) {
+    if (row.bankDate !== null && !hasPlausibleYear(row.bankDate)) {
       skip("ledger", row.date, "impossible date")
       continue
     }
@@ -217,7 +198,7 @@ export function planImport(extract: Extract, options: { today: string }): Import
     } else if (row.date !== null) {
       date = row.date
       counted.dateFromLedgerDate += 1
-    } else if (linked !== undefined && isPlausible(linked.date)) {
+    } else if (linked !== undefined && hasPlausibleYear(linked.date)) {
       date = linked.date
       counted.dateFromTransactionDate += 1
     }
@@ -254,7 +235,7 @@ export function planImport(extract: Extract, options: { today: string }): Import
       skip("transactions", row.date, "carried by its ledger rows")
       continue
     }
-    if (!isPlausible(row.date)) {
+    if (!hasPlausibleYear(row.date)) {
       skip("transactions", row.date, row.date === null ? "no date" : "impossible date")
       continue
     }
@@ -318,7 +299,7 @@ export function planImport(extract: Extract, options: { today: string }): Import
   const lastOfDay = new Map<string, { enteredAt: string; id: string; amountCents: number }>()
   for (const row of extract.balances) {
     const date = row.enteredAt.slice(0, 10)
-    if (!isPlausible(date)) {
+    if (!hasPlausibleYear(date)) {
       skip("balances", date, "impossible date")
       continue
     }

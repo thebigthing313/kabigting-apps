@@ -27,7 +27,7 @@ const MAPPING: readonly (readonly [newName: string, oldNames: readonly string[]]
 ]
 
 /** Old categories that come in Uncategorised. */
-const UNCATEGORISED: readonly string[] = ["Savings"]
+const OLD_NAMES_UNCATEGORISED: readonly string[] = ["Savings"]
 
 /** The new Categories, in the table's order. */
 export const CATEGORY_NAMES: readonly string[] = MAPPING.map(([newName]) => newName)
@@ -36,7 +36,7 @@ const byOldName = new Map<string, string | null>([
   ...MAPPING.flatMap(([newName, oldNames]) =>
     oldNames.map((old) => [old.toLowerCase(), newName] as const),
   ),
-  ...UNCATEGORISED.map((old) => [old.toLowerCase(), null] as const),
+  ...OLD_NAMES_UNCATEGORISED.map((old) => [old.toLowerCase(), null] as const),
 ])
 
 /**

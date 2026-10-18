@@ -6,7 +6,8 @@
 import { monthOfDate } from "#shared/dates.ts"
 import { monthlySummary, type SummaryActual } from "#shared/finances/summary.ts"
 import { CATEGORY_NAMES, mapOldCategory } from "./categories.ts"
-import type { Extract, Kind } from "./extract.ts"
+import type { Extract } from "./extract.ts"
+import { hasPlausibleYear, kindOf, ref, signed } from "./rows.ts"
 
 /** One Category's net in one month; `category` null is Uncategorised. */
 export type CategoryTotal = {
@@ -20,13 +21,6 @@ type NewActual = { date: string; amountCents: number; category: string | null }
 
 const cellKey = (month: string, category: string | null) => `${month}|${category ?? ""}`
 
-function sign(kind: Kind, cents: number): number {
-  return kind === "expense" ? -cents : cents
-}
-
-const plausible = (date: string | null): date is string =>
-  date !== null && Number(date.slice(0, 4)) >= 1900 && Number(date.slice(0, 4)) <= 2999
-
 /** The old monthly nets, straight from the extract: ledger rows, then unlinked transactions. */
 function oldTotals(extract: Extract, today: string): Map<string, number> {
   const categoryName = new Map(extract.categories.map((c) => [c.id, c.name]))
@@ -34,8 +28,8 @@ function oldTotals(extract: Extract, today: string): Map<string, number> {
     const name = id === null ? undefined : categoryName.get(id)
     return name === undefined ? null : (mapOldCategory(name) ?? null)
   }
-  const transactions = new Map(extract.transactions.map((t) => [`${t.kind}:${t.id}`, t]))
-  const schedules = new Map(extract.schedules.map((s) => [`${s.kind}:${s.id}`, s]))
+  const transactions = new Map(extract.transactions.map((t) => [ref(t.kind, t.id), t]))
+  const schedules = new Map(extract.schedules.map((s) => [ref(s.kind, s.id), s]))
   const linked = new Set<string>()
   const totals = new Map<string, number>()
   const add = (date: string, category: string | null, cents: number) => {
@@ -44,29 +38,34 @@ function oldTotals(extract: Extract, today: string): Map<string, number> {
   }
 
   for (const row of extract.ledger) {
-    const kind: Kind = row.isExpense ? "expense" : "income"
-    const link = row.transactionId === null ? null : `${kind}:${row.transactionId}`
+    const kind = kindOf(row)
+    const link = row.transactionId === null ? null : ref(kind, row.transactionId)
     if (link !== null) linked.add(link)
     if (row.amountCents === 0) continue
     if (
-      (row.date !== null && !plausible(row.date)) ||
-      (row.bankDate !== null && !plausible(row.bankDate))
+      (row.date !== null && !hasPlausibleYear(row.date)) ||
+      (row.bankDate !== null && !hasPlausibleYear(row.bankDate))
     ) {
       continue
     }
     const linkedDate = link === null ? null : (transactions.get(link)?.date ?? null)
-    const date = row.bankDate ?? row.date ?? (plausible(linkedDate) ? linkedDate : null)
+    const date = row.bankDate ?? row.date ?? (hasPlausibleYear(linkedDate) ? linkedDate : null)
     if (date === null) continue
-    add(date, mapped(row.categoryId), sign(kind, row.amountCents))
+    add(date, mapped(row.categoryId), signed(kind, row.amountCents))
   }
   for (const row of extract.transactions) {
-    const key = `${row.kind}:${row.id}`
-    if (linked.has(key) || row.amountCents === 0 || !plausible(row.date) || row.date > today) {
+    const key = ref(row.kind, row.id)
+    if (
+      linked.has(key) ||
+      row.amountCents === 0 ||
+      !hasPlausibleYear(row.date) ||
+      row.date > today
+    ) {
       continue
     }
     const schedule =
-      row.scheduleId === null ? undefined : schedules.get(`${row.kind}:${row.scheduleId}`)
-    add(row.date, mapped(schedule?.categoryId ?? null), sign(row.kind, row.amountCents))
+      row.scheduleId === null ? undefined : schedules.get(ref(row.kind, row.scheduleId))
+    add(row.date, mapped(schedule?.categoryId ?? null), signed(row.kind, row.amountCents))
   }
   return totals
 }

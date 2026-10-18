@@ -118,6 +118,11 @@ const date = z
   })
 const kind = z.enum(["expense", "income"])
 
+/** The extract calls it `amount`, in dollars; rows carry it as cents. */
+function renameAmount<T extends { amount: number }>({ amount, ...row }: T) {
+  return { ...row, amountCents: amount }
+}
+
 const schemas = {
   categories: z.object({ id, name: z.string() }),
   schedules: z.object({ id, kind, name: z.string(), categoryId: optionalId }),
@@ -132,7 +137,7 @@ const schemas = {
       pending: flag,
       posted: flag,
     })
-    .transform(({ amount, ...row }) => ({ ...row, amountCents: amount })),
+    .transform(renameAmount),
   ledger: z
     .object({
       id,
@@ -146,14 +151,14 @@ const schemas = {
       bankDescription: text,
       bankDate: date,
     })
-    .transform(({ amount, ...row }) => ({ ...row, amountCents: amount })),
+    .transform(renameAmount),
   balances: z
     .object({
       id,
       enteredAt: z.string().regex(/^\d{4}-\d{2}-\d{2}/, "not a timestamp"),
       amount: cents,
     })
-    .transform(({ amount, ...row }) => ({ ...row, amountCents: amount })),
+    .transform(renameAmount),
 } satisfies Record<ExtractFile, z.ZodType>
 
 /** Thrown for a malformed extract; names files, rows and fields, never their values. */

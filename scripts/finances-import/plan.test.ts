@@ -349,3 +349,14 @@ describe("failures", () => {
     expect(result.report.failures).toEqual([])
   })
 })
+
+describe("a transaction whose only ledger row is skipped", () => {
+  test("stays carried by that row and is counted as not adding up", () => {
+    const result = plan({
+      transactions: [transaction("1", { amountCents: 700 })],
+      ledger: [ledger("1", { transactionId: "1", amountCents: 0 })],
+    })
+    expect(result.actuals).toEqual([])
+    expect(result.report.counted.linkedSumsDiffer).toBe(1)
+  })
+})
