@@ -71,6 +71,13 @@
       "when": 1792286999189,
       "tag": "0009_finances_transactions",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1792293386932,
+      "tag": "0011_finances_transfers",
+      "breakpoints": true
     }
   ]
 }

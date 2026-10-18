@@ -3,7 +3,7 @@ import { cn } from "cn"
 import { TriangleAlertIcon } from "lucide-react"
 import { ForecastChart } from "@/apps/finances/home/forecast-chart"
 import { scheduleLabel } from "@/apps/finances/schedules/schedule-display"
-import { transactionLabel } from "@/apps/finances/transactions/transaction-display"
+import { transactionLabel, transferLabel } from "@/apps/finances/transactions/transaction-display"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useFinancesAccounts } from "@/data/finances-accounts"
@@ -11,6 +11,7 @@ import { useLatestBalanceCheck } from "@/data/finances-balance-checks"
 import { useStoredOccurrences } from "@/data/finances-occurrences"
 import { useSchedules } from "@/data/finances-schedules"
 import { useActualsSince, useOutstandingOneOffs } from "@/data/finances-transactions"
+import { useOutstandingPlannedTransfers } from "@/data/finances-transfers"
 import { useWallets, type Wallet } from "@/data/finances-wallets"
 import { formatDisplayDate, today as householdToday } from "@shared/dates"
 import {
@@ -38,10 +39,25 @@ export function WalletForecast({
   const { data: wallets } = useWallets()
   const { data: accounts } = useFinancesAccounts()
   const { data: occurrences, isLoading: occurrencesLoading } = useStoredOccurrences()
-  const { actuals, isLoading: actualsLoading } = useActualsSince(wallet.id, check?.date)
+  const {
+    actuals,
+    transactions,
+    transfers,
+    isLoading: actualsLoading,
+  } = useActualsSince(wallet.id, check?.date)
   const { oneOffs, isLoading: oneOffsLoading } = useOutstandingOneOffs(wallet.id)
+  const { plannedTransfers, isLoading: plannedTransfersLoading } = useOutstandingPlannedTransfers(
+    wallet.id,
+  )
 
-  if (isLoading || schedulesLoading || occurrencesLoading || actualsLoading || oneOffsLoading) {
+  if (
+    isLoading ||
+    schedulesLoading ||
+    occurrencesLoading ||
+    actualsLoading ||
+    oneOffsLoading ||
+    plannedTransfersLoading
+  ) {
     return <Skeleton className="h-64" />
   }
   const today = householdToday()
@@ -50,8 +66,7 @@ export function WalletForecast({
     latestCheck: check ?? null,
     actualsSince: actuals,
     planned: oneOffs,
-    // Planned Transfers arrive with Transfers by hand; until then there are none.
-    plannedTransfers: [],
+    plannedTransfers,
     schedules,
     occurrences,
     today,
@@ -75,13 +90,16 @@ export function WalletForecast({
   const walletName = new Map(wallets.map((each) => [each.id, each.name]))
   const accountName = new Map(accounts.map((account) => [account.id, account.name]))
   const scheduleById = new Map(schedules.map((schedule) => [schedule.id, schedule]))
-  const transactionById = new Map([...actuals, ...oneOffs].map((row) => [row.id, row]))
+  const transactionById = new Map([...transactions, ...oneOffs].map((row) => [row.id, row]))
+  const transferById = new Map([...transfers, ...plannedTransfers].map((row) => [row.id, row]))
   const labelOf = (item: ForecastItem): string => {
     if (item.kind === "occurrence") {
       const schedule = scheduleById.get(item.scheduleId)
       return schedule ? scheduleLabel(schedule, walletName, accountName, wallet.id) : "Schedule"
     }
-    const row = item.kind === "plannedTransfer" ? undefined : transactionById.get(item.id)
+    const transfer = transferById.get(item.id)
+    if (transfer) return transferLabel(transfer, wallet.id, walletName)
+    const row = transactionById.get(item.id)
     if (row) return transactionLabel(row, accountName)
     return { actual: "Actual", planned: "Planned", plannedTransfer: "Planned Transfer" }[item.kind]
   }

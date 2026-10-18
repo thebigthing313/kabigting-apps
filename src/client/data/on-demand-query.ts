@@ -50,6 +50,28 @@ function setOnce<Key extends "walletId" | "status" | "categoryId">(
   query[key] = next
 }
 
+/**
+ * A Transfer out of or into one Wallet, `or(eq(fromWalletId, w), eq(toWalletId, w))`: the
+ * server's `walletId` filter on Transfers. Any other `or` is refused.
+ */
+function eitherSide(args: readonly Expression[]): string {
+  const sides = new Map<string, string>()
+  for (const argument of args) {
+    if (argument.type !== "func" || argument.name !== "eq") break
+    sides.set(field(argument.args[0]), text(argument.args[1], "a Wallet id"))
+  }
+  const from = sides.get("fromWalletId")
+  if (
+    args.length !== 2 ||
+    sides.size !== 2 ||
+    from === undefined ||
+    from !== sides.get("toWalletId")
+  ) {
+    throw new UnsupportedLiveQueryError("or, except a Transfer out of or into one Wallet")
+  }
+  return from
+}
+
 /** Narrows `query` by one predicate of the live query's where clause. */
 function narrow(query: OnDemandQuery, expression: Expression): void {
   if (expression.type !== "func") {
@@ -61,6 +83,7 @@ function narrow(query: OnDemandQuery, expression: Expression): void {
     for (const argument of expression.args) narrow(query, argument)
     return
   }
+  if (name === "or") return setOnce(query, "walletId", eitherSide(expression.args))
   const key = field(left)
   if (key === "date") {
     const date = text(right, "date")

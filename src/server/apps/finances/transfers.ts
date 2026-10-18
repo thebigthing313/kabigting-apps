@@ -1,0 +1,189 @@
+import { and, asc, desc, eq, gt, gte, inArray, lt, lte, or, sql } from "drizzle-orm"
+import { Hono } from "hono"
+import { z } from "zod"
+import { isForeignKeyViolation } from "#server/apps/finances/db-errors.ts"
+import type { AppEnv } from "#server/core/context.ts"
+import { ApiError } from "#server/core/errors.ts"
+import { validate } from "#server/core/validate.ts"
+import type { Db } from "#server/db/client.ts"
+import { financesOccurrences, financesTransfers } from "#server/db/schema/index.ts"
+import {
+  createTransfer,
+  isImported,
+  isImportedTransfer,
+  transferQuery,
+  type TransferRow,
+  updateTransfer,
+} from "#shared/finances/schemas.ts"
+import { id } from "#shared/schemas/primitives.ts"
+import { MAX_QUERY_IDS } from "#shared/schemas/query.ts"
+
+type TransferRecord = typeof financesTransfers.$inferSelect
+
+function toRow(transfer: TransferRecord): TransferRow {
+  return {
+    id: transfer.id,
+    status: transfer.status,
+    date: transfer.date,
+    amountCents: transfer.amountCents,
+    fromWalletId: transfer.fromWalletId,
+    toWalletId: transfer.toWalletId,
+    accountId: transfer.accountId,
+    note: transfer.note,
+    fromSource: transfer.fromSource,
+    fromBankDescription: transfer.fromBankDescription,
+    toSource: transfer.toSource,
+    toBankDescription: transfer.toBankDescription,
+    ignored: transfer.ignored,
+    reconciledActualId: transfer.reconciledActualId,
+    createdAt: transfer.createdAt.toISOString(),
+    updatedAt: transfer.updatedAt.toISOString(),
+  }
+}
+
+const params = z.strictObject({ id })
+
+function notFound(): never {
+  throw new ApiError("not_found", "No such Transfer")
+}
+
+function reconciledConflict(): never {
+  throw new ApiError("conflict", "Something is Reconciled to it; un-Reconcile it first")
+}
+
+/** A missing Wallet or Account is the caller's to fix, not a server fault. */
+function refusedLink(error: unknown): never {
+  if (isForeignKeyViolation(error)) {
+    throw new ApiError("validation_failed", "No such Wallet or Account")
+  }
+  throw error
+}
+
+/**
+ * Transfers load on demand like Transactions. A Wallet's Transfers are those out of it and into
+ * it. Rows are ordered by date, then id, so `after` is a stable cursor. Ignored rows are left out
+ * unless asked for.
+ */
+export function transferRoutes(db: Db) {
+  const table = financesTransfers
+
+  async function cursorAfter(rowId: string, descending: boolean) {
+    const [anchor] = await db
+      .select({ date: table.date, id: table.id })
+      .from(table)
+      .where(eq(table.id, rowId))
+    if (!anchor) throw new ApiError("validation_failed", "No such Transfer to page after")
+    const beyond = descending ? lt : gt
+    return or(
+      beyond(table.date, anchor.date),
+      and(eq(table.date, anchor.date), beyond(table.id, anchor.id)),
+    )
+  }
+
+  return new Hono<AppEnv>()
+    .post("/query", validate("json", transferQuery), async (c) => {
+      const filters = c.req.valid("json")
+      const { ids, limit, after, walletId, dateFrom, dateTo, status } = filters
+      const descending = filters.order === "dateDesc"
+      const direction = descending ? desc : asc
+      const transfers = await db
+        .select()
+        .from(table)
+        .where(
+          and(
+            ids ? inArray(table.id, ids) : undefined,
+            walletId
+              ? or(eq(table.fromWalletId, walletId), eq(table.toWalletId, walletId))
+              : undefined,
+            dateFrom ? gte(table.date, dateFrom) : undefined,
+            dateTo ? lte(table.date, dateTo) : undefined,
+            status ? eq(table.status, status) : undefined,
+            filters.includeIgnored ? undefined : eq(table.ignored, false),
+            after ? await cursorAfter(after, descending) : undefined,
+          ),
+        )
+        .orderBy(direction(table.date), direction(table.id))
+        .limit(limit ?? MAX_QUERY_IDS)
+      return c.json({ rows: transfers.map(toRow) })
+    })
+    .post("/", validate("json", createTransfer), async (c) => {
+      const input = c.req.valid("json")
+      // A hand-entered Actual Transfer came from a person on both sides; a Planned one from nowhere.
+      const source = input.status === "actual" ? "manual" : null
+      const [transfer] = await db
+        .insert(table)
+        .values({ ...input, fromSource: source, toSource: source })
+        .onConflictDoNothing({ target: table.id })
+        .returning()
+        .catch(refusedLink)
+      if (!transfer) throw new ApiError("conflict", "A Transfer with this id already exists")
+      return c.json(toRow(transfer), 201)
+    })
+    .patch("/:id", validate("param", params), validate("json", updateTransfer), async (c) => {
+      const transferId = c.req.valid("param").id
+      const changes = c.req.valid("json")
+      const [found] = await db.select().from(table).where(eq(table.id, transferId))
+      if (!found) notFound()
+      const changed = (key: "amountCents" | "date" | "fromWalletId" | "toWalletId") =>
+        changes[key] !== undefined && changes[key] !== found[key]
+      const fromWalletId = changes.fromWalletId ?? found.fromWalletId
+      const toWalletId = changes.toWalletId ?? found.toWalletId
+      if (fromWalletId === toWalletId) {
+        throw new ApiError("validation_failed", "A Transfer goes to a different Wallet")
+      }
+      // A side that came from the bank keeps its Wallet, and the Transfer the amount and date the
+      // bank gave it. A side still to arrive may be put on another Wallet.
+      const locked =
+        (isImportedTransfer(found) && (changed("amountCents") || changed("date"))) ||
+        (isImported({ source: found.fromSource }) && changed("fromWalletId")) ||
+        (isImported({ source: found.toSource }) && changed("toWalletId"))
+      if (locked) {
+        throw new ApiError(
+          "validation_failed",
+          "An imported Transfer keeps the amount, date and Wallet the bank gave it",
+        )
+      }
+      const [transfer] = await db
+        .update(table)
+        .set({ ...changes, updatedAt: sql`now()` })
+        .where(eq(table.id, transferId))
+        .returning()
+        .catch(refusedLink)
+      return transfer ? c.json(toRow(transfer)) : notFound()
+    })
+    .delete("/:id", validate("param", params), async (c) => {
+      const transferId = c.req.valid("param").id
+      const [found] = await db.select().from(table).where(eq(table.id, transferId))
+      if (!found) notFound()
+      // An imported Transfer is kept as ignored, so uploading the same file again adds nothing.
+      // Like a deleted one, an ignored Transfer can't stay the target of a Reconcile.
+      if (isImportedTransfer(found)) {
+        const [occurrence] = await db
+          .select({ id: financesOccurrences.id })
+          .from(financesOccurrences)
+          .where(eq(financesOccurrences.reconciledTransferId, transferId))
+          .limit(1)
+        const [planned] = await db
+          .select({ id: table.id })
+          .from(table)
+          .where(eq(table.reconciledActualId, transferId))
+          .limit(1)
+        if (occurrence || planned) reconciledConflict()
+        const [ignored] = await db
+          .update(table)
+          .set({ ignored: true, updatedAt: sql`now()` })
+          .where(eq(table.id, transferId))
+          .returning()
+        return ignored ? c.json(toRow(ignored)) : notFound()
+      }
+      const [deleted] = await db
+        .delete(table)
+        .where(eq(table.id, transferId))
+        .returning()
+        .catch((error: unknown) => {
+          if (isForeignKeyViolation(error)) reconciledConflict()
+          throw error
+        })
+      return deleted ? c.json(toRow(deleted)) : notFound()
+    })
+}
