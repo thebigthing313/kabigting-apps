@@ -1,4 +1,4 @@
-import { eq, sql } from "drizzle-orm"
+import { and, eq, isNull, sql } from "drizzle-orm"
 import { Hono } from "hono"
 import { z } from "zod"
 import { isUniqueViolation } from "#server/apps/finances/db-errors.ts"
@@ -13,14 +13,23 @@ import {
   financesTransfers,
   financesWallets,
 } from "#server/db/schema/index.ts"
-import { MATCH_WINDOW_DAYS, suggestTransferHalf } from "#shared/finances/reconcile.ts"
+import {
+  MATCH_WINDOW_DAYS,
+  suggestTransferHalf,
+  TWIN_WINDOW_DAYS,
+} from "#shared/finances/reconcile.ts"
 import {
   isImported,
   markTransfer,
   pairTransfer,
   type ReconcileResult,
 } from "#shared/finances/schemas.ts"
-import { onlySideArrived, otherSide, type TransferSide } from "#shared/finances/transfers.ts"
+import {
+  enteredByHand,
+  onlySideArrived,
+  sideOf,
+  type TransferSide,
+} from "#shared/finances/transfers.ts"
 import { id } from "#shared/schemas/primitives.ts"
 
 type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0]
@@ -94,7 +103,8 @@ function lineJoined(
 /**
  * Transfer halves: a Transfer seen from both of its Wallets, such as a card payment in the
  * checking file and in the card file, stays one Transfer. Mark as Transfer turns an Actual into
- * one; pairing moves the other Wallet's line onto it.
+ * one; pairing moves a Wallet's line onto its side, whether that side waits for the other
+ * Wallet's line or the Transfer was entered by hand.
  */
 export function transferHalfRoutes(db: Db) {
   return new Hono<AppEnv>()
@@ -163,31 +173,39 @@ export function transferHalfRoutes(db: Db) {
               .for("update")
             if (!transfer) throw new ApiError("not_found", "No such Transfer")
             const line = await lineForUpdate(tx, actualId)
-            const arrived = onlySideArrived(transfer)
-            if (arrived === null) invalid("This Transfer isn't waiting for its other side")
-            if (line.status !== "actual" || !isImported(line) || line.ignored) {
-              invalid("Only an uploaded line can be a Transfer's other side")
+            const byHand = enteredByHand(transfer)
+            if (onlySideArrived(transfer) === null && !byHand) {
+              invalid("This Transfer has no side waiting for a line")
             }
-            if (!suggestTransferHalf(line, [transfer])) {
+            if (line.status !== "actual" || !isImported(line) || line.ignored) {
+              invalid("Only an uploaded line can be a side of a Transfer")
+            }
+            const side = sideOf(transfer, line.walletId)
+            if (side === null || !suggestTransferHalf(line, [transfer])) {
               invalid(
-                `Only a line in the Transfer's other Wallet, moving it by the same amount the same way, within ${MATCH_WINDOW_DAYS} days, can be its other side`,
+                byHand
+                  ? `Only a line in one of the Transfer's Wallets, moving it by the same amount the same way, within ${TWIN_WINDOW_DAYS} days, can be the same as a hand-entered Transfer`
+                  : `Only a line in the Transfer's other Wallet, moving it by the same amount the same way, within ${MATCH_WINDOW_DAYS} days, can be its other side`,
               )
             }
             await refuseReconciled(tx, line)
 
             await tx.delete(financesTransactions).where(eq(financesTransactions.id, line.id))
-            // The first line's amount and date stay; the line's labels fill only what is empty.
+            // The Transfer's amount and date stay; the line's labels fill only what is empty. A
+            // side that already holds a key is never written over.
+            const sideKey =
+              side === "from" ? financesTransfers.fromSourceKey : financesTransfers.toSourceKey
             const [paired] = await tx
               .update(financesTransfers)
               .set({
-                ...sideColumns(otherSide(arrived), line),
+                ...sideColumns(side, line),
                 accountId: transfer.accountId ?? line.accountId,
                 note: transfer.note || line.note,
                 updatedAt: sql`now()`,
               })
-              .where(eq(financesTransfers.id, transfer.id))
+              .where(and(eq(financesTransfers.id, transfer.id), isNull(sideKey)))
               .returning()
-            if (!paired) throw new Error("Pairing the Transfer wrote nothing")
+            if (!paired) conflict("That side of the Transfer already has its line")
             return lineJoined(line.id, paired)
           })
           .catch(raced)

@@ -372,10 +372,9 @@ describe("suggestTransferHalf", () => {
     expect(suggestTransferHalf(purchase, [waitingTransfer("payment")])).toBeUndefined()
   })
 
-  test("passes over Transfers not waiting: both sides in, by hand, Planned or ignored", () => {
+  test("passes over Transfers not waiting: both sides in, Planned or ignored", () => {
     const others = [
       waitingTransfer("both-arrived", { toSource: "ofx" }),
-      waitingTransfer("by-hand", { fromSource: "manual", toSource: "manual" }),
       waitingTransfer("planned", { status: "planned", fromSource: null }),
       waitingTransfer("ignored", { ignored: true }),
     ]
@@ -391,7 +390,74 @@ describe("suggestTransferHalf", () => {
   })
 })
 
+/** A made-up card payment entered by hand, from Checking to the card: neither side is keyed. */
+function handEnteredTransfer(id: string, changes: Parameters<typeof waitingTransfer>[1] = {}) {
+  return waitingTransfer(id, { fromSource: "manual", toSource: "manual", ...changes })
+}
+
+describe("suggestTransferHalf with a hand-entered Transfer", () => {
+  const CHECKING_LINE = { walletId: CHECKING, date: "2026-03-10", amountCents: -25_000 }
+
+  test("finds it from either Wallet, for the amount, within 3 days", () => {
+    for (const date of ["2026-03-09", "2026-03-12", "2026-03-15"]) {
+      expect(suggestTransferHalf(CARD_LINE, [handEnteredTransfer("payment", { date })])?.id).toBe(
+        "payment",
+      )
+    }
+    for (const date of ["2026-03-07", "2026-03-13"]) {
+      expect(
+        suggestTransferHalf(CHECKING_LINE, [handEnteredTransfer("payment", { date })])?.id,
+      ).toBe("payment")
+    }
+  })
+
+  test("passes over other amounts, the wrong way, other Wallets and dates further off", () => {
+    const others = [
+      handEnteredTransfer("a-cent-off", { amountCents: 25_001 }),
+      handEnteredTransfer("four-days-before", { date: "2026-03-08" }),
+      handEnteredTransfer("four-days-after", { date: "2026-03-16" }),
+      handEnteredTransfer("other-wallets", { fromWalletId: "savings", toWalletId: CHECKING }),
+      handEnteredTransfer("planned", { status: "planned", fromSource: null, toSource: null }),
+      handEnteredTransfer("ignored", { ignored: true }),
+    ]
+    expect(suggestTransferHalf(CARD_LINE, others)).toBeUndefined()
+    const purchase = { ...CARD_LINE, amountCents: -25_000 }
+    expect(suggestTransferHalf(purchase, [handEnteredTransfer("payment")])).toBeUndefined()
+    const deposit = { ...CHECKING_LINE, amountCents: 25_000 }
+    expect(suggestTransferHalf(deposit, [handEnteredTransfer("payment")])).toBeUndefined()
+  })
+
+  test("a keyed side is never written over", () => {
+    // Its Checking side arrived, so only the card side is open.
+    const keyedHere = handEnteredTransfer("payment", { fromSource: "ofx" })
+    expect(suggestTransferHalf(CHECKING_LINE, [keyedHere])).toBeUndefined()
+    const bothKeyed = handEnteredTransfer("payment", { fromSource: "ofx", toSource: "access" })
+    expect(suggestTransferHalf(CARD_LINE, [bothKeyed])).toBeUndefined()
+  })
+
+  test("picks the closest date among hand-entered and waiting Transfers", () => {
+    const transfers = [
+      waitingTransfer("waiting", { date: "2026-03-08" }),
+      handEnteredTransfer("by-hand", { date: "2026-03-11" }),
+    ]
+    expect(suggestTransferHalf(CARD_LINE, transfers)?.id).toBe("by-hand")
+  })
+})
+
 describe("reviewSuggestion with Transfers", () => {
+  test("a hand-entered Transfer comes after a hand-entry twin and before a Planned match", () => {
+    const candidates = {
+      outstanding: [planned("refund", { walletId: CARD, amountCents: 25_000 })],
+      handEntered: [actual("twin", { walletId: CARD, amountCents: 25_000, date: "2026-03-12" })],
+      transfers: [handEnteredTransfer("payment")],
+    }
+    expect(reviewSuggestion(CARD_LINE, candidates)).toMatchObject({ kind: "twin" })
+    expect(reviewSuggestion(CARD_LINE, { ...candidates, handEntered: [] })).toMatchObject({
+      kind: "transfer",
+      transfer: { id: "payment" },
+    })
+  })
+
   test("the other side of a waiting Transfer comes before a Planned match", () => {
     const suggestion = reviewSuggestion(CARD_LINE, {
       outstanding: [planned("refund", { walletId: CARD, amountCents: 25_000 })],

@@ -90,3 +90,46 @@ test("a card payment in both files stays one Transfer", async ({ page }, testInf
   await expect(actuals.getByRole("button")).toHaveCount(1)
   await expect(payment).not.toContainText("Only one side arrived")
 })
+
+test("a bank line for a hand-entered Transfer joins it", async ({ page }, testInfo) => {
+  test.slow()
+  const run = runName(testInfo)
+  const number = `${Date.now()}${testInfo.workerIndex}${Math.floor(Math.random() * 1000)}`
+  const checkingName = `E2E checking ${run}`
+  const cardName = `E2E card ${run}`
+  const checking = await post(page, "wallets", { name: checkingName })
+  const card = await post(page, "wallets", { name: cardName, shownAsOwed: true })
+  await post(page, "transfers", {
+    status: "actual",
+    date: "2026-09-09",
+    amountCents: 25_000,
+    fromWalletId: checking,
+    toWalletId: card,
+  })
+  const checkingFile = statementFile("hand", `${number}3`, { date: "20260910", amount: "-250.00" })
+
+  // The checking line is offered as the same as the Transfer entered by hand.
+  await page.goto(`/finances/wallets/${checking}`)
+  const dialog = await upload(page, checkingFile)
+  await dialog.getByRole("button", { name: "Upload to this Wallet" }).click()
+  await expect(dialog.getByRole("status")).toHaveText("1 added, 0 already here")
+  await expect(dialog).toContainText("1 line has a suggestion")
+  await dialog.getByRole("button", { name: "Done" }).click()
+  await expect(dialog).toBeHidden()
+
+  const toReview = page.getByRole("list", { name: "To review" })
+  const line = toReview.getByRole("listitem").filter({ hasText: "MADE-UP CARD PAYMENT" })
+  await expect(line).toContainText("Same as your hand-entered Transfer?")
+  await expect(line).toContainText(`Transfer to ${cardName}`)
+  await line.getByRole("button", { name: "Confirm" }).click()
+  await expect(toReview).toHaveCount(0)
+  const actuals = page.getByRole("list", { name: "Actuals" })
+  await expect(actuals.getByRole("button")).toHaveCount(1)
+  await expect(actuals.getByRole("button")).toContainText(`Transfer to ${cardName}`)
+
+  // The file again adds nothing.
+  const again = await upload(page, checkingFile)
+  await expect(again.getByRole("status")).toHaveText("0 added, 1 already here")
+  await again.getByRole("button", { name: "Done" }).click()
+  await expect(actuals.getByRole("button")).toHaveCount(1)
+})

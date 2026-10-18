@@ -30,6 +30,27 @@ export function onlySideArrived(
   return from ? "from" : "to"
 }
 
+/**
+ * An Actual Transfer entered by hand, or an Actual entered by hand and marked as a Transfer:
+ * neither side has a line from the bank or the old ledger yet, so either Wallet's line can still
+ * become its side. An ignored Transfer takes no line.
+ */
+export function enteredByHand(
+  transfer: Pick<TransferRow, "status" | "ignored" | "fromSource" | "toSource">,
+): boolean {
+  if (transfer.status !== "actual" || transfer.ignored) return false
+  return !isImported({ source: transfer.fromSource }) && !isImported({ source: transfer.toSource })
+}
+
+/** The side of a Transfer this Wallet is on, or null when it is on neither. */
+export function sideOf(
+  transfer: { fromWalletId: string; toWalletId: string },
+  walletId: string,
+): TransferSide | null {
+  if (transfer.fromWalletId === walletId) return "from"
+  return transfer.toWalletId === walletId ? "to" : null
+}
+
 /** The side across from this one. */
 export function otherSide(side: TransferSide): TransferSide {
   return side === "from" ? "to" : "from"

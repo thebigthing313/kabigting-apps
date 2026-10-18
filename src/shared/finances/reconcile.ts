@@ -5,7 +5,14 @@
 import { addDays, daysBetween, today as householdToday } from "../dates.ts"
 import { expandSchedule, type ScheduleTerms, type StoredOccurrence } from "./occurrences.ts"
 import type { TransactionRow, TransferRow } from "./schemas.ts"
-import { onlySideArrived, otherSide, transferAmountOn, walletOnSide } from "./transfers.ts"
+import {
+  enteredByHand,
+  onlySideArrived,
+  otherSide,
+  sideOf,
+  transferAmountOn,
+  walletOnSide,
+} from "./transfers.ts"
 
 /** How many days either side of an Actual a suggested Planned item may be dated. */
 export const MATCH_WINDOW_DAYS = 7
@@ -109,7 +116,7 @@ export function findHandEntryTwin<Row extends MaybeHandEntry>(
     .toSorted((a, b) => daysOff(a) - daysOff(b))[0]
 }
 
-/** What `suggestTransferHalf` reads of an Actual Transfer whose other side may be missing. */
+/** What `suggestTransferHalf` reads of an Actual Transfer with a side a line may fill. */
 export type MaybeWaitingTransfer = Pick<
   TransferRow,
   | "status"
@@ -123,32 +130,36 @@ export type MaybeWaitingTransfer = Pick<
 >
 
 /**
- * The Actual Transfer an uploaded line is most likely the other side of: one whose line arrived
- * from the other Wallet while this Wallet's side is still missing, moving this Wallet by the
- * line's exact amount, dated within 7 days either side. The closest date wins.
+ * The Actual Transfer an uploaded line is most likely one side of, moving the line's Wallet by
+ * its exact amount the Transfer's way. Either the Transfer's line arrived from the other Wallet
+ * while this Wallet's side is still missing, dated within 7 days either side; or it was entered by
+ * hand with neither side keyed, dated within 3 days either side, as for a hand-entry twin. The
+ * closest date wins.
  */
 export function suggestTransferHalf<Row extends MaybeWaitingTransfer>(
   line: { walletId: string; date: string; amountCents: number },
   transfers: readonly Row[],
 ): Row | undefined {
   const daysOff = (row: Row) => Math.abs(daysBetween(line.date, row.date))
-  const missingHere = (row: Row) => {
+  const openHere = (row: Row) => {
     const arrived = onlySideArrived(row)
-    return arrived !== null && walletOnSide(row, otherSide(arrived)) === line.walletId
+    if (arrived !== null) {
+      return (
+        walletOnSide(row, otherSide(arrived)) === line.walletId && daysOff(row) <= MATCH_WINDOW_DAYS
+      )
+    }
+    return (
+      enteredByHand(row) && sideOf(row, line.walletId) !== null && daysOff(row) <= TWIN_WINDOW_DAYS
+    )
   }
   return transfers
-    .filter(
-      (row) =>
-        missingHere(row) &&
-        transferAmountOn(row, line.walletId) === line.amountCents &&
-        daysOff(row) <= MATCH_WINDOW_DAYS,
-    )
+    .filter((row) => openHere(row) && transferAmountOn(row, line.walletId) === line.amountCents)
     .toSorted((a, b) => daysOff(a) - daysOff(b))[0]
 }
 
 /**
- * What To review offers for an uploaded line: the same as a hand entry, the other side of an
- * Actual Transfer, or a Planned item.
+ * What To review offers for an uploaded line: the same as a hand entry, one side of an Actual
+ * Transfer (its other side, or the same as a hand-entered one), or a Planned item.
  */
 export type ReviewSuggestion<Item, Row, Transfer> =
   | { kind: "twin"; handEntry: Row }
@@ -158,8 +169,8 @@ export type ReviewSuggestion<Item, Row, Transfer> =
 /**
  * What To review offers for an uploaded line, or null when it is simply unplanned. A hand-entry
  * twin comes first: the line is then most likely the Actual a person already entered, which may
- * itself be Reconciled. Then the Actual Transfer it is the other side of, which is already
- * recorded and only waits for this line. Otherwise the best suggested Planned match.
+ * itself be Reconciled. Then the Actual Transfer it is one side of, which is already recorded
+ * and only waits for this line. Otherwise the best suggested Planned match.
  */
 export function reviewSuggestion<
   Item extends PlannedDetails,
