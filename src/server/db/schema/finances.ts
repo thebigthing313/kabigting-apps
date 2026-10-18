@@ -151,8 +151,9 @@ export const financesOccurrences = pgTable(
     reconciledTransactionId: uuid()
       .unique("finances_occurrences_reconciled_transaction_unique")
       .references((): AnyPgColumn => financesTransactions.id),
-    // The Transfers table comes with Transfers by hand, and this foreign key with it.
-    reconciledTransferId: uuid().unique("finances_occurrences_reconciled_transfer_unique"),
+    reconciledTransferId: uuid()
+      .unique("finances_occurrences_reconciled_transfer_unique")
+      .references((): AnyPgColumn => financesTransfers.id),
     ...timestamps(),
   },
   (table) => [
@@ -221,6 +222,88 @@ export const financesTransactions = pgTable(
     ),
     check(
       "finances_transactions_only_planned_reconciles",
+      sql`${table.reconciledActualId} is null or ${table.status} = 'planned'`,
+    ),
+  ],
+)
+
+/**
+ * The household's one row of Finances settings, id `'household'`, seeded by its migration.
+ * `openOnHomeWalletId` is the forecast Wallet home opens on; null means All.
+ */
+export const financesSettings = pgTable(
+  "finances_settings",
+  {
+    id: text().primaryKey(),
+    // Deleting the Wallet puts home back on All rather than refusing the delete.
+    openOnHomeWalletId: uuid().references(() => financesWallets.id, { onDelete: "set null" }),
+    ...timestamps(),
+  },
+  // There is only ever the household's row.
+  (table) => [check("finances_settings_household", sql`${table.id} = 'household'`)],
+)
+
+/**
+ * Money moved between two of the household's Wallets: Planned (a one-off entered by hand) or
+ * Actual. It is not a Transaction and has no Category, so it never counts as spending or income.
+ * The amount is positive, moved from `fromWalletId` to `toWalletId`. Each side keeps where its
+ * line came from, so an upload to either Wallet never adds that side again.
+ */
+export const financesTransfers = pgTable(
+  "finances_transfers",
+  {
+    id: idColumn(),
+    status: text({ enum: ["planned", "actual"] }).notNull(),
+    date: date({ mode: "string" }).notNull(),
+    amountCents: bigint({ mode: "number" }).notNull(),
+    fromWalletId: uuid()
+      .notNull()
+      .references(() => financesWallets.id),
+    toWalletId: uuid()
+      .notNull()
+      .references(() => financesWallets.id),
+    accountId: uuid().references(() => financesAccounts.id),
+    note: text().notNull().default(""),
+    /** Where the from side's line came from; null on a Planned row. */
+    fromSource: text({ enum: ["manual", "ofx", "access"] }),
+    /** The from side's FITID, content hash or old id; null on hand-entered sides. */
+    fromSourceKey: text(),
+    fromBankDescription: text(),
+    /** Where the to side's line came from; null on a Planned row. */
+    toSource: text({ enum: ["manual", "ofx", "access"] }),
+    toSourceKey: text(),
+    toBankDescription: text(),
+    /** An imported Actual Transfer a person deleted: kept, so a re-upload does not add it again. */
+    ignored: boolean().notNull().default(false),
+    /** Set on a one-off Planned Transfer once it is Reconciled to this Actual Transfer. */
+    reconciledActualId: uuid()
+      .unique("finances_transfers_reconciled_actual_unique")
+      .references((): AnyPgColumn => financesTransfers.id),
+    ...timestamps(),
+  },
+  (table) => [
+    uniqueIndex("finances_transfers_from_source_key_unique")
+      .on(table.fromWalletId, table.fromSource, table.fromSourceKey)
+      .where(sql`${table.fromSourceKey} is not null`),
+    uniqueIndex("finances_transfers_to_source_key_unique")
+      .on(table.toWalletId, table.toSource, table.toSourceKey)
+      .where(sql`${table.toSourceKey} is not null`),
+    index("finances_transfers_from_wallet_date").on(table.fromWalletId, table.date),
+    index("finances_transfers_to_wallet_date").on(table.toWalletId, table.date),
+    check("finances_transfers_status", sql`${table.status} in ('planned', 'actual')`),
+    check("finances_transfers_positive", sql`${table.amountCents} > 0`),
+    check("finances_transfers_two_wallets", sql`${table.fromWalletId} <> ${table.toWalletId}`),
+    check(
+      "finances_transfers_source",
+      sql`(${table.fromSource} is null or ${table.fromSource} in ('manual', 'ofx', 'access')) and (${table.toSource} is null or ${table.toSource} in ('manual', 'ofx', 'access'))`,
+    ),
+    // Only an Actual Transfer came from somewhere, can be ignored or be the target of a Reconcile.
+    check(
+      "finances_transfers_planned_has_no_source",
+      sql`${table.status} = 'actual' or (${table.fromSource} is null and ${table.fromSourceKey} is null and ${table.toSource} is null and ${table.toSourceKey} is null and not ${table.ignored})`,
+    ),
+    check(
+      "finances_transfers_only_planned_reconciles",
       sql`${table.reconciledActualId} is null or ${table.status} = 'planned'`,
     ),
   ],

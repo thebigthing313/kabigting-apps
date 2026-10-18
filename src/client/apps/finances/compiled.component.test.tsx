@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest"
 import { CategoriesPage, CategoryList } from "@/apps/finances/categories-page"
 import { FinancesHome } from "@/apps/finances/finances-home"
+import { AllWallets } from "@/apps/finances/home/all-wallets"
 import { ForecastChart } from "@/apps/finances/home/forecast-chart"
 import { WalletForecast } from "@/apps/finances/home/wallet-forecast"
 import { ScheduleForm } from "@/apps/finances/schedules/schedule-form"
@@ -32,6 +33,7 @@ describe("React Compiler", () => {
   test.each([
     ["FinancesHome", FinancesHome],
     ["WalletForecast", WalletForecast],
+    ["AllWallets", AllWallets],
     ["ForecastChart", ForecastChart],
     ["NamePicker", NamePicker],
     ["NameDialog", NameDialog],

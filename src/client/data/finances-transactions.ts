@@ -1,8 +1,10 @@
-import { and, eq, gt, inArray, useLiveQuery } from "@tanstack/react-db"
+import { and, eq, gt, gte, inArray, lte, useLiveQuery } from "@tanstack/react-db"
 import { api } from "@/data/api"
 import { defineOnDemandCollection } from "@/data/collection-factory"
 import { readJson, reportError } from "@/data/error-handler"
 import { applyOccurrenceChanges } from "@/data/finances-occurrences"
+import { useActualTransfersSince } from "@/data/finances-transfers"
+import { settled } from "@/data/settled"
 import { nowInstant } from "@shared/dates"
 import type {
   Reconcile,
@@ -10,6 +12,7 @@ import type {
   TransactionRow,
   UpdateTransaction,
 } from "@shared/finances/schemas"
+import { transferAmountOn } from "@shared/finances/transfers"
 import { newId } from "@shared/ids"
 
 export type Transaction = TransactionRow
@@ -64,10 +67,13 @@ const OLDEST_FIRST = { direction: "asc", stringSort: "lexical" } as const
 
 /**
  * A Wallet's Actuals dated after `after`: what its balance adds to a Balance check on that date.
- * Nothing loads while `after` is undefined (the Wallet has no check yet, or it is loading).
+ * `actuals` holds its Actual Transactions and Actual Transfers, each signed as it moved this
+ * Wallet; `transactions` and `transfers` are the rows themselves. Nothing loads while `after` is
+ * undefined (the Wallet has no check yet, or it is loading).
  */
 export function useActualsSince(walletId: string, after: string | undefined) {
   const transactions = financesTransactions()
+  const { transfers, isLoading: transfersLoading } = useActualTransfersSince(walletId, after)
   const { data, isLoading } = useLiveQuery(
     (q) =>
       after === undefined
@@ -79,8 +85,25 @@ export function useActualsSince(walletId: string, after: string | undefined) {
             ),
     [transactions, walletId, after],
   )
-  return { actuals: data ?? [], isLoading: after !== undefined && isLoading }
+  const own = data ?? []
+  const actuals: WalletMove[] = [
+    ...own.map(({ id, date, amountCents }) => ({ id, date, amountCents })),
+    ...transfers.map((transfer) => ({
+      id: transfer.id,
+      date: transfer.date,
+      amountCents: transferAmountOn(transfer, walletId),
+    })),
+  ]
+  return {
+    actuals,
+    transactions: own,
+    transfers,
+    isLoading: (after !== undefined && isLoading) || transfersLoading,
+  }
 }
+
+/** Money that moved one Wallet, signed as it moved it. */
+export type WalletMove = { id: string; date: string; amountCents: number }
 
 /**
  * A Wallet's one-off Planned Transactions, soonest first. `oneOffs` are the outstanding ones:
@@ -136,14 +159,38 @@ export function useActivity(walletId: string, count: number) {
   )
 }
 
-/** True once the server accepted the write; false after a rollback (already reported). */
-async function settled(transaction: { when: (state: "settled") => Promise<unknown> }) {
-  try {
-    await transaction.when("settled")
-    return true
-  } catch {
-    return false
-  }
+/** Every Wallet's Actuals dated `from` to `to`, inclusive, ignored lines left out. */
+export function useActualsBetween(from: string, to: string) {
+  const transactions = financesTransactions()
+  return useLiveQuery(
+    (q) =>
+      q
+        .from({ row: transactions })
+        .where(({ row }) =>
+          and(
+            eq(row.status, "actual"),
+            eq(row.ignored, false),
+            gte(row.date, from),
+            lte(row.date, to),
+          ),
+        ),
+    [transactions, from, to],
+  )
+}
+
+/** The household's first Actual in any Wallet, ignored lines left out; none when there is none. */
+export function useFirstActual() {
+  const transactions = financesTransactions()
+  const { data, isLoading } = useLiveQuery(
+    (q) =>
+      q
+        .from({ row: transactions })
+        .where(({ row }) => and(eq(row.status, "actual"), eq(row.ignored, false)))
+        .orderBy(({ row }) => row.date, OLDEST_FIRST)
+        .limit(1),
+    [transactions],
+  )
+  return { first: data[0], isLoading }
 }
 
 /**
