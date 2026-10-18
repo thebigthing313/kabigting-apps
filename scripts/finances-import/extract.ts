@@ -4,7 +4,7 @@
  * amounts into cents and dates into `YYYY-MM-DD`; it never echoes a value in its errors.
  */
 import { z } from "zod"
-import { parse as parseMoney } from "#shared/money.ts"
+import { parse as parseMoney, parseToCent } from "#shared/money.ts"
 
 export const EXTRACT_FILES = [
   "categories",
@@ -63,8 +63,16 @@ export type OldLedgerRow = {
   bankDescription: string | null
   bankDate: string | null
 }
-/** A hand-typed Checking balance; `enteredAt` is household local time. */
-export type OldBalance = { id: string; enteredAt: string; amountCents: number }
+/**
+ * A hand-typed Checking balance; `enteredAt` is household local time. Some were typed past the
+ * cent, so the amount is rounded to the nearest cent and `roundedToCent` says so.
+ */
+export type OldBalance = {
+  id: string
+  enteredAt: string
+  amountCents: number
+  roundedToCent: boolean
+}
 
 export type Extract = {
   categories: OldCategory[]
@@ -98,6 +106,15 @@ const cents = z.union([z.string(), z.number()]).transform((value, context) => {
   const parsed = parseMoney(String(value))
   if (parsed === null) {
     context.addIssue({ code: "custom", message: "not an amount in dollars and cents" })
+    return z.NEVER
+  }
+  return parsed
+})
+/** A hand-typed amount, rounded to the nearest cent, halves away from zero. */
+const centsRounded = z.union([z.string(), z.number()]).transform((value, context) => {
+  const parsed = parseToCent(String(value))
+  if (parsed === null) {
+    context.addIssue({ code: "custom", message: "not an amount in dollars" })
     return z.NEVER
   }
   return parsed
@@ -156,9 +173,13 @@ const schemas = {
     .object({
       id,
       enteredAt: z.string().regex(/^\d{4}-\d{2}-\d{2}/, "not a timestamp"),
-      amount: cents,
+      amount: centsRounded,
     })
-    .transform(renameAmount),
+    .transform(({ amount, ...row }) => ({
+      ...row,
+      amountCents: amount.cents,
+      roundedToCent: amount.rounded,
+    })),
 } satisfies Record<ExtractFile, z.ZodType>
 
 /** Thrown for a malformed extract; names files, rows and fields, never their values. */

@@ -742,7 +742,10 @@ An old category not in this table fails the dry run, and the table is then amend
 user.
 
 **Balance checks.** Each day's Balance check on Checking is the last entry for that day. The day
-is the date part of `enteredAt`, read as household time.
+is the date part of `enteredAt`, read as household time. Some balances were hand-typed past the
+cent ("3654.476"); those are rounded to the nearest cent, halves away from zero, on the digits
+rather than through floats. Transaction and ledger amounts stay strict: past the cent fails the
+run.
 
 **Report.** Counts only:
 
@@ -751,8 +754,8 @@ is the date part of `enteredAt`, read as household time.
   with the mapping applied; "new" is `src/shared/finances/summary.ts` over the Actuals to be
   written.
 - Counted, never failing: transactions whose ledger rows don't sum to the transaction amount,
-  each date fallback (including impossible bank dates that fell back), each skip reason, and
-  payees moved into notes.
+  each date fallback (including impossible bank dates that fell back), each skip reason,
+  payees moved into notes, and balances rounded to the cent.
 
 **Failure.** The run exits non-zero, and writes nothing even without `--dry-run`, when:
 

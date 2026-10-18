@@ -9,6 +9,7 @@ import type {
   OldTransaction,
 } from "./extract.ts"
 import { planImport, type PlannedActual } from "./plan.ts"
+import { formatReport } from "./report.ts"
 
 const TODAY = "2026-10-18"
 
@@ -50,8 +51,13 @@ function ledger(id: string, changes: Partial<OldLedgerRow> = {}): OldLedgerRow {
   }
 }
 
-function balance(id: string, enteredAt: string, amountCents: number): OldBalance {
-  return { id, enteredAt, amountCents }
+function balance(
+  id: string,
+  enteredAt: string,
+  amountCents: number,
+  roundedToCent = false,
+): OldBalance {
+  return { id, enteredAt, amountCents, roundedToCent }
 }
 
 function extract(changes: Partial<Extract> = {}): Extract {
@@ -310,6 +316,20 @@ describe("Balance checks", () => {
     ])
     expect(result.wallet).toEqual({ name: "Checking", inForecast: true })
     expect(result.report.years.balances.get("2024")).toEqual({ read: 4, written: 2, skipped: 2 })
+  })
+
+  test("entries rounded to the cent are counted, not failed, and named in the report", () => {
+    const result = plan({
+      balances: [
+        balance("1", "2024-02-01T09:00:00", 1235, true),
+        balance("2", "2024-02-02T09:00:00", -1, true),
+        balance("3", "2024-02-03T09:00:00", 500),
+      ],
+    })
+    expect(result.balanceChecks).toHaveLength(3)
+    expect(result.report.counted.balancesRoundedToCent).toBe(2)
+    expect(result.report.failures).toEqual([])
+    expect(formatReport(result)).toContain("  balances rounded to the cent: 2")
   })
 })
 

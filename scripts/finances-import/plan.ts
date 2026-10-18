@@ -51,6 +51,8 @@ export type ImportReport = {
     dateFromTransactionDate: number
     impossibleBankDateFellBack: number
     payeesMovedToNotes: number
+    /** Balance entries read whose hand-typed amount went past the cent. */
+    balancesRoundedToCent: number
   }
   categoryTotals: CategoryTotal[]
   /** Every reason the run must fail; empty when it may write. */
@@ -116,6 +118,7 @@ export function planImport(extract: Extract, options: { today: string }): Import
     dateFromTransactionDate: 0,
     impossibleBankDateFellBack: 0,
     payeesMovedToNotes: 0,
+    balancesRoundedToCent: extract.balances.filter((row) => row.roundedToCent).length,
   }
 
   // Read counts come straight from the files; written ones from what the plan holds at the end;
