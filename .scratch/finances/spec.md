@@ -52,7 +52,7 @@ of the old database. Tests use made-up data. The Access file and its JSON extrac
 | D5 | Glossary: Account, Wallet, Transaction (Planned or Actual), Schedule, Occurrence, Transfer, Category, Balance check, Reconcile, Overdue, Forecast, Monthly summary. ([Finances glossary: what are the core nouns?](https://github.com/thebigthing313/kabigting-apps/issues/16)) |
 | D6 | A Schedule repeats every N weeks or N months (N ≥ 1) from its start date, which is the first Occurrence. A monthly Schedule on the 29th to 31st falls on the month's last day without losing its anchor day. Dates never shift for weekends or holidays. ([How does a Schedule make Planned Transactions?](https://github.com/thebigthing313/kabigting-apps/issues/19)) |
 | D7 | Occurrences are computed by one pure shared function. They are stored only when overridden (amount or date), skipped or Reconciled, and keyed by (Schedule, nominal date). (#19) |
-| D8 | Changing a Schedule from a date ends it the day before and starts a successor under the same Account. Ending it deletes later overrides after a confirmation that lists them, and never touches Reconciled ones. Reopening clears the end date. Deleting is allowed only when nothing is Reconciled to it. (#19) |
+| D8 | Changing a Schedule from a date ends it the day before and starts a successor under the same Account. Later overrides move to the successor; any the new terms never fall on are deleted after a confirmation that lists them (decided on PR #69). Ending it deletes later overrides after a confirmation that lists them, and never touches Reconciled ones. Reopening clears the end date. Deleting is allowed only when nothing is Reconciled to it. (#19) |
 | D9 | Actuals come from hand entry and OFX/QFX/QBO upload. Only posted lines are stored. Each one is keyed by (Wallet, source, source key); the source key is the FITID, or a content hash when there is none. ([How are Planned and Actual Transactions reconciled?](https://github.com/thebigthing313/kabigting-apps/issues/20), [Bank import options for a self-hosted household app](https://github.com/thebigthing313/kabigting-apps/issues/17)) |
 | D10 | A Reconcile is one to one: suggested by the app, confirmed by a person. Candidates are in the same Wallet, have the same sign and are dated within ±7 days of the Planned date, ranked by closeness of amount, then of date. A person can also pick any outstanding Planned by hand. The Actual's amount and date are the truth. (#20) |
 | D11 | A Planned item is outstanding (upcoming, or Overdue once its date passes), Reconciled or skipped. An Actual is Reconciled or unplanned, and unplanned is a normal end state. (#20) |
@@ -359,9 +359,12 @@ grouped by collection:
   Actual Transfer with one side keyed.
 - `POST /transfers/:id/pair` with `{ actualId }`: moves that Actual's key onto the Transfer's
   missing side and deletes the Actual.
-- `POST /schedules/:id/change-from` with `{ date, changes }`: ends the Schedule on `date − 1` and
-  creates the successor with `predecessorId`. Stored Occurrences dated on or after `date` that
-  aren't Reconciled move to the successor.
+- `POST /schedules/:id/change-from` with `{ date, changes, confirmDeleteOverrides: string[] }`:
+  ends the Schedule on `date − 1` and creates the successor with `predecessorId`. Stored
+  Occurrences dated on or after `date` (by nominal date) that aren't Reconciled move to the
+  successor, except those the successor's terms never fall on (a new day or frequency, or a first
+  date after `date`). Those are deleted, and the request is refused (409) unless the list equals
+  them. Reconciled ones are never touched.
 - `POST /schedules/:id/end` with `{ endDate, confirmDeleteOverrides: string[] }`: refused unless
   the list equals the later non-Reconciled stored Occurrences. Those are deleted.
 - `POST /categories/:id/merge` with `{ intoId }`: moves Transactions and Schedule defaults over,
@@ -482,6 +485,8 @@ Home and Wallet pages also have the floating + button.
   - **History:** `scheduleChain`, newest first, each entry with its date range, terms and
     amount.
   - **End…** opens a confirm listing the overrides that will be deleted.
+  - **Change from a date…** lists, as the terms are edited, the later overrides the new terms
+    never fall on; saving deletes them.
 - Delete is offered only when nothing is Reconciled to the chain.
 
 ### 7.4 Wallets (variant A)

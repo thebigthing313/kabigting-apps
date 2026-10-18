@@ -17,13 +17,21 @@ import { useStoredOccurrences } from "@/data/finances-occurrences"
 import { addSchedule, useSchedules, type Schedule } from "@/data/finances-schedules"
 import { useWallets, type Wallet } from "@/data/finances-wallets"
 import { formatDisplayDate, today } from "@shared/dates"
-import { describeTerms, nextOccurrence, type Occurrence } from "@shared/finances/occurrences"
+import {
+  describeTerms,
+  isEnded,
+  nextInChain,
+  scheduleChain,
+  type Occurrence,
+} from "@shared/finances/occurrences"
 import { format } from "@shared/money"
 
 type ScheduleListRow = {
   schedule: Schedule
   label: string
   next: Occurrence | null
+  /** Its newest Schedule's end date has passed. */
+  ended: boolean
 }
 
 /** Every Schedule, grouped by the Wallet it draws on, soonest first. */
@@ -37,21 +45,24 @@ export function SchedulesPage() {
   const accountName = new Map(accounts.map((account) => [account.id, account.name]))
   const { data: stored } = useStoredOccurrences()
   const now = today()
-  const rows: ScheduleListRow[] = schedules.map((schedule) => ({
-    schedule,
-    label: scheduleLabel(schedule, walletName, accountName),
-    next: nextOccurrence(
+  // A chain of Schedules changed from a date is one row, under its newest Schedule.
+  const continued = new Set(schedules.map((schedule) => schedule.predecessorId))
+  const rows: ScheduleListRow[] = schedules
+    .filter((schedule) => !continued.has(schedule.id))
+    .map((schedule) => ({
       schedule,
-      stored.filter((row) => row.scheduleId === schedule.id),
-      now,
-    ),
-  }))
+      label: scheduleLabel(schedule, walletName, accountName),
+      next: nextInChain(scheduleChain(schedules, schedule.id), stored, now)?.occurrence ?? null,
+      ended: isEnded(schedule, now),
+    }))
+  const running = rows.filter((row) => !row.ended)
   const groups = wallets
     .map((wallet) => ({
       wallet,
-      rows: rows.filter((row) => row.schedule.walletId === wallet.id).toSorted(bySoonest),
+      rows: running.filter((row) => row.schedule.walletId === wallet.id).toSorted(bySoonest),
     }))
     .filter((group) => group.rows.length > 0)
+  const ended = rows.filter((row) => row.ended).toSorted((a, b) => a.label.localeCompare(b.label))
 
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-4">
@@ -68,21 +79,36 @@ export function SchedulesPage() {
           <Skeleton className="h-14" />
           <Skeleton className="h-14" />
         </div>
-      ) : groups.length === 0 ? (
+      ) : rows.length === 0 ? (
         <p className="rounded-xl border p-6 text-center text-muted-foreground">
           No Schedules yet. Add rent, a bill or a paycheck that repeats.
         </p>
       ) : (
-        groups.map(({ wallet, rows: walletRows }) => (
-          <section key={wallet.id} aria-label={wallet.name}>
-            <h2 className="mb-1 text-sm font-medium text-muted-foreground">{wallet.name}</h2>
-            <ul className="divide-y rounded-xl border">
-              {walletRows.map((row) => (
-                <ScheduleRowItem key={row.schedule.id} row={row} wallet={wallet} />
-              ))}
-            </ul>
-          </section>
-        ))
+        <>
+          {groups.map(({ wallet, rows: walletRows }) => (
+            <section key={wallet.id} aria-label={wallet.name}>
+              <h2 className="mb-1 text-sm font-medium text-muted-foreground">{wallet.name}</h2>
+              <ul className="divide-y rounded-xl border">
+                {walletRows.map((row) => (
+                  <ScheduleRowItem key={row.schedule.id} row={row} wallet={wallet} />
+                ))}
+              </ul>
+            </section>
+          ))}
+          {ended.length > 0 ? (
+            <section aria-label="Ended" className="opacity-60">
+              <h2 className="mb-1 text-sm font-medium text-muted-foreground">Ended</h2>
+              <ul className="divide-y rounded-xl border">
+                {ended.map((row) => {
+                  const wallet = wallets.find((each) => each.id === row.schedule.walletId)
+                  return wallet ? (
+                    <ScheduleRowItem key={row.schedule.id} row={row} wallet={wallet} />
+                  ) : null
+                })}
+              </ul>
+            </section>
+          ) : null}
+        </>
       )}
 
       <Dialog open={creating} onOpenChange={setCreating}>
@@ -128,7 +154,11 @@ function ScheduleRowItem({ row, wallet }: { row: ScheduleListRow; wallet: Wallet
           <p className="truncate font-medium">{label}</p>
           <p className="text-sm text-muted-foreground">
             {describeTerms(schedule)}
-            {next ? ` · next ${formatDisplayDate(next.date)}` : " · no more Occurrences"}
+            {next
+              ? ` · next ${formatDisplayDate(next.date)}`
+              : schedule.endDate !== null && row.ended
+                ? ` · ended ${formatDisplayDate(schedule.endDate)}`
+                : " · no more Occurrences"}
           </p>
         </div>
         <span className="shrink-0 text-sm font-medium tabular-nums">
