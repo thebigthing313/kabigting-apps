@@ -1,9 +1,10 @@
 import { describe, expect, test, vi } from "vitest"
 import { userEvent } from "vitest/browser"
 import { render } from "vitest-browser-react"
-import { TransactionForm } from "@/apps/finances/transactions/transaction-form"
+import { type MatchesProps, TransactionForm } from "@/apps/finances/transactions/transaction-form"
 import type { NewTransaction } from "@/data/finances-transactions"
 import { today } from "@shared/dates"
+import type { PlannedItem } from "@shared/finances/reconcile"
 
 const CHECKING = "11111111-1111-7111-8111-111111111111"
 const CARD = "22222222-2222-7222-8222-222222222222"
@@ -33,7 +34,7 @@ const WALLETS = [
 ]
 
 function saver() {
-  return vi.fn<(entry: NewTransaction) => void>()
+  return vi.fn<(entry: NewTransaction, match: PlannedItem | null) => void>()
 }
 
 describe("TransactionForm adding", () => {
@@ -53,15 +54,18 @@ describe("TransactionForm adding", () => {
     await userEvent.fill(screen.getByLabelText("Note"), "  Made-up groceries ")
     await screen.getByRole("button", { name: "Add Actual" }).click()
     await vi.waitFor(() =>
-      expect(onSave).toHaveBeenCalledWith({
-        status: "actual",
-        walletId: CHECKING,
-        date: "2026-10-05",
-        amountCents: -4_250,
-        accountId: GROCER,
-        categoryId: GROCERIES,
-        note: "Made-up groceries",
-      }),
+      expect(onSave).toHaveBeenCalledWith(
+        {
+          status: "actual",
+          walletId: CHECKING,
+          date: "2026-10-05",
+          amountCents: -4_250,
+          accountId: GROCER,
+          categoryId: GROCERIES,
+          note: "Made-up groceries",
+        },
+        null,
+      ),
     )
   })
 
@@ -77,6 +81,7 @@ describe("TransactionForm adding", () => {
     await vi.waitFor(() =>
       expect(onSave).toHaveBeenCalledWith(
         expect.objectContaining({ status: "planned", amountCents: 150_000, accountId: null }),
+        null,
       ),
     )
   })
@@ -92,6 +97,7 @@ describe("TransactionForm adding", () => {
     await vi.waitFor(() =>
       expect(onSave).toHaveBeenCalledWith(
         expect.objectContaining({ walletId: CARD, amountCents: -5_000 }),
+        null,
       ),
     )
   })
@@ -141,13 +147,16 @@ describe("TransactionForm editing", () => {
     await screen.getByText("Pick Category").click()
     await screen.getByRole("button", { name: "Save changes" }).click()
     await vi.waitFor(() =>
-      expect(onSave).toHaveBeenCalledWith({
-        ...row,
-        walletId: CHECKING,
-        date: "2026-10-04",
-        amountCents: -6_000,
-        categoryId: GROCERIES,
-      }),
+      expect(onSave).toHaveBeenCalledWith(
+        {
+          ...row,
+          walletId: CHECKING,
+          date: "2026-10-04",
+          amountCents: -6_000,
+          categoryId: GROCERIES,
+        },
+        null,
+      ),
     )
   })
 
@@ -161,6 +170,93 @@ describe("TransactionForm editing", () => {
     await expect.element(screen.getByLabelText("Amount")).toBeDisabled()
     await userEvent.fill(screen.getByLabelText("Note"), "Relabelled")
     await screen.getByRole("button", { name: "Save changes" }).click()
-    await vi.waitFor(() => expect(onSave).toHaveBeenCalledWith({ ...row, note: "Relabelled" }))
+    await vi.waitFor(() =>
+      expect(onSave).toHaveBeenCalledWith({ ...row, note: "Relabelled" }, null),
+    )
+  })
+})
+
+describe("TransactionForm suggested matches", () => {
+  const rent: PlannedItem = {
+    kind: "occurrence",
+    scheduleId: "55555555-5555-7555-8555-555555555555",
+    nominalDate: "2026-10-01",
+    walletId: CHECKING,
+    date: "2026-10-01",
+    amountCents: -4_000,
+    accountId: null,
+    categoryId: null,
+  }
+
+  /** Stands in for the live suggestions: shows what it was asked about and offers one match. */
+  function Matches({ walletId, amountCents, selected, onSelect }: MatchesProps) {
+    return (
+      <div>
+        <p>
+          Matches for {walletId === CHECKING ? "checking" : "card"} {amountCents}
+        </p>
+        <button type="button" onClick={() => onSelect(selected ? null : rent)}>
+          {selected ? "Untick rent" : "Tick rent"}
+        </button>
+      </div>
+    )
+  }
+
+  async function typed(onSave = saver()) {
+    const screen = await render(
+      <TransactionForm
+        wallets={WALLETS}
+        status="actual"
+        walletId={CHECKING}
+        matches={Matches}
+        onSave={onSave}
+      />,
+    )
+    await userEvent.fill(screen.getByLabelText("Date"), "2026-10-02")
+    await userEvent.fill(screen.getByLabelText("Amount"), "42.50")
+    return screen
+  }
+
+  test("are asked for once an Amount is typed, and the ticked one is saved with the Actual", async () => {
+    const onSave = saver()
+    const screen = await render(
+      <TransactionForm
+        wallets={WALLETS}
+        status="actual"
+        walletId={CHECKING}
+        matches={Matches}
+        onSave={onSave}
+      />,
+    )
+    await expect.element(screen.getByText(/Matches for/)).not.toBeInTheDocument()
+    await userEvent.fill(screen.getByLabelText("Date"), "2026-10-02")
+    await userEvent.fill(screen.getByLabelText("Amount"), "42.50")
+    await expect.element(screen.getByText("Matches for checking -4250")).toBeVisible()
+    await screen.getByRole("button", { name: "Tick rent" }).click()
+    await expect.element(screen.getByRole("button", { name: "Untick rent" })).toBeVisible()
+    await screen.getByRole("button", { name: "Add Actual" }).click()
+    await vi.waitFor(() =>
+      expect(onSave).toHaveBeenCalledWith(
+        expect.objectContaining({ amountCents: -4_250, date: "2026-10-02" }),
+        rent,
+      ),
+    )
+  })
+
+  test("a tick that no longer suits the Actual, such as after a change of sign, is dropped", async () => {
+    const onSave = saver()
+    const screen = await typed(onSave)
+    await screen.getByRole("button", { name: "Tick rent" }).click()
+    await screen.getByText("Money in").click()
+    await screen.getByRole("button", { name: "Add Actual" }).click()
+    await vi.waitFor(() =>
+      expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ amountCents: 4_250 }), null),
+    )
+  })
+
+  test("a Planned item gets no suggestions", async () => {
+    const screen = await typed()
+    await screen.getByText("Planned", { exact: true }).click()
+    await expect.element(screen.getByText(/Matches for/)).not.toBeInTheDocument()
   })
 })

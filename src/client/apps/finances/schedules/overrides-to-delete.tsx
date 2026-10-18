@@ -55,3 +55,18 @@ export function OverridesToDelete({
     </section>
   )
 }
+
+/**
+ * The Reconciled Occurrences that keep a Schedule from ending or changing from the date picked:
+ * they would drop off it, and new terms falling on the same date would count them again.
+ */
+export function ReconciledInTheWay({ rows }: { rows: readonly OccurrenceRow[] }) {
+  const [first] = rows
+  if (!first) return null
+  return (
+    <p role="alert" className="text-sm text-destructive">
+      The Occurrence on {formatDisplayDate(first.nominalDate)} is Reconciled. Un-Reconcile it from
+      its Wallet&apos;s Activity, or pick a later date.
+    </p>
+  )
+}

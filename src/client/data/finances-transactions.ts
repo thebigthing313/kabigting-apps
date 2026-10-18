@@ -1,9 +1,15 @@
-import { and, eq, gt, useLiveQuery } from "@tanstack/react-db"
+import { and, eq, gt, inArray, useLiveQuery } from "@tanstack/react-db"
 import { api } from "@/data/api"
 import { defineOnDemandCollection } from "@/data/collection-factory"
-import { readJson } from "@/data/error-handler"
+import { readJson, reportError } from "@/data/error-handler"
+import { applyOccurrenceChanges } from "@/data/finances-occurrences"
 import { nowInstant } from "@shared/dates"
-import type { TransactionRow, UpdateTransaction } from "@shared/finances/schemas"
+import type {
+  Reconcile,
+  ReconcileResult,
+  TransactionRow,
+  UpdateTransaction,
+} from "@shared/finances/schemas"
 import { newId } from "@shared/ids"
 
 export type Transaction = TransactionRow
@@ -77,8 +83,9 @@ export function useActualsSince(walletId: string, after: string | undefined) {
 }
 
 /**
- * A Wallet's outstanding one-off Planned Transactions, soonest first: upcoming ones, and Overdue
- * ones whose date has passed. A Reconciled one is no longer outstanding.
+ * A Wallet's one-off Planned Transactions, soonest first. `oneOffs` are the outstanding ones:
+ * upcoming, and Overdue once their date has passed. A Reconciled one is no longer outstanding;
+ * `planned` keeps those too, to show what an Actual is Reconciled to.
  */
 export function useOutstandingOneOffs(walletId: string) {
   const transactions = financesTransactions()
@@ -91,7 +98,25 @@ export function useOutstandingOneOffs(walletId: string) {
     [transactions, walletId],
   )
   // Few enough to filter here; the server has no filter for the Reconcile link.
-  return { oneOffs: data.filter((row) => row.reconciledActualId === null), isLoading }
+  return {
+    oneOffs: data.filter((row) => row.reconciledActualId === null),
+    planned: data,
+    isLoading,
+  }
+}
+
+/** The Transactions with these ids, such as the Actuals a Schedule's Occurrences are Reconciled to. */
+export function useTransactionsById(ids: readonly string[]) {
+  const transactions = financesTransactions()
+  const key = ids.toSorted().join(",")
+  const { data } = useLiveQuery(
+    (q) =>
+      key === ""
+        ? undefined
+        : q.from({ row: transactions }).where(({ row }) => inArray(row.id, key.split(","))),
+    [transactions, key],
+  )
+  return new Map((data ?? []).map((row) => [row.id, row]))
 }
 
 /**
@@ -121,13 +146,16 @@ async function settled(transaction: { when: (state: "settled") => Promise<unknow
   }
 }
 
-/** Shows the row at once; resolves false after a refusal rolled it back (with a toast). */
-export function addTransaction(input: NewTransaction): Promise<boolean> {
+/**
+ * Shows the row at once; resolves false after a refusal rolled it back (with a toast). `id` is
+ * the new row's, given when something else will refer to it.
+ */
+export function addTransaction(input: NewTransaction, id: string = newId()): Promise<boolean> {
   const now = nowInstant()
   const actual = input.status === "actual"
   return settled(
     financesTransactions().insert({
-      id: newId(),
+      id,
       ...input,
       bankDescription: null,
       source: actual ? "manual" : null,
@@ -152,4 +180,37 @@ export function editTransaction(id: string, changes: TransactionChanges): Promis
 /** Deletes a hand-entered row; an imported Actual is kept by the server as an ignored line. */
 export function deleteTransaction(id: string): Promise<boolean> {
   return settled(financesTransactions().delete(id))
+}
+
+/** Writes a Reconcile command's changed rows into the collections it touched. */
+async function applyReconcile(result: ReconcileResult): Promise<void> {
+  if (result.transactions.length > 0) {
+    await financesTransactions().utils.writeUpsert(result.transactions)
+  }
+  await applyOccurrenceChanges(result.occurrences, result.deletedOccurrences)
+}
+
+/** Runs a Reconcile command; false after a refusal, which is reported with a toast. */
+async function reconcileCommand(run: () => Promise<ReconcileResult>): Promise<boolean> {
+  let result: ReconcileResult
+  try {
+    result = await run()
+  } catch (error) {
+    reportError(error, "Saving")
+    return false
+  }
+  await applyReconcile(result)
+  return true
+}
+
+/** Reconciles an Actual to an outstanding Planned item, one to one. */
+export function reconcileActual(body: Reconcile): Promise<boolean> {
+  return reconcileCommand(async () => readJson(await api.finances.reconcile.$post({ json: body })))
+}
+
+/** Un-Reconciles an Actual: its Planned item is outstanding again, at its own amount. */
+export function unreconcileActual(actualId: string): Promise<boolean> {
+  return reconcileCommand(async () =>
+    readJson(await api.finances.unreconcile.$post({ json: { actualId } })),
+  )
 }

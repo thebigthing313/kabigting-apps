@@ -1,7 +1,10 @@
 import { useNavigate } from "@tanstack/react-router"
 import { useState } from "react"
 import { ChangeFromForm } from "@/apps/finances/schedules/change-from-form"
-import { OverridesToDelete } from "@/apps/finances/schedules/overrides-to-delete"
+import {
+  OverridesToDelete,
+  ReconciledInTheWay,
+} from "@/apps/finances/schedules/overrides-to-delete"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -30,7 +33,7 @@ import {
   type Schedule,
 } from "@/data/finances-schedules"
 import { addDays, formatDisplayDate, today } from "@shared/dates"
-import { nextOccurrence, overridesAfter } from "@shared/finances/occurrences"
+import { nextOccurrence, overridesAfter, reconciledFrom } from "@shared/finances/occurrences"
 import type { OccurrenceRow } from "@shared/finances/schemas"
 
 type Dialogs = "change" | "end" | "delete" | null
@@ -152,6 +155,7 @@ function EndDialog({
   const [pending, setPending] = useState(false)
   const valid = /^\d{4}-\d{2}-\d{2}$/.test(endDate) && endDate >= schedule.startDate
   const doomed = valid ? overridesAfter(stored, endDate) : []
+  const blocking = valid ? reconciledFrom(stored, addDays(endDate, 1)) : []
 
   async function end() {
     setPending(true)
@@ -175,7 +179,7 @@ function EndDialog({
         <DialogHeader>
           <DialogTitle>End this Schedule</DialogTitle>
           <DialogDescription>
-            No Occurrences after the end date. Reconciled ones are kept.
+            No Occurrences after the end date. It can&apos;t end before a Reconciled one.
           </DialogDescription>
         </DialogHeader>
         <form
@@ -183,7 +187,7 @@ function EndDialog({
           className="-mx-4 flex flex-col gap-4 overflow-y-auto px-4 pb-1"
           onSubmit={(event) => {
             event.preventDefault()
-            if (valid) void end()
+            if (valid && blocking.length === 0) void end()
           }}
         >
           <Field data-invalid={valid ? undefined : true}>
@@ -208,12 +212,13 @@ function EndDialog({
             wallet={wallet}
             empty="No overrides will be deleted."
           />
+          <ReconciledInTheWay rows={blocking} />
           <div className="flex flex-wrap gap-2">
             <Button
               type="submit"
               variant="destructive"
               className="h-11"
-              disabled={!valid || pending}
+              disabled={!valid || pending || blocking.length > 0}
             >
               End Schedule
             </Button>

@@ -1,21 +1,29 @@
 import { cn } from "cn"
 import { ChevronRightIcon } from "lucide-react"
 import { useState } from "react"
+import { scheduleLabel } from "@/apps/finances/schedules/schedule-display"
 import { EditTransactionDialog } from "@/apps/finances/transactions/transaction-dialogs"
 import { categoryLabel, transactionLabel } from "@/apps/finances/transactions/transaction-display"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useFinancesAccounts } from "@/data/finances-accounts"
 import { useCategories } from "@/data/finances-categories"
+import { useStoredOccurrences } from "@/data/finances-occurrences"
+import { useSchedules } from "@/data/finances-schedules"
 import { type Transaction, useActivity, useOutstandingOneOffs } from "@/data/finances-transactions"
-import type { Wallet } from "@/data/finances-wallets"
+import { useWallets, type Wallet } from "@/data/finances-wallets"
 import { formatDisplayDate, today } from "@shared/dates"
 import { toShown } from "@shared/finances/wallets"
 import { format } from "@shared/money"
 
 const PAGE_SIZE = 25
 
-type Names = { account: ReadonlyMap<string, string>; category: ReadonlyMap<string, string> }
+type Names = {
+  account: ReadonlyMap<string, string>
+  category: ReadonlyMap<string, string>
+  /** An Actual's id to the label of the Planned item it is Reconciled to. */
+  reconciledTo: ReadonlyMap<string, string>
+}
 
 /**
  * A Wallet's Activity: its outstanding one-off Planned items, then its Actuals newest first, a
@@ -24,14 +32,33 @@ type Names = { account: ReadonlyMap<string, string>; category: ReadonlyMap<strin
 export function ActivityTab({ wallet }: { wallet: Wallet }) {
   const [count, setCount] = useState(PAGE_SIZE)
   const [editing, setEditing] = useState<Transaction | null>(null)
-  const { oneOffs, isLoading: oneOffsLoading } = useOutstandingOneOffs(wallet.id)
+  const { oneOffs, planned, isLoading: oneOffsLoading } = useOutstandingOneOffs(wallet.id)
   // One more than shown, to know whether there are older ones.
   const { data: actuals, isLoading } = useActivity(wallet.id, count)
   const { data: accounts } = useFinancesAccounts()
   const { data: categories } = useCategories()
+  const { data: occurrences } = useStoredOccurrences()
+  const { data: schedules } = useSchedules()
+  const { data: wallets } = useWallets()
+  const account = new Map(accounts.map((row) => [row.id, row.name]))
+  const walletName = new Map(wallets.map((row) => [row.id, row.name]))
+  const scheduleOf = new Map(schedules.map((row) => [row.id, row]))
+  const reconciledTo = new Map<string, string>()
+  for (const row of occurrences) {
+    const schedule = scheduleOf.get(row.scheduleId)
+    if (row.reconciledTransactionId !== null && schedule) {
+      reconciledTo.set(row.reconciledTransactionId, scheduleLabel(schedule, walletName, account))
+    }
+  }
+  for (const row of planned) {
+    if (row.reconciledActualId !== null) {
+      reconciledTo.set(row.reconciledActualId, transactionLabel(row, account))
+    }
+  }
   const names: Names = {
-    account: new Map(accounts.map((account) => [account.id, account.name])),
+    account,
     category: new Map(categories.map((category) => [category.id, category.name])),
+    reconciledTo,
   }
   const now = today()
 
@@ -121,6 +148,7 @@ function TransactionItem({
 }) {
   const shown = toShown(wallet, row.amountCents)
   const label = transactionLabel(row, names.account)
+  const reconciledTo = names.reconciledTo.get(row.id)
   return (
     <li>
       <button
@@ -132,6 +160,7 @@ function TransactionItem({
           <p className="truncate font-medium">{label}</p>
           <p className="truncate text-sm text-muted-foreground">
             {formatDisplayDate(row.date)} · {categoryLabel(row, names.category)}
+            {reconciledTo === undefined ? null : ` · Reconciled to ${reconciledTo}`}
             {overdue ? (
               <span className="text-amber-700 dark:text-amber-400"> · Overdue</span>
             ) : null}
