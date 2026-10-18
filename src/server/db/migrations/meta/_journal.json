@@ -78,6 +78,13 @@
       "when": 1792293234938,
       "tag": "0010_finances_settings",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1792294970287,
+      "tag": "0011_finances_transfers",
+      "breakpoints": true
     }
   ]
 }

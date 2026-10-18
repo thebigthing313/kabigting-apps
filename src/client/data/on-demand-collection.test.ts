@@ -182,6 +182,25 @@ describe("toOnDemandQueries", () => {
     ])
   })
 
+  test("a Transfer out of or into one Wallet asks for that Wallet's Transfers", () => {
+    const either = (wallet: string, other = wallet) =>
+      func(
+        "or",
+        func("eq", ref("fromWalletId"), val(wallet)),
+        func("eq", ref("toWalletId"), val(other)),
+      )
+    expect(toOnDemandQueries({ where: either(WALLET) })).toEqual([{ walletId: WALLET }])
+    expect(
+      toOnDemandQueries({
+        where: func("and", either(WALLET), func("eq", ref("status"), val("planned"))),
+      }),
+    ).toEqual([{ walletId: WALLET, status: "planned" }])
+    // Two different Wallets, or one side alone, is more than the filter can say.
+    for (const where of [either(WALLET, OTHER), func("eq", ref("fromWalletId"), val(WALLET))]) {
+      expect(() => toOnDemandQueries({ where })).toThrow(UnsupportedLiveQueryError)
+    }
+  })
+
   test("left-out ignored rows need no filter; the server leaves them out", () => {
     const where = func("eq", ref("ignored"), val(false))
     expect(toOnDemandQueries({ where })).toEqual([{}])

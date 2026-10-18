@@ -445,3 +445,91 @@ export const settingsRows = rowsResponse(settingsRow)
 
 export type UpdateSettings = z.infer<typeof updateSettings>
 export type SettingsRow = z.infer<typeof settingsRow>
+
+// Transfers: money moved between two of the household's Wallets. Not a Transaction, and no
+// Category, so never spending or income.
+
+/** What a person enters, and may change on a hand-entered Transfer. */
+const transferFields = {
+  date: isoDate,
+  /** Positive, as money moved from `fromWalletId` to `toWalletId`. */
+  amountCents: cents.positive("A Transfer moves a positive amount"),
+  fromWalletId: id,
+  toWalletId: id,
+  accountId: id.nullable(),
+  note,
+}
+
+function twoWallets(transfer: { fromWalletId?: string; toWalletId?: string }) {
+  return transfer.fromWalletId === undefined || transfer.fromWalletId !== transfer.toWalletId
+}
+
+const TWO_WALLETS = { message: "A Transfer goes to a different Wallet", path: ["toWalletId"] }
+
+/** A hand-entered one-off Planned Transfer or Actual Transfer. It has no Category. */
+export const createTransfer = z
+  .strictObject({
+    id,
+    status: transactionStatus,
+    ...transferFields,
+    accountId: transferFields.accountId.default(null),
+    note: note.default(""),
+  })
+  .refine(twoWallets, TWO_WALLETS)
+
+/**
+ * Planned stays Planned and Actual stays Actual. A side that came from the bank keeps its Wallet,
+ * and the amount and date are then the bank's too; the server refuses changing them.
+ */
+export const updateTransfer = z
+  .strictObject(transferFields)
+  .partial()
+  .refine(atLeastOneField, "Change at least one field")
+  .refine(twoWallets, TWO_WALLETS)
+
+export const transferRow = z.object({
+  id,
+  status: transactionStatus,
+  ...transferFields,
+  amountCents: cents,
+  note: z.string(),
+  /** Where each side's line came from; null on a Planned Transfer. */
+  fromSource: transactionSource.nullable(),
+  fromBankDescription: z.string().nullable(),
+  toSource: transactionSource.nullable(),
+  toBankDescription: z.string().nullable(),
+  /** An imported Actual Transfer a person deleted, kept so a re-upload does not add it again. */
+  ignored: z.boolean(),
+  /** On a one-off Planned Transfer, the Actual Transfer it is Reconciled to. */
+  reconciledActualId: id.nullable(),
+  createdAt: instant,
+  updatedAt: instant,
+})
+
+/**
+ * `walletId` keeps the Transfers out of or into that Wallet. A Transfer has no Category and
+ * never waits in To review, so those filters are refused.
+ */
+export const transferQuery = queryBody({
+  walletId: onDemandFilters.walletId.optional(),
+  dateFrom: onDemandFilters.dateFrom.optional(),
+  dateTo: onDemandFilters.dateTo.optional(),
+  status: onDemandFilters.status.optional(),
+  includeIgnored: onDemandFilters.includeIgnored.optional(),
+  order: onDemandFilters.order.optional(),
+})
+export const transferRows = rowsResponse(transferRow)
+
+type Source = z.infer<typeof transactionSource> | null
+
+/**
+ * An Actual Transfer with a side from the bank or the old ledger keeps its amount and date, and
+ * deleting it keeps it as an ignored line.
+ */
+export function isImportedTransfer(transfer: { fromSource: Source; toSource: Source }): boolean {
+  return isImported({ source: transfer.fromSource }) || isImported({ source: transfer.toSource })
+}
+
+export type CreateTransfer = z.input<typeof createTransfer>
+export type UpdateTransfer = z.infer<typeof updateTransfer>
+export type TransferRow = z.infer<typeof transferRow>

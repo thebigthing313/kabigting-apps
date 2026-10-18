@@ -1,39 +1,83 @@
 import { cn } from "cn"
 import { ChevronRightIcon } from "lucide-react"
 import { useState } from "react"
-import { EditTransactionDialog } from "@/apps/finances/transactions/transaction-dialogs"
-import { categoryLabel, transactionLabel } from "@/apps/finances/transactions/transaction-display"
+import {
+  type ActivityRow,
+  EditActivityDialog,
+} from "@/apps/finances/transactions/transaction-dialogs"
+import {
+  categoryLabel,
+  transactionLabel,
+  transferLabel,
+} from "@/apps/finances/transactions/transaction-display"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useFinancesAccounts } from "@/data/finances-accounts"
 import { useCategories } from "@/data/finances-categories"
-import { type Transaction, useActivity, useOutstandingOneOffs } from "@/data/finances-transactions"
-import type { Wallet } from "@/data/finances-wallets"
+import { useActivity, useOutstandingOneOffs } from "@/data/finances-transactions"
+import { useOutstandingPlannedTransfers, useTransferActivity } from "@/data/finances-transfers"
+import { useWallets, type Wallet } from "@/data/finances-wallets"
 import { formatDisplayDate, today } from "@shared/dates"
+import { transferAmountOn } from "@shared/finances/transfers"
 import { toShown } from "@shared/finances/wallets"
 import { format } from "@shared/money"
 
 const PAGE_SIZE = 25
 
-type Names = { account: ReadonlyMap<string, string>; category: ReadonlyMap<string, string> }
+type Names = {
+  account: ReadonlyMap<string, string>
+  category: ReadonlyMap<string, string>
+  wallet: ReadonlyMap<string, string>
+}
+
+/** Transactions and Transfers in one list, by date (then id, as the server pages them). */
+function byDate(
+  transactions: ActivityRow[],
+  transfers: ActivityRow[],
+  direction: "asc" | "desc",
+): ActivityRow[] {
+  const sign = direction === "asc" ? 1 : -1
+  return [...transactions, ...transfers].toSorted(
+    (a, b) => sign * (a.row.date.localeCompare(b.row.date) || a.row.id.localeCompare(b.row.id)),
+  )
+}
 
 /**
- * A Wallet's Activity: its outstanding one-off Planned items, then its Actuals newest first, a
- * page at a time. Each row opens its editor.
+ * A Wallet's Activity: its outstanding one-off Planned items, then its Actuals and Transfers
+ * newest first, a page at a time. A Transfer shows in both of its Wallets. Each row opens its
+ * editor.
  */
 export function ActivityTab({ wallet }: { wallet: Wallet }) {
   const [count, setCount] = useState(PAGE_SIZE)
-  const [editing, setEditing] = useState<Transaction | null>(null)
+  const [editing, setEditing] = useState<ActivityRow | null>(null)
   const { oneOffs, isLoading: oneOffsLoading } = useOutstandingOneOffs(wallet.id)
-  // One more than shown, to know whether there are older ones.
-  const { data: actuals, isLoading } = useActivity(wallet.id, count)
+  const { plannedTransfers, isLoading: plannedTransfersLoading } = useOutstandingPlannedTransfers(
+    wallet.id,
+  )
+  // One more than shown of each, to know whether there are older ones.
+  const { data: actuals, isLoading: actualsLoading } = useActivity(wallet.id, count)
+  const { data: transfers, isLoading: transfersLoading } = useTransferActivity(wallet.id, count)
   const { data: accounts } = useFinancesAccounts()
   const { data: categories } = useCategories()
+  const { data: wallets } = useWallets()
   const names: Names = {
     account: new Map(accounts.map((account) => [account.id, account.name])),
     category: new Map(categories.map((category) => [category.id, category.name])),
+    wallet: new Map(wallets.map((each) => [each.id, each.name])),
   }
   const now = today()
+  const upcoming = byDate(
+    oneOffs.map((row) => ({ kind: "transaction", row })),
+    plannedTransfers.map((row) => ({ kind: "transfer", row })),
+    "asc",
+  )
+  const past = byDate(
+    actuals.map((row) => ({ kind: "transaction", row })),
+    transfers.map((row) => ({ kind: "transfer", row })),
+    "desc",
+  )
+  const upcomingLoading = oneOffsLoading || plannedTransfersLoading
+  const pastLoading = actualsLoading || transfersLoading
 
   return (
     <div className="flex flex-col gap-6">
@@ -41,21 +85,21 @@ export function ActivityTab({ wallet }: { wallet: Wallet }) {
         <h2 id="upcoming-one-offs" className="font-medium">
           Upcoming one-offs
         </h2>
-        {oneOffsLoading && oneOffs.length === 0 ? (
+        {upcomingLoading && upcoming.length === 0 ? (
           <Skeleton className="h-14" />
-        ) : oneOffs.length === 0 ? (
+        ) : upcoming.length === 0 ? (
           <p className="text-sm text-muted-foreground">
             No one-off Planned items. Add one with the + button.
           </p>
         ) : (
           <ul className="divide-y rounded-xl border" aria-label="Upcoming one-offs">
-            {oneOffs.map((row) => (
-              <TransactionItem
-                key={row.id}
-                row={row}
+            {upcoming.map((item) => (
+              <ActivityItem
+                key={`${item.kind}:${item.row.id}`}
+                item={item}
                 wallet={wallet}
                 names={names}
-                overdue={row.date < now}
+                overdue={item.row.date < now}
                 onOpen={setEditing}
               />
             ))}
@@ -67,21 +111,21 @@ export function ActivityTab({ wallet }: { wallet: Wallet }) {
         <h2 id="actuals" className="font-medium">
           Actuals
         </h2>
-        {isLoading && actuals.length === 0 ? (
+        {pastLoading && past.length === 0 ? (
           <div className="flex flex-col gap-2">
             <Skeleton className="h-14" />
             <Skeleton className="h-14" />
           </div>
-        ) : actuals.length === 0 ? (
+        ) : past.length === 0 ? (
           <p className="rounded-xl border p-6 text-center text-muted-foreground">
             No Actuals yet. Add what really moved with the + button.
           </p>
         ) : (
           <ul className="divide-y rounded-xl border" aria-label="Actuals">
-            {actuals.slice(0, count).map((row) => (
-              <TransactionItem
-                key={row.id}
-                row={row}
+            {past.slice(0, count).map((item) => (
+              <ActivityItem
+                key={`${item.kind}:${item.row.id}`}
+                item={item}
                 wallet={wallet}
                 names={names}
                 overdue={false}
@@ -90,7 +134,7 @@ export function ActivityTab({ wallet }: { wallet: Wallet }) {
             ))}
           </ul>
         )}
-        {actuals.length > count ? (
+        {past.length > count ? (
           <Button
             variant="outline"
             className="h-11 self-center"
@@ -101,37 +145,49 @@ export function ActivityTab({ wallet }: { wallet: Wallet }) {
         ) : null}
       </section>
 
-      <EditTransactionDialog transaction={editing} onClose={() => setEditing(null)} />
+      <EditActivityDialog editing={editing} onClose={() => setEditing(null)} />
     </div>
   )
 }
 
-function TransactionItem({
-  row,
+function ActivityItem({
+  item,
   wallet,
   names,
   overdue,
   onOpen,
 }: {
-  row: Transaction
+  item: ActivityRow
   wallet: Wallet
   names: Names
   overdue: boolean
-  onOpen: (row: Transaction) => void
+  onOpen: (item: ActivityRow) => void
 }) {
-  const shown = toShown(wallet, row.amountCents)
-  const label = transactionLabel(row, names.account)
+  // A Transfer is neither spending nor income: it has no Category, only its other Wallet.
+  const { label, detail, cents } =
+    item.kind === "transfer"
+      ? {
+          label: transferLabel(item.row, wallet.id, names.wallet),
+          detail: "Transfer",
+          cents: transferAmountOn(item.row, wallet.id),
+        }
+      : {
+          label: transactionLabel(item.row, names.account),
+          detail: categoryLabel(item.row, names.category),
+          cents: item.row.amountCents,
+        }
+  const shown = toShown(wallet, cents)
   return (
     <li>
       <button
         type="button"
-        onClick={() => onOpen(row)}
+        onClick={() => onOpen(item)}
         className="flex min-h-14 w-full items-center gap-3 px-3 py-2 text-left hover:bg-muted/50"
       >
         <div className="min-w-0 flex-1">
           <p className="truncate font-medium">{label}</p>
           <p className="truncate text-sm text-muted-foreground">
-            {formatDisplayDate(row.date)} · {categoryLabel(row, names.category)}
+            {formatDisplayDate(item.row.date)} · {detail}
             {overdue ? (
               <span className="text-amber-700 dark:text-amber-400"> · Overdue</span>
             ) : null}
