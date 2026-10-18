@@ -103,7 +103,9 @@ function WalletRow({ wallet }: { wallet: Wallet }) {
       >
         <div className="min-w-0 flex-1">
           <p className="truncate font-medium">{wallet.name}</p>
-          <p className="text-sm text-muted-foreground">{details.join(" · ")}</p>
+          {/* On a phone the loaded details wrap to two lines; reserving them keeps every row's
+              height fixed while balances load, so the list never shifts under a tap. */}
+          <p className="min-h-10 text-sm text-muted-foreground lg:min-h-0">{details.join(" · ")}</p>
         </div>
         <ChevronRightIcon className="size-4 shrink-0 text-muted-foreground" />
       </Link>

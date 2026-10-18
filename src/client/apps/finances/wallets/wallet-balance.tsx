@@ -20,16 +20,22 @@ function useBalance(wallet: Wallet) {
 /** The Wallet page's balance in large type, with its last check date. */
 export function WalletBalance({ wallet }: { wallet: Wallet }) {
   const { check, text, isLoading } = useBalance(wallet)
-  if (isLoading) return <Skeleton className="h-10 w-40" />
-  if (!check) {
-    return <p className="text-3xl font-semibold text-muted-foreground">No Balance check</p>
-  }
+  // The balance and its check date take two lines; they are reserved while the check and the
+  // Actuals since load, so the tabs below never move under a tap.
   return (
-    <div>
-      <p className="text-3xl font-semibold break-words">{text}</p>
-      <p className="text-sm text-muted-foreground">
-        Last Balance check {formatDisplayDate(check.date)}
-      </p>
+    <div className="min-h-14">
+      {isLoading ? (
+        <Skeleton className="h-9 w-40" />
+      ) : check ? (
+        <>
+          <p className="text-3xl font-semibold break-words">{text}</p>
+          <p className="text-sm text-muted-foreground">
+            Last Balance check {formatDisplayDate(check.date)}
+          </p>
+        </>
+      ) : (
+        <p className="text-3xl font-semibold text-muted-foreground">No Balance check</p>
+      )}
     </div>
   )
 }
