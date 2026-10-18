@@ -1,8 +1,6 @@
-import { eq } from "drizzle-orm"
 import { afterAll, beforeAll, describe, expect, test } from "vitest"
-import { financesOccurrences } from "#server/db/schema/index.ts"
 import { createTestServer, json, type TestServer } from "#server/test/server.ts"
-import { occurrenceRow, occurrenceRows } from "#shared/finances/schemas.ts"
+import { occurrenceRow, occurrenceRows, reconcileResult } from "#shared/finances/schemas.ts"
 import { newId } from "#shared/ids.ts"
 
 let server: TestServer
@@ -260,10 +258,9 @@ describe("delete", () => {
   })
 })
 
-/** Reconciling arrives with its own command; until then the link is written straight to the table. */
+/** An Occurrence Reconciled to a hand-entered Actual through the Reconcile command. */
 async function reconciled() {
   const scheduleId = await schedule()
-  const row = await created({ scheduleId, nominalDate: "2026-12-01", skipped: true })
   const actualId = newId()
   const actual = await post("transactions", {
     id: actualId,
@@ -273,10 +270,14 @@ async function reconciled() {
     amountCents: -150_000,
   })
   expect(actual.status).toBe(201)
-  await server.db
-    .update(financesOccurrences)
-    .set({ skipped: false, reconciledTransactionId: actualId })
-    .where(eq(financesOccurrences.id, row.id))
+  const response = await post("reconcile", {
+    plannedKind: "occurrence",
+    plannedRef: { scheduleId, nominalDate: "2026-12-01" },
+    actualId,
+  })
+  expect(response.status).toBe(200)
+  const [row] = reconcileResult.parse(await response.json()).occurrences
+  if (!row) throw new Error("Nothing was Reconciled")
   return { scheduleId, row }
 }
 

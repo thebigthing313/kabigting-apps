@@ -241,6 +241,20 @@ export function overridesOffNewTerms<Row extends StoredOccurrence>(
     .toSorted((a, b) => a.nominalDate.localeCompare(b.nominalDate))
 }
 
+/**
+ * The Reconciled Occurrences dated `date` or later (by nominal date), in date order. A Schedule
+ * can't end or change before one: it would vanish from the Schedule, and a successor falling on
+ * the same date would count it in the Forecast again. Un-Reconcile it, or pick a later date.
+ */
+export function reconciledFrom<Row extends StoredOccurrence>(
+  stored: readonly Row[],
+  date: string,
+): Row[] {
+  return stored
+    .filter((row) => row.nominalDate >= date && isReconciled(row))
+    .toSorted((a, b) => a.nominalDate.localeCompare(b.nominalDate))
+}
+
 /** A Schedule's place in a chain: the Schedule a change from a date continued, if any. */
 export type ChainLink = { id: string; predecessorId: string | null }
 

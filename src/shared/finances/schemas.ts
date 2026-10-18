@@ -419,3 +419,35 @@ export const transactionRows = rowsResponse(transactionRow)
 export type CreateTransaction = z.input<typeof createTransaction>
 export type UpdateTransaction = z.infer<typeof updateTransaction>
 export type TransactionRow = z.infer<typeof transactionRow>
+
+// Reconcile: pairing an Actual with the Planned item it fulfils, one to one.
+
+/**
+ * Reconcile `actualId` to a Planned item: an Occurrence, named by its Schedule and nominal date,
+ * or a one-off Planned Transaction, named by its id. Planned Transfers come with Transfers.
+ */
+export const reconcile = z.discriminatedUnion("plannedKind", [
+  z.strictObject({
+    plannedKind: z.literal("occurrence"),
+    plannedRef: z.strictObject({ scheduleId: id, nominalDate: isoDate }),
+    actualId: id,
+  }),
+  z.strictObject({
+    plannedKind: z.literal("transaction"),
+    plannedRef: id,
+    actualId: id,
+  }),
+])
+
+/** Un-Reconcile the Actual: its Planned item is outstanding again. */
+export const unreconcile = z.strictObject({ actualId: id })
+
+/** What a Reconcile or Un-Reconcile changed: rows to upsert, and stored Occurrences deleted. */
+export const reconcileResult = z.object({
+  occurrences: z.array(occurrenceRow),
+  deletedOccurrences: z.array(id),
+  transactions: z.array(transactionRow),
+})
+
+export type Reconcile = z.infer<typeof reconcile>
+export type ReconcileResult = z.infer<typeof reconcileResult>
