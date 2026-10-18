@@ -8,13 +8,6 @@ import { newId } from "@shared/ids"
 
 export type BalanceCheck = BalanceCheckRow
 
-/**
- * The Actuals a balance is computed with. Hand entry and upload arrive in later slices; until
- * then there are none, so a balance is its latest check and a check's computed balance is the
- * check before it.
- */
-export const NO_ACTUALS_YET: readonly { date: string; amountCents: number }[] = []
-
 function editable({ date, amountCents }: Partial<BalanceCheckRow>): UpdateBalanceCheck {
   return {
     ...(date === undefined ? {} : { date }),

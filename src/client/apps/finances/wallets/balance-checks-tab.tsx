@@ -3,7 +3,8 @@ import { useState } from "react"
 import { BalanceCheckDialog } from "@/apps/finances/wallets/balance-check-dialog"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
-import { NO_ACTUALS_YET, useBalanceChecks } from "@/data/finances-balance-checks"
+import { useBalanceChecks } from "@/data/finances-balance-checks"
+import { useActualsSince } from "@/data/finances-transactions"
 import type { Wallet } from "@/data/finances-wallets"
 import { formatDisplayDate } from "@shared/dates"
 import { compareToComputed } from "@shared/finances/balance-checks"
@@ -18,6 +19,8 @@ export function BalanceChecksTab({ wallet }: { wallet: Wallet }) {
   // One more than shown, so the last shown check has its previous to compare with.
   const { data: checks, isLoading } = useBalanceChecks(wallet.id, count)
   const shown = checks.slice(0, count)
+  // Each shown check is compared with the one before it, so the Actuals since the oldest loaded.
+  const { actuals } = useActualsSince(wallet.id, checks.at(-1)?.date)
 
   return (
     <div className="flex flex-col gap-4">
@@ -39,7 +42,7 @@ export function BalanceChecksTab({ wallet }: { wallet: Wallet }) {
       ) : (
         <ul className="divide-y rounded-xl border" aria-label="Balance checks">
           {shown.map((check, index) => {
-            const comparison = compareToComputed(check, checks[index + 1], NO_ACTUALS_YET)
+            const comparison = compareToComputed(check, checks[index + 1], actuals)
             return (
               <li
                 key={check.id}

@@ -2,6 +2,8 @@ import { Link } from "@tanstack/react-router"
 import { cn } from "cn"
 import { ChevronLeftIcon } from "lucide-react"
 import { toast } from "sonner"
+import { AddButton } from "@/apps/finances/add-button"
+import { ActivityTab } from "@/apps/finances/transactions/activity-tab"
 import { BalanceChecksTab } from "@/apps/finances/wallets/balance-checks-tab"
 import { WalletBalance } from "@/apps/finances/wallets/wallet-balance"
 import { WalletForm } from "@/apps/finances/wallets/wallet-form"
@@ -24,7 +26,8 @@ export function WalletPage({ walletId, tab }: { walletId: string; tab: WalletTab
   const { wallet, isLoading } = useWallet(walletId)
 
   return (
-    <div className="mx-auto flex max-w-3xl flex-col gap-4">
+    // Room at the foot for the + button.
+    <div className="mx-auto flex max-w-3xl flex-col gap-4 pb-24">
       <Link
         to="/finances/wallets"
         className="-ml-2 flex h-10 items-center gap-1 self-start px-2 text-sm text-muted-foreground"
@@ -68,10 +71,9 @@ export function WalletPage({ walletId, tab }: { walletId: string; tab: WalletTab
           ) : tab === "checks" ? (
             <BalanceChecksTab key={wallet.id} wallet={wallet} />
           ) : (
-            <p className="rounded-xl border p-6 text-center text-muted-foreground">
-              Nothing here yet
-            </p>
+            <ActivityTab key={wallet.id} wallet={wallet} />
           )}
+          <AddButton walletId={wallet.id} />
         </>
       ) : (
         <p className="rounded-xl border p-6 text-center text-muted-foreground">

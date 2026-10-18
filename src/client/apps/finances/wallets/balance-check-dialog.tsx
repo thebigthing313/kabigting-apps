@@ -12,11 +12,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Skeleton } from "@/components/ui/skeleton"
-import {
-  enterBalanceCheck,
-  NO_ACTUALS_YET,
-  usePreviousBalanceCheck,
-} from "@/data/finances-balance-checks"
+import { enterBalanceCheck, usePreviousBalanceCheck } from "@/data/finances-balance-checks"
+import { useActualsSince } from "@/data/finances-transactions"
 import { useWallets, type Wallet } from "@/data/finances-wallets"
 import { formatDisplayDate } from "@shared/dates"
 import { compareToComputed } from "@shared/finances/balance-checks"
@@ -89,8 +86,13 @@ function BalanceCheckResult({
   wallet: Wallet
   onDone: () => void
 }) {
-  const { check: previous, isLoading } = usePreviousBalanceCheck(entry.walletId, entry.date)
-  const comparison = compareToComputed(entry, previous, NO_ACTUALS_YET)
+  const { check: previous, isLoading: previousLoading } = usePreviousBalanceCheck(
+    entry.walletId,
+    entry.date,
+  )
+  const { actuals, isLoading: actualsLoading } = useActualsSince(entry.walletId, previous?.date)
+  const isLoading = previousLoading || actualsLoading
+  const comparison = compareToComputed(entry, previous, actuals)
 
   return (
     <div className="flex flex-col gap-4">

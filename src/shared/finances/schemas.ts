@@ -296,3 +296,73 @@ export const occurrenceRows = rowsResponse(occurrenceRow)
 export type CreateOccurrence = z.input<typeof createOccurrence>
 export type UpdateOccurrence = z.infer<typeof updateOccurrence>
 export type OccurrenceRow = z.infer<typeof occurrenceRow>
+
+// Transactions: one-off Planned and Actual rows of money in or out of one Wallet.
+
+/** Where an Actual came from: entered by hand, uploaded, or brought over by the import. */
+export const transactionSource = z.enum(["manual", "ofx", "access"])
+
+/** What a person enters, and may change on a hand-entered row. */
+const transactionFields = {
+  walletId: id,
+  date: isoDate,
+  /** Signed: money out is negative. */
+  amountCents: cents,
+  accountId: id.nullable(),
+  categoryId: id.nullable(),
+  note,
+}
+
+/** A hand-entered one-off Planned or Actual. */
+export const createTransaction = z.strictObject({
+  id,
+  status: onDemandFilters.status,
+  ...transactionFields,
+  accountId: transactionFields.accountId.default(null),
+  categoryId: transactionFields.categoryId.default(null),
+  note: note.default(""),
+})
+
+/**
+ * Planned stays Planned and Actual stays Actual. An imported Actual keeps its amount, date and
+ * Wallet; the server refuses changing them.
+ */
+export const updateTransaction = z
+  .strictObject(transactionFields)
+  .partial()
+  .refine(atLeastOneField, "Change at least one field")
+
+export const transactionRow = z.object({
+  id,
+  status: onDemandFilters.status,
+  ...transactionFields,
+  note: z.string(),
+  bankDescription: z.string().nullable(),
+  /** Null on a Planned row. */
+  source: transactionSource.nullable(),
+  /** An imported Actual a person deleted, kept so a re-upload does not add it again. */
+  ignored: z.boolean(),
+  /** When a person resolved its To review entry; hand-entered Actuals never need one. */
+  reviewedAt: instant.nullable(),
+  /** On a one-off Planned row, the Actual it is Reconciled to. */
+  reconciledActualId: id.nullable(),
+  createdAt: instant,
+  updatedAt: instant,
+})
+
+/** Every filter in the fixed set applies to Transactions. */
+export const transactionQuery = queryBody({
+  walletId: onDemandFilters.walletId.optional(),
+  dateFrom: onDemandFilters.dateFrom.optional(),
+  dateTo: onDemandFilters.dateTo.optional(),
+  categoryId: onDemandFilters.categoryId.optional(),
+  status: onDemandFilters.status.optional(),
+  unreviewed: onDemandFilters.unreviewed.optional(),
+  includeIgnored: onDemandFilters.includeIgnored.optional(),
+  order: onDemandFilters.order.optional(),
+})
+export const transactionRows = rowsResponse(transactionRow)
+
+export type CreateTransaction = z.input<typeof createTransaction>
+export type UpdateTransaction = z.infer<typeof updateTransaction>
+export type TransactionRow = z.infer<typeof transactionRow>

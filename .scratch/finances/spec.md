@@ -283,7 +283,8 @@ These are pure functions, tested with unit tests on made-up data. Dates go throu
     effective date. Overdue ones land on today.
   - An Overdue Occurrence counts only when its effective date is after the latest Balance check's
     date. One dated on or before the check is taken as already in the bank's balance and is left
-    out (decided on PR #67, refining #21's "whatever their date").
+    out (decided on PR #67, refining #21's "whatever their date"). Overdue one-off Planned
+    Transactions and Transfers follow the same rule (decided for #47).
   - A Transfer is an outflow from `fromWallet` and an inflow to `toWallet`.
   - It returns `null` when the Wallet has no Balance check.
 - **`reconcile.ts`**:

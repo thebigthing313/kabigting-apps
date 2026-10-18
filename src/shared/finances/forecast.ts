@@ -100,16 +100,9 @@ function signOn(walletId: string, toWalletId: string | null, thisWallet: string)
   return toWalletId === thisWallet ? 1 : 0
 }
 
-/**
- * The outstanding Occurrences that move this Wallet, dated after the Balance check up to `to`,
- * signed for this Wallet. One dated on or before the check is taken as already in the bank's
- * balance, so even when Overdue it does not count again.
- */
-function occurrenceItems(input: ForecastInput, checkDate: string, to: string): ForecastItem[] {
+/** The outstanding Occurrences that move this Wallet, dated `from` to `to`, signed for it. */
+function occurrenceItems(input: ForecastInput, from: string, to: string): ForecastItem[] {
   const { wallet, today } = input
-  const afterCheck = addDays(checkDate, 1)
-  // From today at the latest, should a check be dated ahead of today.
-  const from = afterCheck < today ? afterCheck : today
   const items: ForecastItem[] = []
   for (const schedule of input.schedules) {
     // A Transfer moves money out of its from Wallet and into its to Wallet.
@@ -131,12 +124,12 @@ function occurrenceItems(input: ForecastInput, checkDate: string, to: string): F
   return items
 }
 
-/** The outstanding one-off Planned Transactions and Transfers that move this Wallet, up to `to`. */
-function oneOffItems(input: ForecastInput, to: string): ForecastItem[] {
+/** The outstanding one-off Planned Transactions and Transfers that move this Wallet, `from` to `to`. */
+function oneOffItems(input: ForecastInput, from: string, to: string): ForecastItem[] {
   const { wallet, today } = input
   const items: ForecastItem[] = []
   const outstanding = (row: { date: string; reconciledActualId: string | null }) =>
-    row.reconciledActualId === null && row.date <= to
+    row.reconciledActualId === null && row.date >= from && row.date <= to
   for (const row of input.planned) {
     if (row.walletId !== wallet.id || !outstanding(row)) continue
     const { id, date, amountCents } = row
@@ -161,10 +154,16 @@ export function forecast(input: ForecastInput): Forecast | null {
   const todayBalanceCents = balanceSince(latestCheck, input.actualsSince)
   const lastDay = addDays(today, horizonDays - 1)
 
+  // Anything Planned dated on or before the check is taken as already in the bank's balance, so
+  // even when Overdue it does not count again. From today at the latest, should a check be dated
+  // ahead of today.
+  const afterCheck = addDays(latestCheck.date, 1)
+  const from = afterCheck < today ? afterCheck : today
+
   // Planned items land on their date; Overdue ones land on today.
   const outstanding = [
-    ...occurrenceItems(input, latestCheck.date, lastDay),
-    ...oneOffItems(input, lastDay),
+    ...occurrenceItems(input, from, lastDay),
+    ...oneOffItems(input, from, lastDay),
   ]
   const planned = new Map<string, ForecastItem[]>()
   for (const item of outstanding) {
