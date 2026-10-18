@@ -26,7 +26,7 @@ import { MAX_QUERY_IDS } from "#shared/schemas/query.ts"
 
 type CategoryRecord = typeof financesCategories.$inferSelect
 
-function toRow(category: CategoryRecord): CategoryRow {
+export function categoryToRow(category: CategoryRecord): CategoryRow {
   return {
     id: category.id,
     name: category.name,
@@ -67,7 +67,7 @@ export function categoryRoutes(db: Db) {
         )
         .orderBy(asc(financesCategories.id))
         .limit(limit ?? MAX_QUERY_IDS)
-      return c.json({ rows: categories.map(toRow) })
+      return c.json({ rows: categories.map(categoryToRow) })
     })
     .post("/", validate("json", createCategory), async (c) => {
       const input = c.req.valid("json")
@@ -79,7 +79,7 @@ export function categoryRoutes(db: Db) {
         .returning()
         .catch((error: unknown) => nameTaken(error, input.name))
       if (!category) throw new ApiError("conflict", "A Category with this id already exists")
-      return c.json(toRow(category), 201)
+      return c.json(categoryToRow(category), 201)
     })
     .patch("/:id", validate("param", params), validate("json", updateCategory), async (c) => {
       const changes = c.req.valid("json")
@@ -89,7 +89,7 @@ export function categoryRoutes(db: Db) {
         .where(eq(financesCategories.id, c.req.valid("param").id))
         .returning()
         .catch((error: unknown) => nameTaken(error, changes.name))
-      return category ? c.json(toRow(category)) : notFound()
+      return category ? c.json(categoryToRow(category)) : notFound()
     })
     .post("/:id/merge", validate("param", params), validate("json", mergeCategory), async (c) => {
       const sourceId = c.req.valid("param").id
@@ -133,7 +133,7 @@ export function categoryRoutes(db: Db) {
           .returning()
         if (!merged) throw new Error("The merge wrote nothing")
         return {
-          categories: [toRow(merged)],
+          categories: [categoryToRow(merged)],
           transactions: transactions.map(transactionToRow),
           schedules: schedules.map(scheduleToRow),
         }

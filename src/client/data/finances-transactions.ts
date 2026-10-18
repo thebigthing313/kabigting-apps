@@ -4,8 +4,9 @@ import { defineOnDemandCollection } from "@/data/collection-factory"
 import { readJson } from "@/data/error-handler"
 import { useActualTransfersSince } from "@/data/finances-transfers"
 import { settled } from "@/data/settled"
-import { nowInstant } from "@shared/dates"
+import { monthDates, nowInstant, shiftMonth } from "@shared/dates"
 import type { TransactionRow, UpdateTransaction } from "@shared/finances/schemas"
+import { AVERAGE_MONTHS } from "@shared/finances/summary"
 import { transferAmountOn } from "@shared/finances/transfers"
 import { newId } from "@shared/ids"
 
@@ -153,6 +154,17 @@ export function useActualsBetween(from: string, to: string) {
   )
 }
 
+/**
+ * The Actuals a Monthly summary of `month` reads: every Wallet's in that month and the 12 before
+ * it, plus the household's `first` Actual when it is older, which places the first month.
+ */
+export function useSummaryActuals(month: string, first: Transaction | undefined) {
+  const from = monthDates(shiftMonth(month, -AVERAGE_MONTHS)).first
+  const { data, isLoading } = useActualsBetween(from, monthDates(month).last)
+  const actuals = first !== undefined && first.date < from ? [...data, first] : data
+  return { actuals, isLoading }
+}
+
 /** The household's first Actual in any Wallet, ignored lines left out; none when there is none. */
 export function useFirstActual() {
   const transactions = financesTransactions()
@@ -186,9 +198,15 @@ export function useCategoryTransactionCount(categoryId: string | undefined) {
   return { count: data?.length ?? 0, isLoading: categoryId !== undefined && isLoading }
 }
 
-/** Writes rows a command changed, such as a Category merge, into the collection. */
+/**
+ * Writes rows a command changed, such as a Category merge, into the collection. Only rows already
+ * loaded are written: the rest load when a screen asks for them, so unasked-for rows (ignored
+ * lines among them) never reach a live query.
+ */
 export async function writeTransactions(rows: readonly TransactionRow[]): Promise<void> {
-  if (rows.length > 0) await financesTransactions().utils.writeUpsert([...rows])
+  const collection = financesTransactions()
+  const loaded = rows.filter((row) => collection.has(row.id))
+  if (loaded.length > 0) await collection.utils.writeUpsert(loaded)
 }
 
 /** Shows the row at once; resolves false after a refusal rolled it back (with a toast). */

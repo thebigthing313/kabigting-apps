@@ -4,6 +4,7 @@ import { ChevronLeftIcon, ChevronRightIcon } from "lucide-react"
 import { useState } from "react"
 import { CategoryActions } from "@/apps/finances/categories/category-actions"
 import { CategoryChart } from "@/apps/finances/categories/category-chart"
+import { StateMark } from "@/apps/finances/categories/state-mark"
 import {
   type ActivityRow,
   EditActivityDialog,
@@ -12,7 +13,7 @@ import { transactionLabel } from "@/apps/finances/transactions/transaction-displ
 import { Skeleton } from "@/components/ui/skeleton"
 import { useFinancesAccounts } from "@/data/finances-accounts"
 import { type Category, useCategories } from "@/data/finances-categories"
-import { type Transaction, useActualsBetween, useFirstActual } from "@/data/finances-transactions"
+import { type Transaction, useFirstActual, useSummaryActuals } from "@/data/finances-transactions"
 import { useWallets } from "@/data/finances-wallets"
 import {
   formatDisplayDate,
@@ -20,15 +21,11 @@ import {
   formatShortMonth,
   monthDates,
   monthOfDate,
-  shiftMonth,
   thisMonth,
 } from "@shared/dates"
 import { AVERAGE_MONTHS, categoryYear, countedUnder, summaryMonths } from "@shared/finances/summary"
 import { toShown } from "@shared/finances/wallets"
 import { format } from "@shared/money"
-
-/** The `$categoryId` that stands for Uncategorised, which has a page but no row. */
-export const UNCATEGORISED_PARAM = "uncategorised"
 
 /**
  * One Category's month, reached from the Monthly summary: its year of bars against the average,
@@ -109,11 +106,7 @@ function CategoryHeader({
         <h1 className={cn("text-2xl font-semibold break-words", !category && "italic")}>
           {category?.name ?? "Uncategorised"}
         </h1>
-        {category?.archived ? (
-          <span className="rounded-full border px-2 py-0.5 text-xs text-muted-foreground">
-            {category.mergedIntoId ? "Merged" : "Archived"}
-          </span>
-        ) : null}
+        {category ? <StateMark category={category} /> : null}
       </div>
       {target ? (
         <p className="text-sm text-muted-foreground">
@@ -129,7 +122,9 @@ function CategoryHeader({
           ; its Actuals count there.
         </p>
       ) : null}
-      {category ? <CategoryActions category={category} categories={categories} /> : null}
+      {category ? (
+        <CategoryActions category={category} categories={categories} month={month} />
+      ) : null}
     </div>
   )
 }
@@ -146,18 +141,16 @@ function CategoryMonth({
   first: Transaction | undefined
 }) {
   // The same rows as the summary's, so the figures match it and the cache is shared.
-  const from = monthDates(shiftMonth(month, -AVERAGE_MONTHS)).first
   const { first: monthFirst, last: monthLast } = monthDates(month)
-  const { data: actuals, isLoading } = useActualsBetween(from, monthLast)
+  const { actuals, isLoading } = useSummaryActuals(month, first)
   const { data: wallets } = useWallets()
   const { data: accounts } = useFinancesAccounts()
   const [editing, setEditing] = useState<ActivityRow | null>(null)
   if (isLoading) return <CategorySkeleton />
 
   const under = countedUnder(categories)
-  const rows = first !== undefined && first.date < from ? [...actuals, first] : actuals
   const year = categoryYear(
-    rows.map((row) => ({ ...row, categoryId: under(row.categoryId) })),
+    actuals.map((row) => ({ ...row, categoryId: under(row.categoryId) })),
     categoryId,
     month,
   )
@@ -183,7 +176,7 @@ function CategoryMonth({
       <CategoryChart
         year={year}
         month={month}
-        description={`Monthly net for the 12 months to ${formatMonth(month)}, against the 12-month average of ${format(year.averageCents)}`}
+        description={`Monthly net for the ${AVERAGE_MONTHS} months to ${formatMonth(month)}, against the ${AVERAGE_MONTHS}-month average of ${format(year.averageCents)}`}
       />
       <dl className="grid grid-cols-3 divide-x rounded-xl border text-center tabular-nums">
         {figures.map(([label, cents], index) => (

@@ -1,4 +1,4 @@
-import { useNavigate, useSearch } from "@tanstack/react-router"
+import { useNavigate } from "@tanstack/react-router"
 import { useId, useState } from "react"
 import { toast } from "sonner"
 import { selectClass } from "@/apps/finances/form-controls"
@@ -33,9 +33,12 @@ function counted(count: number, noun: string): string {
 export function CategoryActions({
   category,
   categories,
+  month,
 }: {
   category: Category
   categories: readonly Category[]
+  /** The month the page shows, kept when a merge opens the target's page. */
+  month: string
 }) {
   const [open, setOpen] = useState<"rename" | "merge" | null>(null)
   const merged = category.mergedIntoId !== null
@@ -76,6 +79,7 @@ export function CategoryActions({
         onOpenChange={(next) => setOpen(next ? "merge" : null)}
         category={category}
         categories={categories}
+        month={month}
       />
     </div>
   )
@@ -86,11 +90,13 @@ function MergeDialog({
   onOpenChange,
   category,
   categories,
+  month,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   category: Category
   categories: readonly Category[]
+  month: string
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -99,7 +105,7 @@ function MergeDialog({
           <DialogTitle>Merge {category.name} into…</DialogTitle>
           <DialogDescription>
             Its Transactions and Schedule defaults move to the Category you pick, and it is archived
-            as merged. This can't be undone.
+            as merged. Ignored lines move with them. This can't be undone.
           </DialogDescription>
         </DialogHeader>
         {/* Mounted only while open, so the counts load only when asked for. */}
@@ -107,6 +113,7 @@ function MergeDialog({
           <MergeForm
             category={category}
             categories={categories}
+            month={month}
             onDone={() => onOpenChange(false)}
           />
         ) : null}
@@ -118,15 +125,16 @@ function MergeDialog({
 function MergeForm({
   category,
   categories,
+  month,
   onDone,
 }: {
   category: Category
   categories: readonly Category[]
+  month: string
   onDone: () => void
 }) {
   const id = useId()
   const navigate = useNavigate()
-  const { month } = useSearch({ from: "/_app/finances/categories/$categoryId" })
   const [intoId, setIntoId] = useState("")
   const [merging, setMerging] = useState(false)
   const { count: transactions, isLoading } = useCategoryTransactionCount(category.id)

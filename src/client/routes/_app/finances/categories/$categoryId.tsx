@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router"
-import { CategoryPage, UNCATEGORISED_PARAM } from "@/apps/finances/categories/category-page"
+import { CategoryPage } from "@/apps/finances/categories/category-page"
+import { UNCATEGORISED_PARAM } from "@/apps/finances/categories/category-route"
 import { monthSearch } from "@/apps/finances/summary/month-search"
 
 export const Route = createFileRoute("/_app/finances/categories/$categoryId")({

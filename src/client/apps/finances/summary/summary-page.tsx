@@ -1,22 +1,14 @@
 import { Link, useNavigate } from "@tanstack/react-router"
 import { ChevronLeftIcon, ChevronRightIcon } from "lucide-react"
 import type { ReactNode } from "react"
-import { UNCATEGORISED_PARAM } from "@/apps/finances/categories/category-page"
+import { UNCATEGORISED_PARAM } from "@/apps/finances/categories/category-route"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useCategories } from "@/data/finances-categories"
-import { type Transaction, useActualsBetween, useFirstActual } from "@/data/finances-transactions"
+import { type Transaction, useFirstActual, useSummaryActuals } from "@/data/finances-transactions"
 import { cn } from "cn"
+import { formatMonth, formatShortMonth, monthOfDate, shiftMonth, thisMonth } from "@shared/dates"
 import {
-  formatMonth,
-  formatShortMonth,
-  monthDates,
-  monthOfDate,
-  shiftMonth,
-  thisMonth,
-} from "@shared/dates"
-import {
-  AVERAGE_MONTHS,
   type Figures,
   isFarOverAverage,
   monthlySummary,
@@ -96,14 +88,11 @@ function MonthPicker({
 }
 
 function MonthSummary({ month, first }: { month: string; first: Transaction | undefined }) {
-  const from = monthDates(shiftMonth(month, -AVERAGE_MONTHS)).first
-  const { data: actuals, isLoading } = useActualsBetween(from, monthDates(month).last)
+  const { actuals, isLoading } = useSummaryActuals(month, first)
   const { data: categories, isLoading: categoriesLoading } = useCategories()
   if (isLoading || categoriesLoading) return <SummarySkeleton />
 
-  // The first Actual places the first month even when it is older than the window.
-  const rows = first !== undefined && first.date < from ? [...actuals, first] : actuals
-  const summary = monthlySummary(rows, categories, month)
+  const summary = monthlySummary(actuals, categories, month)
   return (
     <>
       <Totals month={month} totals={summary.totals} />

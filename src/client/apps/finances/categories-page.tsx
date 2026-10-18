@@ -2,6 +2,7 @@ import { Link } from "@tanstack/react-router"
 import { cn } from "cn"
 import { PlusIcon } from "lucide-react"
 import { type ReactNode, useState } from "react"
+import { StateMark } from "@/apps/finances/categories/state-mark"
 import { NameDialog } from "@/apps/finances/name-dialog"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -94,11 +95,7 @@ export function CategoryList({
             ) : (
               <span className={nameClass(category)}>{category.name}</span>
             )}
-            {category.archived ? (
-              <span className="shrink-0 rounded-full border px-2 py-0.5 text-xs text-muted-foreground">
-                {category.mergedIntoId ? "Merged" : "Archived"}
-              </span>
-            ) : null}
+            <StateMark category={category} />
           </span>
           {/* A merged Category's rows now live under its target, so it stays archived. */}
           {category.archived && !category.mergedIntoId ? (
