@@ -293,6 +293,17 @@ describe("files it refuses", () => {
     expect((await upload(large)).status).toBe(200)
     const tooLarge = statement(`<!-- ${"x".repeat(5 * 1024 * 1024)} -->${THREE_LINES}`)
     await expectStatus(await upload(tooLarge), 400, "validation_failed")
+    // The larger limit is the upload route's own: other routes keep the JSON limit.
+    const form = new FormData()
+    form.set("file", new File([large.text], "statement.ofx"))
+    const elsewhere = await server.app.request("/api/finances/transactions", {
+      method: "POST",
+      headers,
+      body: form,
+    })
+    expect(await elsewhere.json()).toMatchObject({
+      error: { code: "validation_failed", message: "Request body too large" },
+    })
   })
 
   test("the sample files read the same through the route", async () => {

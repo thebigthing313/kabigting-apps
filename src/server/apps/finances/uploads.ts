@@ -10,7 +10,7 @@ import { ApiError } from "#server/core/errors.ts"
 import { validate } from "#server/core/validate.ts"
 import type { Db } from "#server/db/client.ts"
 import { financesTransactions, financesWallets } from "#server/db/schema/index.ts"
-import { UPLOAD_EXTENSIONS, type UploadResult } from "#shared/finances/schemas.ts"
+import { UPLOAD_EXTENSIONS, UPLOAD_FORMATS, type UploadResult } from "#shared/finances/schemas.ts"
 import { id } from "#shared/schemas/primitives.ts"
 
 /** The file, and the Wallet a person picked once the server asked for one. */
@@ -22,12 +22,12 @@ const uploadForm = z.strictObject({
 /** Rows per insert, well inside Postgres's limit on bound parameters. */
 const BATCH = 1000
 
-type Transaction = Parameters<Parameters<Db["transaction"]>[0]>[0]
+type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0]
 
 async function read(file: File): Promise<OfxStatement> {
   const name = file.name.toLowerCase()
   if (!UPLOAD_EXTENSIONS.some((extension) => name.endsWith(extension))) {
-    throw new ApiError("validation_failed", "Upload an .ofx, .qfx or .qbo file")
+    throw new ApiError("validation_failed", `Upload an ${UPLOAD_FORMATS} file`)
   }
   try {
     return parseOfx(new Uint8Array(await file.arrayBuffer()))
@@ -38,7 +38,7 @@ async function read(file: File): Promise<OfxStatement> {
 }
 
 /** Remembers the bank account on the Wallet a person picked for it. */
-async function remember(tx: Transaction, walletId: string, account: OfxStatement["bankAccount"]) {
+async function remember(tx: Tx, walletId: string, account: OfxStatement["bankAccount"]) {
   const [chosen] = await tx
     .select()
     .from(financesWallets)

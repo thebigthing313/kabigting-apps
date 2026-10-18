@@ -12,7 +12,7 @@ import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/c
 import { Input } from "@/components/ui/input"
 import { uploadStatement } from "@/data/finances-uploads"
 import { useWallets } from "@/data/finances-wallets"
-import { UPLOAD_EXTENSIONS } from "@shared/finances/schemas"
+import { UPLOAD_EXTENSIONS, UPLOAD_FORMATS } from "@shared/finances/schemas"
 
 type Step =
   | { step: "file" }
@@ -78,7 +78,7 @@ export function UploadDialog({
               ? `This is the first file from the account ending ${step.last4}. Pick its Wallet; later files from it go straight there.`
               : step.step === "done"
                 ? `Into ${step.walletName}.`
-                : "A statement download from the bank or card site: .ofx, .qfx or .qbo."}
+                : `A statement download from the bank or card site: ${UPLOAD_FORMATS}.`}
           </DialogDescription>
         </DialogHeader>
         {step.step === "file" ? (
@@ -181,7 +181,6 @@ function WalletPicker({
             wallets={choices}
             value={picked}
             invalid={missing}
-            onBlur={() => undefined}
             onChange={(next) => {
               setPicked(next)
               setMissing(false)

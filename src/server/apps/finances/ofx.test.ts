@@ -120,6 +120,18 @@ describe("parseOfx", () => {
     expect(parseOfx(file).lines[0]?.description).toBe("CAFÉ PRETEND")
   })
 
+  test.each([
+    ["-8.500", -850],
+    ["42,17", 4217],
+    ["-1.000", -100],
+  ])(
+    "reads the amount %s, a comma decimal point or zeros past the cents, as %i",
+    (amount, cents) => {
+      const text = `<OFX><CCACCTFROM><ACCTID>11</CCACCTFROM><STMTTRN><DTPOSTED>20261001<TRNAMT>${amount}<FITID>A</STMTTRN></OFX>`
+      expect(parseOfx(bytes(text)).lines[0]?.amountCents).toBe(cents)
+    },
+  )
+
   test("a statement with no lines reads as none", () => {
     const text = new TextDecoder()
       .decode(sample("quicken.qfx"))

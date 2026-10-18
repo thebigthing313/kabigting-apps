@@ -8,7 +8,7 @@ export const MAX_BODY_BYTES = 300 * 1024
 /** A file upload, such as a bank statement download, may be larger. */
 export const MAX_UPLOAD_BYTES = 5 * 1024 * 1024
 
-const jsonLimit = honoBodyLimit({
+export const bodyLimit = honoBodyLimit({
   maxSize: MAX_BODY_BYTES,
   onError: () => {
     throw new ApiError("validation_failed", "Request body too large")
@@ -23,10 +23,8 @@ const uploadLimit = honoBodyLimit({
 })
 
 /**
- * Bodies are JSON, held to the JSON limit, except multipart file uploads, which have their own.
- * Only upload routes read multipart bodies; every other route's validator refuses one unread.
+ * The usual limit, except on the given upload routes (full request paths), which have their own.
  */
-export const bodyLimit: MiddlewareHandler = (c, next) => {
-  const multipart = c.req.header("content-type")?.toLowerCase().startsWith("multipart/form-data")
-  return multipart ? uploadLimit(c, next) : jsonLimit(c, next)
+export function bodyLimitWithUploads(uploadPaths: ReadonlySet<string>): MiddlewareHandler {
+  return (c, next) => (uploadPaths.has(c.req.path) ? uploadLimit(c, next) : bodyLimit(c, next))
 }

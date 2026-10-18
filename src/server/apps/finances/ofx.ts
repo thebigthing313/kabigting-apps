@@ -6,7 +6,7 @@ import { createHash } from "node:crypto"
 import { parse as parseCents } from "#shared/money.ts"
 import { isoDate } from "#shared/schemas/primitives.ts"
 
-/** One posted line. Its amount is signed as OFX gives it, from the customer's side (D16). */
+/** One line of the statement. Its amount is signed as OFX gives it, from the customer's side (D16). */
 export type OfxLine = {
   date: string
   amountCents: number
@@ -123,8 +123,13 @@ function postedDate(value: string | undefined, ordinal: number): string {
   return date
 }
 
+/**
+ * OFX allows a comma as the decimal point and more than two decimals ("-8.500"). Whole cents are
+ * kept; an amount with a fraction of a cent is refused rather than rounded.
+ */
 function amount(value: string | undefined, ordinal: number): number {
-  const cents = value === undefined ? null : parseCents(value)
+  const decimal = value?.replace(",", ".").replace(/(\.\d{2})0+$/, "$1")
+  const cents = decimal === undefined ? null : parseCents(decimal)
   if (cents === null) throw new OfxError(`Line ${ordinal} has no amount that can be read`)
   return cents
 }

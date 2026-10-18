@@ -422,6 +422,9 @@ export const transactionRows = rowsResponse(transactionRow)
 /** All three are OFX with different headers, so one parser reads them (D27). */
 export const UPLOAD_EXTENSIONS = [".ofx", ".qfx", ".qbo"] as const
 
+/** The extensions in words, for messages. */
+export const UPLOAD_FORMATS = `${UPLOAD_EXTENSIONS.slice(0, -1).join(", ")} or ${UPLOAD_EXTENSIONS.at(-1)}`
+
 /** The file's bank account is new: the client asks which Wallet it is, then sends it again. */
 export const uploadNeedsWallet = z.object({
   needsWallet: z.object({ last4: z.string() }),

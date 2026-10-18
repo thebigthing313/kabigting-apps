@@ -12,7 +12,7 @@ import { walletRoutes } from "#server/apps/finances/wallets.ts"
 
 /** The Finances App's API. Every resource is shared household data behind the App's access check. */
 export function financesRoutes(deps: Deps) {
-  return createAppRouter("finances", deps)
+  return createAppRouter("finances", deps, { uploadRoutes: ["/uploads"] })
     .route("/accounts", accountRoutes(deps.db))
     .route("/categories", categoryRoutes(deps.db))
     .route("/wallets", walletRoutes(deps.db))
