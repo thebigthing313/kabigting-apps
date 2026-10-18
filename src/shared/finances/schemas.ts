@@ -419,3 +419,29 @@ export const transactionRows = rowsResponse(transactionRow)
 export type CreateTransaction = z.input<typeof createTransaction>
 export type UpdateTransaction = z.infer<typeof updateTransaction>
 export type TransactionRow = z.infer<typeof transactionRow>
+
+// Settings: the household's one row of Finances choices, id "household".
+
+export const SETTINGS_ID = "household"
+
+export const updateSettings = z
+  .strictObject({
+    /** The forecast Wallet home opens on; null means All. */
+    openOnHomeWalletId: id.nullable(),
+  })
+  .partial()
+  .refine(atLeastOneField, "Change at least one field")
+
+export const settingsRow = z.object({
+  id: z.literal(SETTINGS_ID),
+  openOnHomeWalletId: id.nullable(),
+  createdAt: instant,
+  updatedAt: instant,
+})
+
+/** There is one row, so there is nothing to filter by. */
+export const settingsQuery = z.strictObject({})
+export const settingsRows = rowsResponse(settingsRow)
+
+export type UpdateSettings = z.infer<typeof updateSettings>
+export type SettingsRow = z.infer<typeof settingsRow>
