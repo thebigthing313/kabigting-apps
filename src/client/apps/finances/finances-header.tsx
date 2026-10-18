@@ -1,4 +1,5 @@
 import { cn } from "cn"
+import type { ReactNode } from "react"
 import { AttentionBell } from "@/apps/finances/attention/attention-bell"
 import type { ForecastHorizon } from "@shared/finances/forecast"
 
@@ -13,14 +14,14 @@ export function FinancesHeader({
   days,
   children,
 }: {
-  title: React.ReactNode
+  title: ReactNode
   titleClassName?: string | undefined
   /** Shown just after the title but outside it, such as a state mark. */
-  beside?: React.ReactNode
+  beside?: ReactNode
   /** The horizon low-balance warnings are found in; home's own, else the default. */
   days?: ForecastHorizon | undefined
   /** The page's actions, such as a New button. */
-  children?: React.ReactNode
+  children?: ReactNode
 }) {
   return (
     <div className="flex flex-wrap items-center gap-2">

@@ -14,7 +14,8 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { useWallets, type Wallet } from "@/data/finances-wallets"
 import { DEFAULT_HORIZON, type ForecastHorizon } from "@shared/finances/forecast"
 
-type Report = (walletId: string, count: number) => void
+/** A Wallet's count once its items have loaded; null while they load or once it is gone. */
+type Report = (walletId: string, count: number | null) => void
 
 /**
  * The notifications bell in every Finances page header. Its count is the number of items it
@@ -30,15 +31,19 @@ export function AttentionBell({ days = DEFAULT_HORIZON }: { days?: ForecastHoriz
   // Stable, so a count is reported again only when it changes.
   const report = useCallback<Report>(
     (walletId, count) =>
-      setCounts((previous) =>
-        (previous[walletId] ?? 0) === count ? previous : { ...previous, [walletId]: count },
-      ),
+      setCounts((previous) => {
+        if (previous[walletId] === (count ?? undefined)) return previous
+        const { [walletId]: _gone, ...others } = previous
+        return count === null ? others : { ...others, [walletId]: count }
+      }),
     [],
   )
   // The Wallet is kept while the dialog closes, so it never flips to another as it fades.
   const [entering, setEntering] = useState<{ open: boolean; walletId?: string }>({ open: false })
   const active = wallets.filter((wallet) => !wallet.archived)
   const total = active.reduce((sum, wallet) => sum + (counts[wallet.id] ?? 0), 0)
+  // Whether every Wallet has finished loading, so "nothing" is known rather than not yet counted.
+  const counted = active.every((wallet) => wallet.id in counts)
   const label = total === 0 ? "Notifications" : `Notifications, ${total} items`
 
   return (
@@ -63,7 +68,7 @@ export function AttentionBell({ days = DEFAULT_HORIZON }: { days?: ForecastHoriz
           aria-label="Notifications"
           className="max-h-[min(32rem,var(--available-height))] w-[min(22rem,calc(100vw-2rem))] overflow-y-auto"
         >
-          {total === 0 ? (
+          {total === 0 && counted ? (
             <p className="p-2 text-muted-foreground">Nothing needs attention.</p>
           ) : null}
           {active.map((wallet) => (
@@ -71,7 +76,7 @@ export function AttentionBell({ days = DEFAULT_HORIZON }: { days?: ForecastHoriz
               key={wallet.id}
               wallet={wallet}
               days={days}
-              listing={counts[wallet.id] ?? 0}
+              placeholderCount={counts[wallet.id] ?? 0}
               onEnterBalance={(walletId) => setEntering({ open: true, walletId })}
               onOpen={() => setOpen(false)}
             />
@@ -97,7 +102,7 @@ type GroupProps = { wallet: Wallet; days: ForecastHorizon } & (
     }
   | {
       /** Lists the Wallet's items; while they load, this many (as counted) hold their place. */
-      listing: number
+      placeholderCount: number
       onEnterBalance: (walletId: string) => void
       onOpen: () => void
     }
@@ -119,9 +124,15 @@ function OutsideGroup(props: GroupProps) {
 
 function Group(props: GroupProps & { items: readonly NamedItem[]; isLoading: boolean }) {
   if ("report" in props) {
-    return <Count walletId={props.wallet.id} count={props.items.length} report={props.report} />
+    return (
+      <Count
+        walletId={props.wallet.id}
+        count={props.isLoading ? null : props.items.length}
+        report={props.report}
+      />
+    )
   }
-  if (props.isLoading) return props.listing > 0 ? <Skeleton className="h-20" /> : null
+  if (props.isLoading) return props.placeholderCount > 0 ? <Skeleton className="h-20" /> : null
   return (
     <List
       wallet={props.wallet}
@@ -134,10 +145,18 @@ function Group(props: GroupProps & { items: readonly NamedItem[]; isLoading: boo
 }
 
 /** Tells the bell how many items a Wallet has; renders nothing. */
-function Count({ walletId, count, report }: { walletId: string; count: number; report: Report }) {
+function Count({
+  walletId,
+  count,
+  report,
+}: {
+  walletId: string
+  count: number | null
+  report: Report
+}) {
   useEffect(() => {
     report(walletId, count)
-    return () => report(walletId, 0)
+    return () => report(walletId, null)
   }, [report, walletId, count])
   return null
 }

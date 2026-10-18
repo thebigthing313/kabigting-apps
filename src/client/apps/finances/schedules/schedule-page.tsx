@@ -81,7 +81,8 @@ export function SchedulePage({
           schedule={schedule}
           wallet={wallet}
           wallets={wallets}
-          opening={occurrence}
+          // The Occurrence may be an older Schedule's in the chain: the one in the address.
+          opening={occurrence === undefined ? undefined : { scheduleId, nominalDate: occurrence }}
         />
       ) : (
         <p className="rounded-xl border p-6 text-center text-muted-foreground">
@@ -104,8 +105,8 @@ function ScheduleDetail({
   schedule: Schedule
   wallet: Wallet
   wallets: readonly Wallet[]
-  /** The nominal date of `schedule`'s Occurrence whose editor opens with the page. */
-  opening: string | undefined
+  /** The Occurrence of a Schedule in the chain whose editor opens with the page. */
+  opening: { scheduleId: string; nominalDate: string } | undefined
 }) {
   const { data: accounts } = useFinancesAccounts()
   const { data: categories } = useCategories()
@@ -134,7 +135,8 @@ function ScheduleDetail({
   const monthsBack = addMonthsClamped(now, -MONTHS_BACK)
   const range = {
     // An Overdue Occurrence opened from the bell is listed even when older than that.
-    from: opening !== undefined && opening < monthsBack ? opening : monthsBack,
+    from:
+      opening !== undefined && opening.nominalDate < monthsBack ? opening.nominalDate : monthsBack,
     to: addMonthsClamped(now, MONTHS_AHEAD),
   }
   // Each Schedule in the chain contributes the Occurrences on its own terms.
@@ -192,8 +194,10 @@ function ScheduleDetail({
         ) : (
           <OccurrenceList
             // Another Occurrence to open starts the list afresh, with its editor open.
-            key={opening}
-            opening={opening === undefined ? null : occurrenceKey(schedule.id, opening)}
+            key={opening === undefined ? undefined : opening.nominalDate}
+            opening={
+              opening === undefined ? null : occurrenceKey(opening.scheduleId, opening.nominalDate)
+            }
             wallet={wallet}
             toWallet={toWallet}
             occurrences={occurrences}

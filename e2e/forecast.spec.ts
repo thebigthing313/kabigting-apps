@@ -152,9 +152,12 @@ test("an overridden Occurrence and a skipped one show on the Forecast straight a
   await occurrence(first).getByLabel("Amount").fill("125")
   await occurrence(first).getByRole("button", { name: "Save" }).click()
   await expect(occurrence(first)).toContainText("Overridden")
+  // The badge shows at once; the editor closes once the server has the change.
+  await expect(occurrence(first).getByRole("button", { name: "Save" })).toBeHidden()
   await occurrence(second).getByRole("button").first().click()
   await occurrence(second).getByRole("button", { name: "Skip" }).click()
   await expect(occurrence(second)).toContainText("Skipped")
+  await expect(occurrence(second).getByRole("button", { name: "Save" })).toBeHidden()
 
   // Back on home, the Forecast has both.
   await page.goto(`/finances?wallet=${walletId}`)
