@@ -56,7 +56,7 @@ _Avoid_: Snapshot, statement, starting balance
 
 **Overdue**:
 A Planned Transaction or Transfer whose date has passed and that is not yet Reconciled or skipped.
-The Forecast counts it today until it is, except an Occurrence dated on or before the Wallet's
+The Forecast counts it today until it is, except one dated on or before the Wallet's
 latest Balance check, which that check is taken to include already.
 _Avoid_: Late, missed, past due
 

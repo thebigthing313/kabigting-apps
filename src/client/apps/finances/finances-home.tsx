@@ -1,6 +1,7 @@
 import { Link } from "@tanstack/react-router"
 import { cn } from "cn"
 import { useState } from "react"
+import { AddButton } from "@/apps/finances/add-button"
 import { WalletForecast } from "@/apps/finances/home/wallet-forecast"
 import { BalanceCheckDialog } from "@/apps/finances/wallets/balance-check-dialog"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -29,7 +30,8 @@ export function FinancesHome({
   const enterBalance = (id: string) => setEntering({ open: true, walletId: id })
 
   return (
-    <div className="mx-auto flex max-w-3xl flex-col gap-4 pb-8">
+    // Room at the foot for the + button.
+    <div className="mx-auto flex max-w-3xl flex-col gap-4 pb-24">
       <h1 className="text-2xl font-semibold">Finances</h1>
       {isLoading ? (
         <Skeleton className="h-64" />
@@ -69,6 +71,7 @@ export function FinancesHome({
         onOpenChange={(open) => setEntering((previous) => ({ ...previous, open }))}
         walletId={entering.walletId}
       />
+      <AddButton walletId={selected?.id} />
     </div>
   )
 }

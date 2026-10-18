@@ -1,30 +1,25 @@
 import { useForm } from "@tanstack/react-form"
 import { useState } from "react"
 import { z } from "zod"
+import {
+  Choice,
+  directionOptions,
+  selectClass,
+  type ShownSign,
+  WalletSelect,
+  type WalletOption,
+} from "@/apps/finances/form-controls"
 import { AccountPicker, CategoryPicker } from "@/apps/finances/pickers"
 import { AmountInput } from "@/components/amount-input"
 import { Button } from "@/components/ui/button"
-import {
-  Field,
-  FieldDescription,
-  FieldError,
-  FieldGroup,
-  FieldLabel,
-  FieldLegend,
-  FieldSet,
-} from "@/components/ui/field"
+import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import type { NewSchedule } from "@/data/finances-schedules"
 import { today } from "@shared/dates"
 import { fromShown } from "@shared/finances/wallets"
-import { cn } from "cn"
-
-type WalletOption = { id: string; name: string; shownAsOwed: boolean }
 
 type Kind = "transaction" | "transfer"
-/** The sign as the Wallet shows it; flipped from the stored sign on a Wallet shown as owed. */
-type ShownSign = "minus" | "plus"
 
 type ScheduleFormValues = {
   walletId: string
@@ -101,88 +96,6 @@ function toSchedule(values: ScheduleFormValues, wallet: { shownAsOwed: boolean }
     categoryId: transfer ? null : values.categoryId,
     note: values.note.trim(),
   }
-}
-
-const selectClass =
-  "h-11 w-full min-w-0 rounded-lg border border-input bg-transparent px-2.5 text-base outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 aria-invalid:border-destructive md:text-sm dark:bg-input/30"
-
-/** Picks one of the Wallets by id; "" while none is picked. */
-function WalletSelect({
-  id,
-  wallets,
-  value,
-  invalid,
-  onBlur,
-  onChange,
-}: {
-  id: string
-  wallets: readonly WalletOption[]
-  value: string
-  invalid: boolean
-  onBlur: () => void
-  onChange: (walletId: string) => void
-}) {
-  return (
-    <select
-      id={id}
-      className={selectClass}
-      value={value}
-      onBlur={onBlur}
-      onChange={(event) => onChange(event.target.value)}
-      aria-invalid={invalid || undefined}
-    >
-      <option value="">Pick a Wallet</option>
-      {wallets.map((wallet) => (
-        <option key={wallet.id} value={wallet.id}>
-          {wallet.name}
-        </option>
-      ))}
-    </select>
-  )
-}
-
-/** Two or more choices shown side by side, one picked. */
-function Choice<Value extends string>({
-  legend,
-  name,
-  value,
-  options,
-  onChange,
-}: {
-  legend: string
-  name: string
-  value: Value
-  options: readonly { value: Value; label: string }[]
-  onChange: (value: Value) => void
-}) {
-  return (
-    <FieldSet>
-      <FieldLegend variant="label">{legend}</FieldLegend>
-      <div className="grid grid-cols-2 rounded-lg border p-0.5 text-sm">
-        {options.map((option) => (
-          <label
-            key={option.value}
-            className={cn(
-              "flex min-h-10 cursor-pointer items-center justify-center rounded-md px-2 py-1 text-center leading-tight has-focus-visible:ring-3 has-focus-visible:ring-ring/50",
-              value === option.value
-                ? "bg-primary text-primary-foreground"
-                : "text-muted-foreground",
-            )}
-          >
-            <input
-              type="radio"
-              className="sr-only"
-              name={name}
-              value={option.value}
-              checked={value === option.value}
-              onChange={() => onChange(option.value)}
-            />
-            {option.label}
-          </label>
-        ))}
-      </div>
-    </FieldSet>
-  )
 }
 
 /** A new Schedule: what moves, where, how much and how often. */
@@ -308,17 +221,7 @@ export function ScheduleForm({
                         name="schedule-direction"
                         value={field.state.value}
                         onChange={field.handleChange}
-                        options={
-                          owed
-                            ? [
-                                { value: "plus", label: "Adds to what's owed" },
-                                { value: "minus", label: "Pays down what's owed" },
-                              ]
-                            : [
-                                { value: "minus", label: "Money out" },
-                                { value: "plus", label: "Money in" },
-                              ]
-                        }
+                        options={directionOptions(owed)}
                       />
                     )}
                   </form.Field>
