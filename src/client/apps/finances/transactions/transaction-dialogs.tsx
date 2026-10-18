@@ -26,21 +26,26 @@ import {
   type NewTransaction,
   type Transaction,
 } from "@/data/finances-transactions"
+import { addTransfer, deleteTransfer, editTransfer, type Transfer } from "@/data/finances-transfers"
 import { useWallets } from "@/data/finances-wallets"
-import { isImported } from "@shared/finances/schemas"
+import { isImported, isImportedTransfer } from "@shared/finances/schemas"
 
 type Status = NewTransaction["status"]
 
-/** The Wallets a row may be put on: every one not archived, plus the one it is on. */
-function useWalletChoices(keep?: string) {
+/** A row of a Wallet's Activity: a Transaction, or a Transfer out of it or into it. */
+export type ActivityRow =
+  { kind: "transaction"; row: Transaction } | { kind: "transfer"; row: Transfer }
+
+/** The Wallets a row may be put on: every one not archived, plus the ones it is on. */
+function useWalletChoices(...keep: (string | undefined)[]) {
   const { data: wallets } = useWallets()
-  return wallets.filter((wallet) => !wallet.archived || wallet.id === keep)
+  return wallets.filter((wallet) => !wallet.archived || keep.includes(wallet.id))
 }
 
 /** The form is taller than a phone, so it scrolls under a fixed header. */
 const SCROLLING = "max-h-[calc(100dvh-2rem)] grid-rows-[auto_minmax(0,1fr)]"
 
-/** Add Actual or one-off Planned, starting on a Wallet when one is given. */
+/** Add Actual or one-off Planned, or a Transfer, starting on a Wallet when one is given. */
 export function AddTransactionDialog({
   open,
   onOpenChange,
@@ -62,7 +67,7 @@ export function AddTransactionDialog({
           <DialogTitle>{status === "actual" ? "Add Actual" : "Add one-off Planned"}</DialogTitle>
           <DialogDescription>
             {status === "actual"
-              ? "Money that really moved in or out of a Wallet."
+              ? "Money that really moved in or out of a Wallet, or between two."
               : "Money expected to move once, such as a repair bill or a refund."}
           </DialogDescription>
         </DialogHeader>
@@ -80,6 +85,14 @@ export function AddTransactionDialog({
                 onOpenChange(false)
               }
             }}
+            onSaveTransfer={async (entry) => {
+              if (await addTransfer(entry)) {
+                toast.success(
+                  entry.status === "actual" ? "Actual Transfer added" : "Planned Transfer added",
+                )
+                onOpenChange(false)
+              }
+            }}
           />
         </div>
       </DialogContent>
@@ -87,26 +100,44 @@ export function AddTransactionDialog({
   )
 }
 
-/** The editor a row opens: every field it may change, and Delete. */
-export function EditTransactionDialog({
-  transaction,
+/** "Planned", "Actual", "Planned Transfer" or "Actual Transfer". */
+function nounOf(editing: ActivityRow): string {
+  const status = editing.row.status === "planned" ? "Planned" : "Actual"
+  return editing.kind === "transfer" ? `${status} Transfer` : status
+}
+
+function importedRow(editing: ActivityRow): boolean {
+  return editing.kind === "transfer" ? isImportedTransfer(editing.row) : isImported(editing.row)
+}
+
+/** The editor an Activity row opens: every field it may change, and Delete. */
+export function EditActivityDialog({
+  editing,
   onClose,
 }: {
   /** The row being edited; null while closed. */
-  transaction: Transaction | null
+  editing: ActivityRow | null
   onClose: () => void
 }) {
   // The row is kept while the dialog closes, so its contents never vanish as it fades.
-  const [shown, setShown] = useState(transaction)
-  if (transaction !== null && transaction !== shown) setShown(transaction)
-  const wallets = useWalletChoices(shown?.walletId)
+  const [shown, setShown] = useState(editing)
+  if (editing !== null && editing !== shown) setShown(editing)
+  const wallets = useWalletChoices(
+    ...(shown?.kind === "transfer"
+      ? [shown.row.fromWalletId, shown.row.toWalletId]
+      : [shown?.row.walletId]),
+  )
   const [confirming, setConfirming] = useState(false)
   const [deleting, setDeleting] = useState(false)
-  const noun = shown?.status === "planned" ? "Planned" : "Actual"
+  const noun = shown ? nounOf(shown) : "Actual"
+  const imported = shown ? importedRow(shown) : false
 
-  async function remove(row: Transaction) {
+  async function remove(target: ActivityRow) {
     setDeleting(true)
-    const deleted = await deleteTransaction(row)
+    const deleted =
+      target.kind === "transfer"
+        ? await deleteTransfer(target.row.id)
+        : await deleteTransaction(target.row)
     setDeleting(false)
     setConfirming(false)
     if (deleted) {
@@ -116,34 +147,56 @@ export function EditTransactionDialog({
   }
 
   return (
-    <Dialog open={transaction !== null} onOpenChange={(open) => (open ? null : onClose())}>
+    <Dialog open={editing !== null} onOpenChange={(open) => (open ? null : onClose())}>
       <DialogContent className={SCROLLING}>
         <DialogHeader>
           <DialogTitle>Edit {noun}</DialogTitle>
           <DialogDescription>
-            {shown?.status === "planned"
+            {shown?.row.status === "planned"
               ? "A one-off Planned item, counted in the Forecast until it happens."
-              : "Money that really moved."}
+              : shown?.kind === "transfer"
+                ? "Money that really moved between two Wallets."
+                : "Money that really moved."}
           </DialogDescription>
         </DialogHeader>
         {shown ? (
           <div className="-mx-4 flex flex-col gap-6 overflow-y-auto px-4 pb-1">
-            <TransactionForm
-              key={shown.id}
-              wallets={wallets}
-              initial={shown}
-              locked={isImported(shown)}
-              onSave={async ({ accountId, categoryId, note, walletId, date, amountCents }) => {
-                // An imported Actual's amount, date and Wallet are the bank's; only labels change.
-                const changes = isImported(shown)
-                  ? { accountId, categoryId, note }
-                  : { accountId, categoryId, note, walletId, date, amountCents }
-                if (await editTransaction(shown.id, changes)) {
-                  toast.success("Saved")
-                  onClose()
-                }
-              }}
-            />
+            {shown.kind === "transfer" ? (
+              <TransactionForm
+                key={shown.row.id}
+                wallets={wallets}
+                initialTransfer={shown.row}
+                locked={imported}
+                onSaveTransfer={async (entry) => {
+                  const { accountId, note, fromWalletId, toWalletId, date, amountCents } = entry
+                  // An imported Transfer's amount, date and Wallets are the bank's.
+                  const changes = imported
+                    ? { accountId, note }
+                    : { accountId, note, fromWalletId, toWalletId, date, amountCents }
+                  if (await editTransfer(shown.row.id, changes)) {
+                    toast.success("Saved")
+                    onClose()
+                  }
+                }}
+              />
+            ) : (
+              <TransactionForm
+                key={shown.row.id}
+                wallets={wallets}
+                initial={shown.row}
+                locked={imported}
+                onSave={async ({ accountId, categoryId, note, walletId, date, amountCents }) => {
+                  // An imported Actual's amount, date and Wallet are the bank's; only labels change.
+                  const changes = imported
+                    ? { accountId, categoryId, note }
+                    : { accountId, categoryId, note, walletId, date, amountCents }
+                  if (await editTransaction(shown.row.id, changes)) {
+                    toast.success("Saved")
+                    onClose()
+                  }
+                }}
+              />
+            )}
             <Button
               variant="outline"
               className="h-11 self-start text-destructive"
@@ -164,7 +217,7 @@ export function EditTransactionDialog({
           <AlertDialogHeader>
             <AlertDialogTitle>Delete this {noun}?</AlertDialogTitle>
             <AlertDialogDescription>
-              {shown && isImported(shown)
+              {imported
                 ? "It came from the bank, so it is kept as an ignored line that a later upload won't add again. Restore it from Ignored lines."
                 : "It is removed for good."}
             </AlertDialogDescription>

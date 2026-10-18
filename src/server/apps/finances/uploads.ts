@@ -1,4 +1,4 @@
-import { eq, sql } from "drizzle-orm"
+import { and, eq, inArray, sql } from "drizzle-orm"
 import { Hono } from "hono"
 import { z } from "zod"
 import { isUniqueViolation } from "#server/apps/finances/db-errors.ts"
@@ -9,7 +9,11 @@ import type { AppEnv } from "#server/core/context.ts"
 import { ApiError } from "#server/core/errors.ts"
 import { validate } from "#server/core/validate.ts"
 import type { Db } from "#server/db/client.ts"
-import { financesTransactions, financesWallets } from "#server/db/schema/index.ts"
+import {
+  financesTransactions,
+  financesTransfers,
+  financesWallets,
+} from "#server/db/schema/index.ts"
 import { UPLOAD_EXTENSIONS, UPLOAD_FORMATS, type UploadResult } from "#shared/finances/schemas.ts"
 import { id } from "#shared/schemas/primitives.ts"
 
@@ -73,9 +77,38 @@ async function remember(tx: Tx, walletId: string, account: OfxStatement["bankAcc
 }
 
 /**
+ * The keys among `keys` already stored on a Transfer side in this Wallet, ignored Transfers
+ * included: a line that became one side of a Transfer is already here.
+ */
+async function transferKeys(tx: Tx, walletId: string, keys: string[]): Promise<Set<string>> {
+  const fromSides = await tx
+    .select({ key: financesTransfers.fromSourceKey })
+    .from(financesTransfers)
+    .where(
+      and(
+        eq(financesTransfers.fromWalletId, walletId),
+        eq(financesTransfers.fromSource, "ofx"),
+        inArray(financesTransfers.fromSourceKey, keys),
+      ),
+    )
+  const toSides = await tx
+    .select({ key: financesTransfers.toSourceKey })
+    .from(financesTransfers)
+    .where(
+      and(
+        eq(financesTransfers.toWalletId, walletId),
+        eq(financesTransfers.toSource, "ofx"),
+        inArray(financesTransfers.toSourceKey, keys),
+      ),
+    )
+  return new Set([...fromSides, ...toSides].map((side) => side.key ?? ""))
+}
+
+/**
  * `POST /uploads`: a bank or card statement download (.ofx, .qfx or .qbo). The file's bank
  * account picks the Wallet; on its first upload the reply asks for one instead. Its posted lines
- * become Actuals, except those whose key the Wallet already stores, ignored lines included.
+ * become Actuals, except those whose key the Wallet already stores on a Transaction or a Transfer
+ * side, ignored ones included.
  */
 export function uploadRoutes(db: Db) {
   return new Hono<AppEnv>().post("/", validate("form", uploadForm), async (c) => {
@@ -97,10 +130,18 @@ export function uploadRoutes(db: Db) {
 
       const inserted = []
       for (let start = 0; start < lines.length; start += BATCH) {
+        const batch = lines.slice(start, start + BATCH)
+        const onTransfers = await transferKeys(
+          tx,
+          wallet.id,
+          batch.map((line) => line.sourceKey),
+        )
+        const fresh = batch.filter((line) => !onTransfers.has(line.sourceKey))
+        if (fresh.length === 0) continue
         const rows = await tx
           .insert(financesTransactions)
           .values(
-            lines.slice(start, start + BATCH).map((line) => ({
+            fresh.map((line) => ({
               status: "actual" as const,
               walletId: wallet.id,
               date: line.date,

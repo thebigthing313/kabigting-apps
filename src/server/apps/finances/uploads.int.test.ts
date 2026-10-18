@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs"
 import { eq } from "drizzle-orm"
 import { afterAll, beforeAll, describe, expect, test } from "vitest"
 import { createTestServer, json, type TestServer } from "#server/test/server.ts"
-import { financesWallets } from "#server/db/schema/index.ts"
+import { financesTransfers, financesWallets } from "#server/db/schema/index.ts"
 import {
   transactionRow,
   transactionRows,
@@ -231,6 +231,47 @@ describe("uploading again", () => {
     expect(await query({ walletId: wallet.id })).toHaveLength(3)
     // Ignoring is what Delete does; a patch can only restore.
     expect((await patch(deleted.id, { ignored: true })).status).toBe(400)
+  })
+
+  test("a line already stored on a Transfer side in this Wallet is already here", async () => {
+    const wallet = await newWallet()
+    const other = await newWallet()
+    const actualTransfer = { status: "actual" as const, date: "2026-10-01", amountCents: 1234 }
+    await server.db.insert(financesTransfers).values([
+      // UP-1 left this Wallet on a Transfer's from side, an ignored one.
+      {
+        ...actualTransfer,
+        fromWalletId: wallet.id,
+        toWalletId: other.id,
+        fromSource: "ofx",
+        fromSourceKey: "UP-1",
+        ignored: true,
+      },
+      // UP-2 arrived in this Wallet on a Transfer's to side.
+      {
+        ...actualTransfer,
+        fromWalletId: other.id,
+        toWalletId: wallet.id,
+        toSource: "ofx",
+        toSourceKey: "UP-2",
+      },
+      // UP-3 is a key on the other Wallet's side, so it says nothing about this Wallet's lines.
+      {
+        ...actualTransfer,
+        fromWalletId: wallet.id,
+        toWalletId: other.id,
+        toSource: "ofx",
+        toSourceKey: "UP-3",
+      },
+    ])
+    const lines = [THREE_LINES, line("20261004", "-1.00", "MADE-UP PARKING", "UP-3")].join("\n")
+    const result = await uploaded(statement(lines), wallet.id)
+    expect(result.duplicates).toBe(2)
+    expect(
+      result.inserted
+        .map((row) => row.bankDescription ?? "")
+        .toSorted((a, b) => a.localeCompare(b)),
+    ).toEqual(["FAKE KIOSK", "MADE-UP PARKING"])
   })
 
   test("the same line in another Wallet's file is that Wallet's own line", async () => {
