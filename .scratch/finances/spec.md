@@ -734,7 +734,7 @@ Transfers. Rows with no category, and Savings, are Uncategorised.
 | Fees | Bank Fees, State Fees, Postage |
 | Cash | Withdrawal |
 | Paycheck | Paycheck |
-| Reimbursements | Reimbursements, Deposits, Freelance, Sales, Selling Stuff, Crossword Income |
+| Reimbursements | Reimbursements, Deposits, Freelance Income, Sales Income, Selling Stuff, Crossword Income |
 | Tax refund | Tax Refund |
 | Card payments | Credit Cards |
 
