@@ -19,7 +19,8 @@ import { MAX_QUERY_IDS } from "#shared/schemas/query.ts"
 
 type TransactionRecord = typeof financesTransactions.$inferSelect
 
-function toRow(transaction: TransactionRecord): TransactionRow {
+/** The wire row for a stored Transaction. */
+export function toTransactionRow(transaction: TransactionRecord): TransactionRow {
   return {
     id: transaction.id,
     status: transaction.status,
@@ -108,7 +109,7 @@ export function transactionRoutes(db: Db) {
         )
         .orderBy(direction(table.date), direction(table.id))
         .limit(limit ?? MAX_QUERY_IDS)
-      return c.json({ rows: transactions.map(toRow) })
+      return c.json({ rows: transactions.map(toTransactionRow) })
     })
     .post("/", validate("json", createTransaction), async (c) => {
       const input = c.req.valid("json")
@@ -126,7 +127,7 @@ export function transactionRoutes(db: Db) {
         .returning()
         .catch(refusedLink)
       if (!transaction) throw new ApiError("conflict", "A Transaction with this id already exists")
-      return c.json(toRow(transaction), 201)
+      return c.json(toTransactionRow(transaction), 201)
     })
     .patch("/:id", validate("param", params), validate("json", updateTransaction), async (c) => {
       const transactionId = c.req.valid("param").id
@@ -151,7 +152,7 @@ export function transactionRoutes(db: Db) {
         .where(eq(table.id, transactionId))
         .returning()
         .catch(refusedLink)
-      return transaction ? c.json(toRow(transaction)) : notFound()
+      return transaction ? c.json(toTransactionRow(transaction)) : notFound()
     })
     .delete("/:id", validate("param", params), async (c) => {
       const transactionId = c.req.valid("param").id
@@ -176,7 +177,7 @@ export function transactionRoutes(db: Db) {
           .set({ ignored: true, updatedAt: sql`now()` })
           .where(eq(table.id, transactionId))
           .returning()
-        return ignored ? c.json(toRow(ignored)) : notFound()
+        return ignored ? c.json(toTransactionRow(ignored)) : notFound()
       }
       const [deleted] = await db
         .delete(table)
@@ -186,6 +187,6 @@ export function transactionRoutes(db: Db) {
           if (isForeignKeyViolation(error)) reconciledConflict()
           throw error
         })
-      return deleted ? c.json(toRow(deleted)) : notFound()
+      return deleted ? c.json(toTransactionRow(deleted)) : notFound()
     })
 }

@@ -68,6 +68,11 @@ export function useWallet(id: string) {
   return { wallet: data[0], isLoading }
 }
 
+/** Writes a Wallet the server changed outside the collection's own writes, such as by an upload. */
+export async function writeWallet(row: WalletRow): Promise<void> {
+  await financesWallets().utils.writeUpsert(row)
+}
+
 /** True once the server accepted the write; false after a rollback (already reported). */
 async function settled(transaction: { when: (state: "settled") => Promise<unknown> }) {
   try {
