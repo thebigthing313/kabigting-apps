@@ -1,6 +1,6 @@
 import type { Page } from "@playwright/test"
 import { addDays, formatDisplayDate, today } from "../src/shared/dates.ts"
-import { expect, MEMBER_STATE, test } from "./fixtures.ts"
+import { expect, MEMBER_STATE, runName, test } from "./fixtures.ts"
 
 test.use({ storageState: MEMBER_STATE })
 
@@ -22,7 +22,7 @@ test("an Actual added with a suggested match Reconciles it, taking its Category,
   page,
 }, testInfo) => {
   test.slow()
-  const run = `${testInfo.project.name} ${Date.now()}`
+  const run = runName(testInfo)
   const walletId = await post(page, "wallets", { name: `E2E reconcile ${run}`, inForecast: true })
   await post(page, "balance-checks", {
     walletId,
@@ -81,7 +81,7 @@ test("from Activity an Actual is Reconciled to any outstanding Planned item, and
   page,
 }, testInfo) => {
   test.slow()
-  const run = `${testInfo.project.name} ${Date.now()}`
+  const run = runName(testInfo)
   const walletId = await post(page, "wallets", { name: `E2E pick ${run}` })
   // Three weeks out: too far to be suggested, but it can still be picked.
   await post(page, "transactions", {
@@ -134,7 +134,7 @@ test("an Actual Reconciled to a Planned Transfer becomes an Actual Transfer", as
   page,
 }, testInfo) => {
   test.slow()
-  const run = `${testInfo.project.name} ${Date.now()}`
+  const run = runName(testInfo)
   const checking = await post(page, "wallets", { name: `E2E paying ${run}` })
   const card = await post(page, "wallets", { name: `E2E card ${run}` })
   await post(page, "transfers", {

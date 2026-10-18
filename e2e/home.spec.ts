@@ -1,6 +1,6 @@
 import type { Page } from "@playwright/test"
 import { addDays, today } from "../src/shared/dates.ts"
-import { expect, MEMBER_STATE, test } from "./fixtures.ts"
+import { expect, MEMBER_STATE, runName, test } from "./fixtures.ts"
 
 test.use({ storageState: MEMBER_STATE })
 
@@ -29,7 +29,7 @@ async function forecastWallet(page: Page, name: string) {
 test("the All tab shows a card per Wallet, and a forecast Wallet's card opens its tab", async ({
   page,
 }, testInfo) => {
-  const run = `${testInfo.project.name} ${Date.now()}`
+  const run = runName(testInfo)
   const inForecast = `E2E card ${run}`
   const outside = `E2E outside ${run}`
   const walletId = await forecastWallet(page, inForecast)
@@ -90,7 +90,7 @@ test("Open here by default makes home open on a Wallet, then on All again", asyn
 }, testInfo) => {
   // The default is one household-wide row; browsers setting it at once would race each other.
   test.skip(testInfo.project.name !== "chromium-desktop", "One household default")
-  const name = `E2E default ${Date.now()}`
+  const name = `E2E default ${runName(testInfo)}`
   await forecastWallet(page, name)
   const tabs = page.getByRole("navigation", { name: "Forecast Wallets" })
 

@@ -1,11 +1,11 @@
-import { expect, MEMBER_STATE, test } from "./fixtures.ts"
+import { expect, MEMBER_STATE, runName, test } from "./fixtures.ts"
 
 test.use({ storageState: MEMBER_STATE })
 
 test("a Wallet can be added, have its Settings changed and be archived, surviving reloads", async ({
   page,
 }, testInfo) => {
-  const name = `E2E wallet ${testInfo.project.name} ${Date.now()}`
+  const name = `E2E wallet ${runName(testInfo)}`
   await page.goto("/finances/wallets")
   await expect(page.getByRole("heading", { name: "Wallets" })).toBeVisible()
 

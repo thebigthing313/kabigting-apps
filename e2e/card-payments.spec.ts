@@ -1,5 +1,5 @@
 import type { Page } from "@playwright/test"
-import { expect, MEMBER_STATE, test } from "./fixtures.ts"
+import { expect, MEMBER_STATE, runName, test } from "./fixtures.ts"
 
 test.use({ storageState: MEMBER_STATE })
 
@@ -30,7 +30,7 @@ async function upload(page: Page, file: ReturnType<typeof statementFile>) {
 
 test("a card payment in both files stays one Transfer", async ({ page }, testInfo) => {
   test.slow()
-  const run = `${testInfo.project.name} ${Date.now()}`
+  const run = runName(testInfo)
   const number = `${Date.now()}${testInfo.workerIndex}${Math.floor(Math.random() * 1000)}`
   const checkingName = `E2E checking ${run}`
   const cardName = `E2E card ${run}`

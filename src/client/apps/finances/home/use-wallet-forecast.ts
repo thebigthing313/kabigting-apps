@@ -4,8 +4,8 @@ import { useFinancesAccounts } from "@/data/finances-accounts"
 import { useLatestBalanceCheck } from "@/data/finances-balance-checks"
 import { useStoredOccurrences } from "@/data/finances-occurrences"
 import { useSchedules } from "@/data/finances-schedules"
-import { useActualsSince, useOutstandingOneOffs } from "@/data/finances-transactions"
-import { useOutstandingPlannedTransfers } from "@/data/finances-transfers"
+import { useActualsSince, useHouseholdOutstandingOneOffs } from "@/data/finances-transactions"
+import { useHouseholdPlannedTransfers } from "@/data/finances-transfers"
 import { useWallets, type Wallet } from "@/data/finances-wallets"
 import { today as householdToday } from "@shared/dates"
 import { type ForecastItem, forecast } from "@shared/finances/forecast"
@@ -26,10 +26,10 @@ export function useWalletForecast(wallet: Wallet, days: number) {
     transfers,
     isLoading: actualsLoading,
   } = useActualsSince(wallet.id, check?.date)
-  const { oneOffs, isLoading: oneOffsLoading } = useOutstandingOneOffs(wallet.id)
-  const { plannedTransfers, isLoading: plannedTransfersLoading } = useOutstandingPlannedTransfers(
-    wallet.id,
-  )
+  // Every Wallet's one-offs, in one request shared by every Forecast on the page and the bell;
+  // the Forecast keeps those that move this Wallet.
+  const { oneOffs, isLoading: oneOffsLoading } = useHouseholdOutstandingOneOffs()
+  const { plannedTransfers, isLoading: plannedTransfersLoading } = useHouseholdPlannedTransfers()
 
   const loading =
     isLoading ||

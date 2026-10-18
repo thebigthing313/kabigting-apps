@@ -83,6 +83,24 @@ export function useActualTransfersSince(walletId: string, after: string | undefi
 }
 
 /**
+ * Every outstanding one-off Planned Transfer, soonest first, in one request however many Wallets
+ * there are. Each Forecast takes the ones out of or into its Wallet.
+ */
+export function useHouseholdPlannedTransfers() {
+  const transfers = financesTransfers()
+  const { data, isLoading } = useLiveQuery(
+    (q) =>
+      q
+        .from({ row: transfers })
+        .where(({ row }) => eq(row.status, "planned"))
+        .orderBy(({ row }) => row.date, OLDEST_FIRST),
+    [transfers],
+  )
+  // The server has no filter for the Reconcile link.
+  return { plannedTransfers: data.filter((row) => row.reconciledActualId === null), isLoading }
+}
+
+/**
  * A Wallet's one-off Planned Transfers, out of it or into it, soonest first. `plannedTransfers`
  * are the outstanding ones; a Reconciled one is no longer outstanding, and `planned` keeps those
  * too, to show what an Actual Transfer is Reconciled to.

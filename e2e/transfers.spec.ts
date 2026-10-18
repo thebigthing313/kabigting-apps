@@ -1,6 +1,6 @@
 import type { Page } from "@playwright/test"
 import { addDays, formatDisplayDate, today } from "../src/shared/dates.ts"
-import { expect, MEMBER_STATE, test } from "./fixtures.ts"
+import { expect, MEMBER_STATE, runName, test } from "./fixtures.ts"
 
 test.use({ storageState: MEMBER_STATE })
 
@@ -15,7 +15,7 @@ test("an Actual Transfer shows once in each Wallet's Activity, never as spending
   page,
 }, testInfo) => {
   test.slow()
-  const run = `${testInfo.project.name} ${Date.now()}`
+  const run = runName(testInfo)
   const checking = `E2E transfer checking ${run}`
   const card = `E2E transfer card ${run}`
   const checkingId = await post(page, "wallets", { name: checking })
@@ -79,7 +79,7 @@ test("Planned Transfers count in both Wallets' Forecasts, Overdue ones today", a
   page,
 }, testInfo) => {
   test.slow()
-  const run = `${testInfo.project.name} ${Date.now()}`
+  const run = runName(testInfo)
   const checking = `E2E forecast checking ${run}`
   const savings = `E2E forecast savings ${run}`
   const checkingId = await post(page, "wallets", { name: checking, inForecast: true })

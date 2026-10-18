@@ -595,6 +595,13 @@ There is no Accounts screen. Accounts are created inline from the Account picker
     Occurrence older than the page's 3 months; `#upcoming-one-offs` on the Activity tab; and
     `/finances?wallet=<id>&days=<n>#day-<date>` on home.
   - The banner shows the counts, one link for To review and a row per Overdue item.
+  - Loading (decided on #53's PR): the bell is on every page, so its data must not grow a request
+    per Wallet for everything. The lines To review, the outstanding one-off Planned Transactions
+    and the Planned Transfers load household-wide, one live query each with no `walletId`
+    (existing filters only), grouped by Wallet on the client; every Forecast shares them. Only the
+    latest Balance check and the Actuals since it stay per Wallet.
+  - e2e: every test shares one database, so a fixture archives the Wallets a test named with its
+    `runName` once the test ends; pages don't slow as the run goes on.
 
 ## 8. One-time import
 

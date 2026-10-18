@@ -1,7 +1,7 @@
 import { type LabelledItem, useWalletForecast } from "@/apps/finances/home/use-wallet-forecast"
 import { transactionLabel } from "@/apps/finances/transactions/transaction-display"
 import { useFinancesAccounts } from "@/data/finances-accounts"
-import { useToReview } from "@/data/finances-transactions"
+import { useHouseholdToReview } from "@/data/finances-transactions"
 import type { Wallet } from "@/data/finances-wallets"
 import { type AttentionItem, walletAttention } from "@shared/finances/attention"
 import type { Forecast } from "@shared/finances/forecast"
@@ -31,7 +31,9 @@ function useNamedAttention(
     labelOf: (item: LabelledItem) => string
   },
 ) {
-  const { lines, isLoading } = useToReview(wallet.id)
+  // Every Wallet's lines in one request, shared by each Wallet's group; this Wallet's kept here.
+  const { lines: household, isLoading } = useHouseholdToReview()
+  const lines = household.filter((line) => line.walletId === wallet.id)
   const { data: accounts } = useFinancesAccounts()
   const accountName = new Map(accounts.map((account) => [account.id, account.name]))
   const lineById = new Map(lines.map((line) => [line.id, line]))

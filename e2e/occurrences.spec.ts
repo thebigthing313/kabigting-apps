@@ -1,6 +1,6 @@
 import type { Page } from "@playwright/test"
 import { addDays, addMonthsClamped, formatDisplayDate, today } from "../src/shared/dates.ts"
-import { expect, MEMBER_STATE, test } from "./fixtures.ts"
+import { expect, MEMBER_STATE, runName, test } from "./fixtures.ts"
 
 test.use({ storageState: MEMBER_STATE })
 
@@ -14,7 +14,7 @@ async function post(page: Page, path: string, data: Record<string, unknown>) {
 test("an Occurrence is overridden, skipped, then put back on its Schedule", async ({
   page,
 }, testInfo) => {
-  const run = `${testInfo.project.name} ${Date.now()}`
+  const run = runName(testInfo)
   const checking = `E2E checking ${run}`
   const walletId = await post(page, "wallets", { name: checking })
   // Monthly, starting next month, so its first two Occurrences are upcoming.
@@ -73,7 +73,7 @@ test("an Occurrence is overridden, skipped, then put back on its Schedule", asyn
 test("a card payment's Occurrence takes the statement balance and due date", async ({
   page,
 }, testInfo) => {
-  const run = `${testInfo.project.name} ${Date.now()}`
+  const run = runName(testInfo)
   const checking = await post(page, "wallets", { name: `E2E checking ${run}` })
   const card = `E2E card ${run}`
   const cardId = await post(page, "wallets", { name: card, shownAsOwed: true })

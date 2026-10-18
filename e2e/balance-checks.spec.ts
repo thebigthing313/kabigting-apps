@@ -1,11 +1,11 @@
-import { expect, MEMBER_STATE, test } from "./fixtures.ts"
+import { expect, MEMBER_STATE, runName, test } from "./fixtures.ts"
 
 test.use({ storageState: MEMBER_STATE })
 
 test("Balance checks are entered, compared with the computed balance and replaced by date", async ({
   page,
 }, testInfo) => {
-  const name = `E2E checked ${testInfo.project.name} ${Date.now()}`
+  const name = `E2E checked ${runName(testInfo)}`
   await page.goto("/finances/wallets")
   await page.getByRole("button", { name: "New Wallet" }).click()
   const newWallet = page.getByRole("dialog")

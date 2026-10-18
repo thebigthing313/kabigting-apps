@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs"
 import type { Page } from "@playwright/test"
-import { expect, MEMBER_STATE, test } from "./fixtures.ts"
+import { expect, MEMBER_STATE, runName, test } from "./fixtures.ts"
 
 test.use({ storageState: MEMBER_STATE })
 
@@ -37,7 +37,7 @@ test("uploaded lines with a suggestion wait in To review, and Confirm Reconciles
   page,
 }, testInfo) => {
   test.slow()
-  const run = `${testInfo.project.name} ${Date.now()}`
+  const run = runName(testInfo)
   const accountNumber = `${Date.now()}${testInfo.workerIndex}${Math.floor(Math.random() * 1000)}`
   const walletId = await post(page, "wallets", { name: `E2E review ${run}` })
   // The grocer's line is near this Schedule's first Occurrence.
