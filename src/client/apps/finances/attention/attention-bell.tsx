@@ -33,8 +33,10 @@ export function AttentionBell({ days = DEFAULT_HORIZON }: { days?: ForecastHoriz
     (walletId, count) =>
       setCounts((previous) => {
         if (previous[walletId] === (count ?? undefined)) return previous
-        const { [walletId]: _gone, ...others } = previous
-        return count === null ? others : { ...others, [walletId]: count }
+        const next = { ...previous }
+        if (count === null) delete next[walletId]
+        else next[walletId] = count
+        return next
       }),
     [],
   )
