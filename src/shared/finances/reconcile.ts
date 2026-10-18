@@ -4,8 +4,8 @@
  */
 import { addDays, daysBetween, today as householdToday } from "../dates.ts"
 import { expandSchedule, type ScheduleTerms, type StoredOccurrence } from "./occurrences.ts"
-import type { TransactionRow } from "./schemas.ts"
-import { transferAmountOn } from "./transfers.ts"
+import type { TransactionRow, TransferRow } from "./schemas.ts"
+import { onlySideArrived, otherSide, transferAmountOn, walletOnSide } from "./transfers.ts"
 
 /** How many days either side of an Actual a suggested Planned item may be dated. */
 export const MATCH_WINDOW_DAYS = 7
@@ -109,21 +109,74 @@ export function findHandEntryTwin<Row extends MaybeHandEntry>(
     .toSorted((a, b) => daysOff(a) - daysOff(b))[0]
 }
 
-/** What To review offers for an uploaded line: the same as a hand entry, or a Planned item. */
-export type ReviewSuggestion<Item, Row> =
-  { kind: "twin"; handEntry: Row } | { kind: "planned"; item: Item }
+/** What `suggestTransferHalf` reads of an Actual Transfer whose other side may be missing. */
+export type MaybeWaitingTransfer = Pick<
+  TransferRow,
+  | "status"
+  | "ignored"
+  | "date"
+  | "amountCents"
+  | "fromWalletId"
+  | "toWalletId"
+  | "fromSource"
+  | "toSource"
+>
+
+/**
+ * The Actual Transfer an uploaded line is most likely the other side of: one whose line arrived
+ * from the other Wallet while this Wallet's side is still missing, moving this Wallet by the
+ * line's exact amount, dated within 7 days either side. The closest date wins.
+ */
+export function suggestTransferHalf<Row extends MaybeWaitingTransfer>(
+  line: { walletId: string; date: string; amountCents: number },
+  transfers: readonly Row[],
+): Row | undefined {
+  const daysOff = (row: Row) => Math.abs(daysBetween(line.date, row.date))
+  const missingHere = (row: Row) => {
+    const arrived = onlySideArrived(row)
+    return arrived !== null && walletOnSide(row, otherSide(arrived)) === line.walletId
+  }
+  return transfers
+    .filter(
+      (row) =>
+        missingHere(row) &&
+        transferAmountOn(row, line.walletId) === line.amountCents &&
+        daysOff(row) <= MATCH_WINDOW_DAYS,
+    )
+    .toSorted((a, b) => daysOff(a) - daysOff(b))[0]
+}
+
+/**
+ * What To review offers for an uploaded line: the same as a hand entry, the other side of an
+ * Actual Transfer, or a Planned item.
+ */
+export type ReviewSuggestion<Item, Row, Transfer> =
+  | { kind: "twin"; handEntry: Row }
+  | { kind: "transfer"; transfer: Transfer }
+  | { kind: "planned"; item: Item }
 
 /**
  * What To review offers for an uploaded line, or null when it is simply unplanned. A hand-entry
  * twin comes first: the line is then most likely the Actual a person already entered, which may
- * itself be Reconciled. Otherwise the best suggested Planned match.
+ * itself be Reconciled. Then the Actual Transfer it is the other side of, which is already
+ * recorded and only waits for this line. Otherwise the best suggested Planned match.
  */
-export function reviewSuggestion<Item extends PlannedDetails, Row extends MaybeHandEntry>(
+export function reviewSuggestion<
+  Item extends PlannedDetails,
+  Row extends MaybeHandEntry,
+  Transfer extends MaybeWaitingTransfer,
+>(
   line: { walletId: string; date: string; amountCents: number },
-  candidates: { outstanding: readonly Item[]; handEntered: readonly Row[] },
-): ReviewSuggestion<Item, Row> | null {
+  candidates: {
+    outstanding: readonly Item[]
+    handEntered: readonly Row[]
+    transfers: readonly Transfer[]
+  },
+): ReviewSuggestion<Item, Row, Transfer> | null {
   const handEntry = findHandEntryTwin(line, candidates.handEntered)
   if (handEntry) return { kind: "twin", handEntry }
+  const transfer = suggestTransferHalf(line, candidates.transfers)
+  if (transfer) return { kind: "transfer", transfer }
   const [item] = suggestMatches(line, candidates.outstanding)
   return item ? { kind: "planned", item } : null
 }

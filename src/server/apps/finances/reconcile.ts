@@ -3,6 +3,7 @@ import { Hono } from "hono"
 import { isUniqueViolation } from "#server/apps/finances/db-errors.ts"
 import { occurrenceToRow } from "#server/apps/finances/occurrences.ts"
 import { isReconciledActual, toTransactionRow } from "#server/apps/finances/transactions.ts"
+import { sideColumns } from "#server/apps/finances/transfer-halves.ts"
 import { isReconciledTransfer, transferToRow } from "#server/apps/finances/transfers.ts"
 import type { AppEnv } from "#server/core/context.ts"
 import { ApiError } from "#server/core/errors.ts"
@@ -218,11 +219,6 @@ async function lineToTransfer(
   if ((side === "from") !== line.amountCents < 0) {
     invalid("This line moves money the other way from the Planned Transfer")
   }
-  const keyed = {
-    source: line.source,
-    sourceKey: line.sourceKey,
-    bankDescription: line.bankDescription,
-  }
   const [made] = await tx
     .insert(financesTransfers)
     .values({
@@ -233,17 +229,7 @@ async function lineToTransfer(
       toWalletId: target.toWalletId,
       accountId: line.accountId ?? target.accountId,
       note: line.note || target.note,
-      ...(side === "from"
-        ? {
-            fromSource: keyed.source,
-            fromSourceKey: keyed.sourceKey,
-            fromBankDescription: keyed.bankDescription,
-          }
-        : {
-            toSource: keyed.source,
-            toSourceKey: keyed.sourceKey,
-            toBankDescription: keyed.bankDescription,
-          }),
+      ...sideColumns(side, line),
     })
     .returning()
   if (!made) throw new Error("Making the Actual Transfer wrote nothing")
