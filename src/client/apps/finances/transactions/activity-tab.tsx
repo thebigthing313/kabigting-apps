@@ -31,7 +31,7 @@ type Names = {
 }
 
 /** Transactions and Transfers in one list, by date (then id, as the server pages them). */
-function merged(
+function byDate(
   transactions: ActivityRow[],
   transfers: ActivityRow[],
   direction: "asc" | "desc",
@@ -66,12 +66,12 @@ export function ActivityTab({ wallet }: { wallet: Wallet }) {
     wallet: new Map(wallets.map((each) => [each.id, each.name])),
   }
   const now = today()
-  const upcoming = merged(
+  const upcoming = byDate(
     oneOffs.map((row) => ({ kind: "transaction", row })),
     plannedTransfers.map((row) => ({ kind: "transfer", row })),
     "asc",
   )
-  const past = merged(
+  const past = byDate(
     actuals.map((row) => ({ kind: "transaction", row })),
     transfers.map((row) => ({ kind: "transfer", row })),
     "desc",

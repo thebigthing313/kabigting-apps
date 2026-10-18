@@ -5,6 +5,7 @@
 import { addDays } from "../dates.ts"
 import { balanceSince } from "./balance-checks.ts"
 import { expandSchedule, type ScheduleTerms, type StoredOccurrence } from "./occurrences.ts"
+import { transferAmountOn } from "./transfers.ts"
 
 /** The horizons a person can pick, in days. */
 export const FORECAST_HORIZONS = [30, 90, 180, 365] as const
@@ -136,10 +137,9 @@ function oneOffItems(input: ForecastInput, from: string, to: string): ForecastIt
     items.push({ kind: "planned", id, date, amountCents, overdue: date < today })
   }
   for (const row of input.plannedTransfers) {
-    const sign = signOn(row.fromWalletId, row.toWalletId, wallet.id)
-    if (sign === 0 || !outstanding(row)) continue
+    const amountCents = transferAmountOn(row, wallet.id)
+    if (amountCents === 0 || !outstanding(row)) continue
     const { id, date } = row
-    const amountCents = sign * row.amountCents
     items.push({ kind: "plannedTransfer", id, date, amountCents, overdue: date < today })
   }
   return items
