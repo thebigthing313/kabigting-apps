@@ -1,6 +1,13 @@
 import { afterAll, beforeAll, describe, expect, test } from "vitest"
 import { newId } from "#shared/ids.ts"
-import { categoryRow, categoryRows } from "#shared/finances/schemas.ts"
+import {
+  categoryMergeResult,
+  categoryRow,
+  categoryRows,
+  scheduleRows,
+  transactionRows,
+  walletRow,
+} from "#shared/finances/schemas.ts"
 import { createTestServer, json, type TestServer } from "#server/test/server.ts"
 
 let server: TestServer
@@ -123,4 +130,116 @@ test("a Category is never deleted: DELETE is 409 conflict and the row stays", as
   })
   expect(response.status).toBe(409)
   expect(await query({ ids: [row.id] })).toHaveLength(1)
+})
+
+function merge(categoryId: string, body: unknown, as = headers) {
+  return server.app.request(`/api/finances/categories/${categoryId}/merge`, json("POST", body, as))
+}
+
+async function post(path: string, body: Record<string, unknown>) {
+  const response = await server.app.request(
+    `/api/finances/${path}`,
+    json("POST", { id: newId(), ...body }, headers),
+  )
+  expect(response.status).toBe(201)
+}
+
+async function transactionsIn(categoryId: string) {
+  const response = await server.app.request(
+    "/api/finances/transactions/query",
+    json("POST", { categoryId, includeIgnored: true }, headers),
+  )
+  return transactionRows.parse(await response.json()).rows
+}
+
+async function schedulesIn(categoryId: string) {
+  const response = await server.app.request(
+    "/api/finances/schedules/query",
+    json("POST", {}, headers),
+  )
+  return scheduleRows
+    .parse(await response.json())
+    .rows.filter((row) => row.categoryId === categoryId)
+}
+
+describe("merge", () => {
+  let walletId: string
+
+  beforeAll(async () => {
+    const response = await server.app.request(
+      "/api/finances/wallets",
+      json("POST", { id: newId(), name: "Merge test checking" }, headers),
+    )
+    walletId = walletRow.parse(await response.json()).id
+  })
+
+  test("moves Transactions and Schedule defaults to the target and archives the source", async () => {
+    const source = await created(category())
+    const target = await created(category())
+    const untouched = await created(category())
+    const row = { walletId, categoryId: source.id }
+    await post("transactions", { ...row, status: "actual", date: "2026-09-01", amountCents: -500 })
+    await post("transactions", { ...row, status: "planned", date: "2026-12-01", amountCents: -900 })
+    await post("transactions", {
+      walletId,
+      categoryId: untouched.id,
+      status: "actual",
+      date: "2026-09-02",
+      amountCents: -100,
+    })
+    await post("schedules", {
+      ...row,
+      amountCents: -2_000,
+      unit: "month",
+      every: 1,
+      startDate: "2026-10-01",
+    })
+
+    const response = await merge(source.id, { intoId: target.id })
+    expect(response.status).toBe(200)
+    const result = categoryMergeResult.parse(await response.json())
+
+    expect(result.categories).toEqual([
+      expect.objectContaining({ id: source.id, archived: true, mergedIntoId: target.id }),
+    ])
+    expect(result.transactions.map((moved) => moved.categoryId)).toEqual([target.id, target.id])
+    expect(result.schedules.map((moved) => moved.categoryId)).toEqual([target.id])
+    expect(await transactionsIn(source.id)).toEqual([])
+    expect(await transactionsIn(target.id)).toHaveLength(2)
+    expect(await transactionsIn(untouched.id)).toHaveLength(1)
+    expect(await schedulesIn(source.id)).toEqual([])
+    expect(await schedulesIn(target.id)).toHaveLength(1)
+    expect((await query({ ids: [source.id] }))[0]).toMatchObject({
+      archived: true,
+      mergedIntoId: target.id,
+    })
+  })
+
+  test("the Admin, with no access row, merges; an Account without access is refused", async () => {
+    const source = await created(category())
+    const target = await created(category())
+    expect((await merge(source.id, { intoId: target.id }, noAccessHeaders)).status).toBe(403)
+    expect((await merge(source.id, { intoId: target.id }, adminHeaders)).status).toBe(200)
+  })
+
+  test("into itself or an unknown Category is 400; an unknown source is 404", async () => {
+    const source = await created(category())
+    expect((await merge(source.id, { intoId: source.id })).status).toBe(400)
+    expect((await merge(source.id, { intoId: newId() })).status).toBe(400)
+    expect((await merge(newId(), { intoId: source.id })).status).toBe(404)
+    expect((await merge(source.id, { intoId: source.id, extra: 1 })).status).toBe(400)
+  })
+
+  test("a Category already merged, or a target that is archived, is 409 conflict", async () => {
+    const source = await created(category())
+    const target = await created(category())
+    const other = await created(category())
+    expect((await merge(source.id, { intoId: target.id })).status).toBe(200)
+    expect((await merge(source.id, { intoId: other.id })).status).toBe(409)
+    // A merged Category is archived, so nothing merges into it either.
+    expect((await merge(other.id, { intoId: source.id })).status).toBe(409)
+    const archived = await created(category())
+    await patch(archived.id, { archived: true })
+    expect((await merge(other.id, { intoId: archived.id })).status).toBe(409)
+  })
 })

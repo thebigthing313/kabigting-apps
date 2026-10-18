@@ -1,5 +1,7 @@
 import { Link, useNavigate } from "@tanstack/react-router"
 import { ChevronLeftIcon, ChevronRightIcon } from "lucide-react"
+import type { ReactNode } from "react"
+import { UNCATEGORISED_PARAM } from "@/apps/finances/categories/category-page"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useCategories } from "@/data/finances-categories"
@@ -105,8 +107,8 @@ function MonthSummary({ month, first }: { month: string; first: Transaction | un
   return (
     <>
       <Totals month={month} totals={summary.totals} />
-      <IncomeList lines={summary.income} />
-      <SpendingList summary={summary} />
+      <IncomeList lines={summary.income} month={month} />
+      <SpendingList summary={summary} month={month} />
     </>
   )
 }
@@ -188,7 +190,31 @@ function CategoryName({ line }: { line: SummaryLine }) {
   )
 }
 
-function IncomeList({ lines }: { lines: readonly SummaryLine[] }) {
+/** A summary row that opens its Category's page for the same month. */
+function CategoryLink({
+  line,
+  month,
+  className,
+  children,
+}: {
+  line: SummaryLine
+  month: string
+  className: string
+  children: ReactNode
+}) {
+  return (
+    <Link
+      to="/finances/categories/$categoryId"
+      params={{ categoryId: line.categoryId ?? UNCATEGORISED_PARAM }}
+      search={{ month }}
+      className={cn(className, "hover:bg-muted/50")}
+    >
+      {children}
+    </Link>
+  )
+}
+
+function IncomeList({ lines, month }: { lines: readonly SummaryLine[]; month: string }) {
   if (lines.length === 0) return null
   return (
     <section className="flex flex-col gap-2">
@@ -197,19 +223,22 @@ function IncomeList({ lines }: { lines: readonly SummaryLine[] }) {
         {lines.map((line) => {
           const difference = line.monthCents - line.averageCents
           return (
-            <li
-              key={line.categoryId}
-              className="flex min-h-12 items-center justify-between gap-3 px-4 py-2"
-            >
-              <CategoryName line={line} />
-              <span className="shrink-0 text-right tabular-nums">
-                <span className="block font-medium">{format(line.monthCents)}</span>
-                <span className="block text-xs text-muted-foreground">
-                  {difference === 0
-                    ? "same as avg"
-                    : `${format(difference, { sign: "always" })} vs avg`}
+            <li key={line.categoryId}>
+              <CategoryLink
+                line={line}
+                month={month}
+                className="flex min-h-12 items-center justify-between gap-3 px-4 py-2"
+              >
+                <CategoryName line={line} />
+                <span className="shrink-0 text-right tabular-nums">
+                  <span className="block font-medium">{format(line.monthCents)}</span>
+                  <span className="block text-xs text-muted-foreground">
+                    {difference === 0
+                      ? "same as avg"
+                      : `${format(difference, { sign: "always" })} vs avg`}
+                  </span>
                 </span>
-              </span>
+              </CategoryLink>
             </li>
           )
         })}
@@ -218,7 +247,7 @@ function IncomeList({ lines }: { lines: readonly SummaryLine[] }) {
   )
 }
 
-function SpendingList({ summary }: { summary: MonthlySummary }) {
+function SpendingList({ summary, month }: { summary: MonthlySummary; month: string }) {
   const lines = summary.uncategorised
     ? [...summary.spending, summary.uncategorised]
     : summary.spending
@@ -241,7 +270,12 @@ function SpendingList({ summary }: { summary: MonthlySummary }) {
       </div>
       <ul className="divide-y rounded-xl border" aria-label="Spending Categories">
         {lines.map((line) => (
-          <SpendingRow key={line.categoryId ?? "uncategorised"} line={line} peak={peak} />
+          <SpendingRow
+            key={line.categoryId ?? UNCATEGORISED_PARAM}
+            line={line}
+            peak={peak}
+            month={month}
+          />
         ))}
       </ul>
     </section>
@@ -252,30 +286,32 @@ function share(cents: number, peak: number): string {
   return `${(Math.max(0, cents) / peak) * 100}%`
 }
 
-function SpendingRow({ line, peak }: { line: SummaryLine; peak: number }) {
+function SpendingRow({ line, peak, month }: { line: SummaryLine; peak: number; month: string }) {
   const over = isFarOverAverage(line)
   return (
-    <li className="flex flex-col gap-1 px-4 py-3">
-      <div className="flex items-center justify-between gap-3">
-        <CategoryName line={line} />
-        <span className="flex shrink-0 items-center gap-2 tabular-nums">
-          {over ? <span className="text-xs font-medium text-destructive">Over avg</span> : null}
-          <span className="font-medium">{format(line.monthCents)}</span>
-        </span>
-      </div>
-      <div className="relative h-3 rounded bg-muted" aria-hidden="true">
-        <div
-          className={cn("h-full rounded", over ? "bg-destructive" : "bg-primary")}
-          style={{ width: share(-line.monthCents, peak) }}
-        />
-        <div
-          className="absolute -top-0.5 h-4 w-0.5 bg-foreground"
-          style={{ left: share(-line.averageCents, peak) }}
-        />
-      </div>
-      <p className="text-xs text-muted-foreground tabular-nums">
-        Last month {format(line.lastMonthCents)} · avg {format(line.averageCents)}
-      </p>
+    <li>
+      <CategoryLink line={line} month={month} className="flex flex-col gap-1 px-4 py-3">
+        <div className="flex items-center justify-between gap-3">
+          <CategoryName line={line} />
+          <span className="flex shrink-0 items-center gap-2 tabular-nums">
+            {over ? <span className="text-xs font-medium text-destructive">Over avg</span> : null}
+            <span className="font-medium">{format(line.monthCents)}</span>
+          </span>
+        </div>
+        <div className="relative h-3 rounded bg-muted" aria-hidden="true">
+          <div
+            className={cn("h-full rounded", over ? "bg-destructive" : "bg-primary")}
+            style={{ width: share(-line.monthCents, peak) }}
+          />
+          <div
+            className="absolute -top-0.5 h-4 w-0.5 bg-foreground"
+            style={{ left: share(-line.averageCents, peak) }}
+          />
+        </div>
+        <p className="text-xs text-muted-foreground tabular-nums">
+          Last month {format(line.lastMonthCents)} · avg {format(line.averageCents)}
+        </p>
+      </CategoryLink>
     </li>
   )
 }

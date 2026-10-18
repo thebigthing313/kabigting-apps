@@ -168,6 +168,29 @@ export function useFirstActual() {
   return { first: data[0], isLoading }
 }
 
+/**
+ * How many Transactions, Planned and Actual, a Category holds, ignored lines left out. Nothing
+ * loads while `categoryId` is undefined.
+ */
+export function useCategoryTransactionCount(categoryId: string | undefined) {
+  const transactions = financesTransactions()
+  const { data, isLoading } = useLiveQuery(
+    (q) =>
+      categoryId === undefined
+        ? undefined
+        : q
+            .from({ row: transactions })
+            .where(({ row }) => and(eq(row.categoryId, categoryId), eq(row.ignored, false))),
+    [transactions, categoryId],
+  )
+  return { count: data?.length ?? 0, isLoading: categoryId !== undefined && isLoading }
+}
+
+/** Writes rows a command changed, such as a Category merge, into the collection. */
+export async function writeTransactions(rows: readonly TransactionRow[]): Promise<void> {
+  if (rows.length > 0) await financesTransactions().utils.writeUpsert([...rows])
+}
+
 /** Shows the row at once; resolves false after a refusal rolled it back (with a toast). */
 export function addTransaction(input: NewTransaction): Promise<boolean> {
   const now = nowInstant()

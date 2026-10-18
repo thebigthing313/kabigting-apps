@@ -18,6 +18,7 @@ import { Route as AppAdminAccountsRouteImport } from './routes/_app/admin/accoun
 import { Route as AppFinancesIndexRouteImport } from './routes/_app/finances/index'
 import { Route as AppFinancesSummaryRouteImport } from './routes/_app/finances/summary'
 import { Route as AppFinancesCategoriesIndexRouteImport } from './routes/_app/finances/categories/index'
+import { Route as AppFinancesCategoriesCategoryIdRouteImport } from './routes/_app/finances/categories/$categoryId'
 import { Route as AppFinancesSchedulesIndexRouteImport } from './routes/_app/finances/schedules/index'
 import { Route as AppFinancesSchedulesScheduleIdRouteImport } from './routes/_app/finances/schedules/$scheduleId'
 import { Route as AppFinancesWalletsIndexRouteImport } from './routes/_app/finances/wallets/index'
@@ -68,6 +69,12 @@ const AppFinancesCategoriesIndexRoute =
     path: '/categories/',
     getParentRoute: () => AppFinancesRouteRoute,
   } as any)
+const AppFinancesCategoriesCategoryIdRoute =
+  AppFinancesCategoriesCategoryIdRouteImport.update({
+    id: '/categories/$categoryId',
+    path: '/categories/$categoryId',
+    getParentRoute: () => AppFinancesRouteRoute,
+  } as any)
 const AppFinancesSchedulesIndexRoute =
   AppFinancesSchedulesIndexRouteImport.update({
     id: '/schedules/',
@@ -100,6 +107,7 @@ export interface FileRoutesByFullPath {
   '/admin/accounts': typeof AppAdminAccountsRoute
   '/finances/summary': typeof AppFinancesSummaryRoute
   '/finances/': typeof AppFinancesIndexRoute
+  '/finances/categories/$categoryId': typeof AppFinancesCategoriesCategoryIdRoute
   '/finances/schedules/$scheduleId': typeof AppFinancesSchedulesScheduleIdRoute
   '/finances/wallets/$walletId': typeof AppFinancesWalletsWalletIdRoute
   '/finances/categories/': typeof AppFinancesCategoriesIndexRoute
@@ -113,6 +121,7 @@ export interface FileRoutesByTo {
   '/admin/accounts': typeof AppAdminAccountsRoute
   '/finances/summary': typeof AppFinancesSummaryRoute
   '/finances': typeof AppFinancesIndexRoute
+  '/finances/categories/$categoryId': typeof AppFinancesCategoriesCategoryIdRoute
   '/finances/schedules/$scheduleId': typeof AppFinancesSchedulesScheduleIdRoute
   '/finances/wallets/$walletId': typeof AppFinancesWalletsWalletIdRoute
   '/finances/categories': typeof AppFinancesCategoriesIndexRoute
@@ -129,6 +138,7 @@ export interface FileRoutesById {
   '/_app/admin/accounts': typeof AppAdminAccountsRoute
   '/_app/finances/summary': typeof AppFinancesSummaryRoute
   '/_app/finances/': typeof AppFinancesIndexRoute
+  '/_app/finances/categories/$categoryId': typeof AppFinancesCategoriesCategoryIdRoute
   '/_app/finances/schedules/$scheduleId': typeof AppFinancesSchedulesScheduleIdRoute
   '/_app/finances/wallets/$walletId': typeof AppFinancesWalletsWalletIdRoute
   '/_app/finances/categories/': typeof AppFinancesCategoriesIndexRoute
@@ -145,6 +155,7 @@ export interface FileRouteTypes {
     | '/admin/accounts'
     | '/finances/summary'
     | '/finances/'
+    | '/finances/categories/$categoryId'
     | '/finances/schedules/$scheduleId'
     | '/finances/wallets/$walletId'
     | '/finances/categories/'
@@ -158,6 +169,7 @@ export interface FileRouteTypes {
     | '/admin/accounts'
     | '/finances/summary'
     | '/finances'
+    | '/finances/categories/$categoryId'
     | '/finances/schedules/$scheduleId'
     | '/finances/wallets/$walletId'
     | '/finances/categories'
@@ -173,6 +185,7 @@ export interface FileRouteTypes {
     | '/_app/admin/accounts'
     | '/_app/finances/summary'
     | '/_app/finances/'
+    | '/_app/finances/categories/$categoryId'
     | '/_app/finances/schedules/$scheduleId'
     | '/_app/finances/wallets/$walletId'
     | '/_app/finances/categories/'
@@ -251,6 +264,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppFinancesCategoriesIndexRouteImport
       parentRoute: typeof AppFinancesRouteRoute
     }
+    '/_app/finances/categories/$categoryId': {
+      id: '/_app/finances/categories/$categoryId'
+      path: '/categories/$categoryId'
+      fullPath: '/finances/categories/$categoryId'
+      preLoaderRoute: typeof AppFinancesCategoriesCategoryIdRouteImport
+      parentRoute: typeof AppFinancesRouteRoute
+    }
     '/_app/finances/schedules/': {
       id: '/_app/finances/schedules/'
       path: '/schedules'
@@ -285,6 +305,7 @@ declare module '@tanstack/react-router' {
 interface AppFinancesRouteRouteChildren {
   AppFinancesSummaryRoute: typeof AppFinancesSummaryRoute
   AppFinancesIndexRoute: typeof AppFinancesIndexRoute
+  AppFinancesCategoriesCategoryIdRoute: typeof AppFinancesCategoriesCategoryIdRoute
   AppFinancesSchedulesScheduleIdRoute: typeof AppFinancesSchedulesScheduleIdRoute
   AppFinancesWalletsWalletIdRoute: typeof AppFinancesWalletsWalletIdRoute
   AppFinancesCategoriesIndexRoute: typeof AppFinancesCategoriesIndexRoute
@@ -295,6 +316,7 @@ interface AppFinancesRouteRouteChildren {
 const AppFinancesRouteRouteChildren: AppFinancesRouteRouteChildren = {
   AppFinancesSummaryRoute: AppFinancesSummaryRoute,
   AppFinancesIndexRoute: AppFinancesIndexRoute,
+  AppFinancesCategoriesCategoryIdRoute: AppFinancesCategoriesCategoryIdRoute,
   AppFinancesSchedulesScheduleIdRoute: AppFinancesSchedulesScheduleIdRoute,
   AppFinancesWalletsWalletIdRoute: AppFinancesWalletsWalletIdRoute,
   AppFinancesCategoriesIndexRoute: AppFinancesCategoriesIndexRoute,

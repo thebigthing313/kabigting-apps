@@ -420,6 +420,19 @@ export type CreateTransaction = z.input<typeof createTransaction>
 export type UpdateTransaction = z.infer<typeof updateTransaction>
 export type TransactionRow = z.infer<typeof transactionRow>
 
+// Merging a Category: its Transactions and Schedule defaults move to another, and it is archived.
+
+export const mergeCategory = z.strictObject({ intoId: id })
+
+/** What a merge changed: the merged Category, and the Transactions and Schedules it moved. */
+export const categoryMergeResult = z.object({
+  categories: z.array(categoryRow),
+  transactions: z.array(transactionRow),
+  schedules: z.array(scheduleRow),
+})
+
+export type CategoryMergeResult = z.infer<typeof categoryMergeResult>
+
 // Settings: the household's one row of Finances choices, id "household".
 
 export const SETTINGS_ID = "household"

@@ -62,6 +62,11 @@ export function useSchedules() {
   return useLiveQuery((q) => q.from({ schedule: schedules }), [schedules])
 }
 
+/** Writes Schedules another command changed, such as a Category merge, into the collection. */
+export async function writeSchedules(rows: readonly ScheduleRow[]): Promise<void> {
+  if (rows.length > 0) await financesSchedules().utils.writeUpsert([...rows])
+}
+
 /** Writes a command's changed rows into the collections it touched. */
 async function apply(result: ScheduleCommandResult): Promise<void> {
   if (result.schedules.length > 0) await financesSchedules().utils.writeUpsert(result.schedules)
