@@ -4,7 +4,7 @@ import { EllipsisVerticalIcon, PinIcon } from "lucide-react"
 import { useState } from "react"
 import { toast } from "sonner"
 import { AllWallets } from "@/apps/finances/home/all-wallets"
-import { ALL_TAB, selectedTab } from "@/apps/finances/home/home-tab"
+import { ALL_TAB, openOnHomeTab, selectedTab } from "@/apps/finances/home/home-tab"
 import { WalletForecast } from "@/apps/finances/home/wallet-forecast"
 import { BalanceCheckDialog } from "@/apps/finances/wallets/balance-check-dialog"
 import { Button } from "@/components/ui/button"
@@ -40,8 +40,7 @@ export function FinancesHome({
   const forecastWalletIds = forecastWallets.map((wallet) => wallet.id)
   const tab = selectedTab({ tab: walletId, openOnHome, forecastWalletIds })
   const selected = forecastWallets.find((wallet) => wallet.id === tab) ?? null
-  // The default only counts while it has a tab; otherwise home opens on All.
-  const pinned = selectedTab({ tab: undefined, openOnHome, forecastWalletIds })
+  const pinned = openOnHomeTab(openOnHome, forecastWalletIds)
   // The Wallet is kept while the dialog closes, so it never flips to another as it fades.
   const [entering, setEntering] = useState<{ open: boolean; walletId?: string }>({ open: false })
   const enterBalance = (id: string) => setEntering({ open: true, walletId: id })
@@ -98,6 +97,9 @@ export function FinancesHome({
   )
 }
 
+/** What a screen reader hears after the name of the tab home opens on by default. */
+const PINNED = " (opens here by default)"
+
 const TAB = "flex h-11 shrink-0 items-center rounded-full border px-4 text-sm whitespace-nowrap"
 
 function WalletTab({
@@ -118,10 +120,11 @@ function WalletTab({
       <button
         type="button"
         onClick={() => onEnterBalance(wallet.id)}
-        aria-label={`Enter balance for ${wallet.name}`}
+        aria-label={`Enter balance for ${wallet.name}${pinned ? PINNED : ""}`}
         className={cn(TAB, "gap-1 border-dashed text-muted-foreground")}
       >
         {wallet.name} · Enter balance
+        {pinned ? <PinIcon aria-hidden className="size-3.5" /> : null}
       </button>
     )
   }
@@ -160,7 +163,7 @@ function HomeTab({
         {pinned ? (
           <>
             <PinIcon aria-hidden className="size-3.5" />
-            <span className="sr-only">{" (opens here by default)"}</span>
+            <span className="sr-only">{PINNED}</span>
           </>
         ) : null}
       </Link>

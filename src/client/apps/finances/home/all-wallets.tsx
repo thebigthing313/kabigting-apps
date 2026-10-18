@@ -6,14 +6,14 @@ import {
   isOverdue,
   useWalletForecast,
 } from "@/apps/finances/home/use-wallet-forecast"
-import { Warning } from "@/apps/finances/home/wallet-forecast"
+import { ForecastWarnings, ItemAmount } from "@/apps/finances/home/wallet-forecast"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useLatestBalanceCheck } from "@/data/finances-balance-checks"
 import type { Wallet } from "@/data/finances-wallets"
 import { formatDisplayDate } from "@shared/dates"
-import { formatShown, toShown } from "@shared/finances/wallets"
-import { format } from "@shared/money"
+import type { ForecastHorizon } from "@shared/finances/forecast"
+import { formatShown } from "@shared/finances/wallets"
 
 /** How many coming items a forecast Wallet's card lists. */
 const NEXT_ITEMS = 3
@@ -21,7 +21,7 @@ const NEXT_ITEMS = 3
 const CARD = "flex flex-col gap-3 rounded-xl border p-4"
 
 /**
- * Home's All tab: one card per Wallet, forecast Wallets first. A forecast Wallet's card opens its
+ * Home's All tab: one card per Wallet. A forecast Wallet's card opens its
  * tab; any other Wallet's card is greyed. The cards stack on a phone.
  */
 export function AllWallets({
@@ -31,7 +31,7 @@ export function AllWallets({
 }: {
   /** The household's Wallets, archived ones left out. */
   wallets: readonly Wallet[]
-  days: number
+  days: ForecastHorizon
   onEnterBalance: (walletId: string) => void
 }) {
   if (wallets.length === 0) {
@@ -45,13 +45,9 @@ export function AllWallets({
       </p>
     )
   }
-  const ordered = [
-    ...wallets.filter((wallet) => wallet.inForecast),
-    ...wallets.filter((wallet) => !wallet.inForecast),
-  ]
   return (
     <ul aria-label="Wallets" className="grid gap-3 md:grid-cols-2">
-      {ordered.map((wallet) => (
+      {wallets.map((wallet) => (
         <li key={wallet.id} className="flex min-w-0 flex-col">
           {wallet.inForecast ? (
             <ForecastCard wallet={wallet} days={days} onEnterBalance={onEnterBalance} />
@@ -70,7 +66,7 @@ function ForecastCard({
   onEnterBalance,
 }: {
   wallet: Wallet
-  days: number
+  days: ForecastHorizon
   onEnterBalance: (walletId: string) => void
 }) {
   const { result, isLoading, labelOf } = useWalletForecast(wallet, days)
@@ -92,12 +88,9 @@ function ForecastCard({
   }
 
   const shown = (cents: number) => formatShown(wallet, cents)
-  const { low, firstUnderThreshold, firstUnderZero } = result
-  const threshold = wallet.lowBalanceThresholdCents
+  const { low } = result
   const items = result.days.flatMap((day) => day.items).filter((item) => item.kind !== "actual")
   const overdue = items.filter(isOverdue).length
-  // As on the Wallet view: below $0 is the worse news, and a $0 threshold is not said twice.
-  const underThreshold = threshold === 0 ? null : firstUnderThreshold
 
   return (
     <Link
@@ -127,13 +120,7 @@ function ForecastCard({
       <p className="text-sm text-muted-foreground">
         Lowest {shown(low.balanceCents)} on {formatDisplayDate(low.date)}
       </p>
-      {firstUnderZero ? (
-        <Warning tone="bad">Below $0 on {formatDisplayDate(firstUnderZero)}</Warning>
-      ) : underThreshold ? (
-        <Warning tone="warn">
-          Under the {shown(threshold)} threshold on {formatDisplayDate(underThreshold)}
-        </Warning>
-      ) : null}
+      <ForecastWarnings wallet={wallet} forecast={result} worstOnly />
       {items.length > 0 ? (
         <ul aria-label="Next items" className="flex flex-col gap-1 text-sm">
           {items.slice(0, NEXT_ITEMS).map((item) => (
@@ -142,14 +129,7 @@ function ForecastCard({
                 <span className="text-muted-foreground">{formatDisplayDate(item.date)}</span>{" "}
                 {labelOf(item)}
               </span>
-              <span
-                className={cn(
-                  "shrink-0 tabular-nums",
-                  toShown(wallet, item.amountCents) > 0 && "text-emerald-700 dark:text-emerald-400",
-                )}
-              >
-                {format(toShown(wallet, item.amountCents), { sign: "always" })}
-              </span>
+              <ItemAmount wallet={wallet} cents={item.amountCents} />
             </li>
           ))}
         </ul>

@@ -23,3 +23,11 @@ export function selectedTab({
   }
   return ALL_TAB
 }
+
+/** The tab home opens on with nothing in the address: the default while it has a tab, else All. */
+export function openOnHomeTab(
+  openOnHome: string | null,
+  forecastWalletIds: readonly string[],
+): string {
+  return selectedTab({ tab: undefined, openOnHome, forecastWalletIds })
+}

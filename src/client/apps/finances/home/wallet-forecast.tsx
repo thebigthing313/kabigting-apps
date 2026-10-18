@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import type { Wallet } from "@/data/finances-wallets"
 import { formatDisplayDate } from "@shared/dates"
-import { type ForecastHorizon, FORECAST_HORIZONS } from "@shared/finances/forecast"
+import { type Forecast, type ForecastHorizon, FORECAST_HORIZONS } from "@shared/finances/forecast"
 import { formatShown, toShown } from "@shared/finances/wallets"
 import { format } from "@shared/money"
 
@@ -44,10 +44,8 @@ export function WalletForecast({
   }
 
   const shown = (cents: number) => formatShown(wallet, cents)
-  const { low, firstUnderThreshold, firstUnderZero } = result
+  const { low } = result
   const threshold = wallet.lowBalanceThresholdCents
-  // A $0 threshold is the $0 warning already; it is not said twice.
-  const underThreshold = threshold === 0 ? null : firstUnderThreshold
   const listed = result.days.filter((day, index) => index === 0 || day.items.length > 0)
 
   return (
@@ -78,18 +76,7 @@ export function WalletForecast({
         description={`End-of-day balance over the next ${days} days, lowest ${shown(low.balanceCents)} on ${formatDisplayDate(low.date)}`}
       />
 
-      {firstUnderZero || underThreshold ? (
-        <div role="status" className="flex flex-col gap-1">
-          {underThreshold ? (
-            <Warning tone="warn">
-              Under the {shown(threshold)} threshold on {formatDisplayDate(underThreshold)}
-            </Warning>
-          ) : null}
-          {firstUnderZero ? (
-            <Warning tone="bad">Below $0 on {formatDisplayDate(firstUnderZero)}</Warning>
-          ) : null}
-        </div>
-      ) : null}
+      <ForecastWarnings wallet={wallet} forecast={result} />
 
       <ol aria-label="Day by day" className="flex flex-col">
         {listed.map((day) => (
@@ -123,15 +110,7 @@ export function WalletForecast({
                         </span>
                       ) : null}
                     </span>
-                    <span
-                      className={cn(
-                        "shrink-0 tabular-nums",
-                        toShown(wallet, item.amountCents) > 0 &&
-                          "text-emerald-700 dark:text-emerald-400",
-                      )}
-                    >
-                      {format(toShown(wallet, item.amountCents), { sign: "always" })}
-                    </span>
+                    <ItemAmount wallet={wallet} cents={item.amountCents} />
                   </li>
                 ))}
               </ul>
@@ -151,7 +130,54 @@ export function WalletForecast({
   )
 }
 
-export function Warning({ tone, children }: { tone: "warn" | "bad"; children: React.ReactNode }) {
+/**
+ * The warnings for the first day under the Wallet's threshold and the first day under $0. With
+ * `worstOnly`, just the worse of the two: under $0 wins.
+ */
+export function ForecastWarnings({
+  wallet,
+  forecast,
+  worstOnly = false,
+}: {
+  wallet: Wallet
+  forecast: Forecast
+  worstOnly?: boolean
+}) {
+  const threshold = wallet.lowBalanceThresholdCents
+  const underZero = forecast.firstUnderZero
+  // A $0 threshold is the $0 warning already; it is not said twice.
+  const underThreshold =
+    threshold === 0 || (worstOnly && underZero) ? null : forecast.firstUnderThreshold
+  if (!underZero && !underThreshold) return null
+  return (
+    <div role="status" className="flex flex-col gap-1">
+      {underThreshold ? (
+        <Warning tone="warn">
+          Under the {formatShown(wallet, threshold)} threshold on{" "}
+          {formatDisplayDate(underThreshold)}
+        </Warning>
+      ) : null}
+      {underZero ? <Warning tone="bad">Below $0 on {formatDisplayDate(underZero)}</Warning> : null}
+    </div>
+  )
+}
+
+/** A Forecast item's Amount as this Wallet shows it, signed, with money in in green. */
+export function ItemAmount({ wallet, cents }: { wallet: Wallet; cents: number }) {
+  const amount = toShown(wallet, cents)
+  return (
+    <span
+      className={cn(
+        "shrink-0 tabular-nums",
+        amount > 0 && "text-emerald-700 dark:text-emerald-400",
+      )}
+    >
+      {format(amount, { sign: "always" })}
+    </span>
+  )
+}
+
+function Warning({ tone, children }: { tone: "warn" | "bad"; children: React.ReactNode }) {
   return (
     <p
       className={cn(
