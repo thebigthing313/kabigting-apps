@@ -114,9 +114,12 @@ export function overrideFor(
     overrideDate: edit.date === nominalDate ? null : edit.date,
     skipped: edit.skipped,
   }
-  const untouched =
-    override.overrideAmountCents === null && override.overrideDate === null && !override.skipped
-  return untouched ? null : override
+  return hasOverride(override) ? override : null
+}
+
+/** True when a person changed the Occurrence's amount or date, or skipped it. */
+export function hasOverride(row: OccurrenceOverride): boolean {
+  return row.overrideAmountCents !== null || row.overrideDate !== null || row.skipped
 }
 
 /**
@@ -238,6 +241,20 @@ export function overridesOffNewTerms<Row extends StoredOccurrence>(
       (row) =>
         row.nominalDate >= date && !isReconciled(row) && !isOccurrenceDate(terms, row.nominalDate),
     )
+    .toSorted((a, b) => a.nominalDate.localeCompare(b.nominalDate))
+}
+
+/**
+ * The Reconciled Occurrences dated `date` or later (by nominal date), in date order. A Schedule
+ * can't end or change before one: it would vanish from the Schedule, and a successor falling on
+ * the same date would count it in the Forecast again. Un-Reconcile it, or pick a later date.
+ */
+export function reconciledFrom<Row extends StoredOccurrence>(
+  stored: readonly Row[],
+  date: string,
+): Row[] {
+  return stored
+    .filter((row) => row.nominalDate >= date && isReconciled(row))
     .toSorted((a, b) => a.nominalDate.localeCompare(b.nominalDate))
 }
 

@@ -42,6 +42,24 @@ export function toTransactionRow(transaction: TransactionRecord): TransactionRow
 
 const params = z.strictObject({ id })
 
+/** True when an Occurrence or a one-off Planned row is Reconciled to this Actual. */
+export async function isReconciledActual(
+  db: Pick<Db, "select">,
+  actualId: string,
+): Promise<boolean> {
+  const [occurrence] = await db
+    .select({ id: financesOccurrences.id })
+    .from(financesOccurrences)
+    .where(eq(financesOccurrences.reconciledTransactionId, actualId))
+    .limit(1)
+  const [planned] = await db
+    .select({ id: financesTransactions.id })
+    .from(financesTransactions)
+    .where(eq(financesTransactions.reconciledActualId, actualId))
+    .limit(1)
+  return occurrence !== undefined || planned !== undefined
+}
+
 function notFound(): never {
   throw new ApiError("not_found", "No such Transaction")
 }
@@ -146,6 +164,14 @@ export function transactionRoutes(db: Db) {
           )
         }
       }
+      // A Reconcile pairs two rows in one Wallet; either side moving would split it.
+      const movesWallet = changes.walletId !== undefined && changes.walletId !== found.walletId
+      if (
+        movesWallet &&
+        (found.reconciledActualId !== null || (await isReconciledActual(db, transactionId)))
+      ) {
+        reconciledConflict()
+      }
       const [transaction] = await db
         .update(table)
         .set({ ...changes, updatedAt: sql`now()` })
@@ -161,17 +187,7 @@ export function transactionRoutes(db: Db) {
       // An imported line is kept as ignored, so uploading the same file again adds nothing. Like a
       // deleted one, an ignored line can't stay the target of a Reconcile.
       if (isImported(found)) {
-        const [occurrence] = await db
-          .select({ id: financesOccurrences.id })
-          .from(financesOccurrences)
-          .where(eq(financesOccurrences.reconciledTransactionId, transactionId))
-          .limit(1)
-        const [planned] = await db
-          .select({ id: table.id })
-          .from(table)
-          .where(eq(table.reconciledActualId, transactionId))
-          .limit(1)
-        if (occurrence || planned) reconciledConflict()
+        if (await isReconciledActual(db, transactionId)) reconciledConflict()
         const [ignored] = await db
           .update(table)
           .set({ ignored: true, updatedAt: sql`now()` })

@@ -12,10 +12,11 @@ import { ApiError } from "#server/core/errors.ts"
 import { validate } from "#server/core/validate.ts"
 import type { Db } from "#server/db/client.ts"
 import { financesOccurrences, financesSchedules } from "#server/db/schema/index.ts"
-import { addDays } from "#shared/dates.ts"
+import { addDays, formatDisplayDate } from "#shared/dates.ts"
 import {
   overridesAfter,
   overridesOffNewTerms,
+  reconciledFrom,
   scheduleChain,
 } from "#shared/finances/occurrences.ts"
 import {
@@ -31,6 +32,7 @@ import { id } from "#shared/schemas/primitives.ts"
 import { MAX_QUERY_IDS } from "#shared/schemas/query.ts"
 
 type ScheduleRecord = typeof financesSchedules.$inferSelect
+type OccurrenceRecord = typeof financesOccurrences.$inferSelect
 
 function toRow(schedule: ScheduleRecord): ScheduleRow {
   return {
@@ -118,6 +120,20 @@ function confirmed(doomed: readonly string[], confirmDeleteOverrides: readonly s
   }
 }
 
+/**
+ * A Reconciled Occurrence from `date` on would drop off the Schedule, and a successor on the same
+ * date would put it in the Forecast again; the person un-Reconciles it or picks a later date.
+ */
+function refuseReconciledFrom(stored: readonly OccurrenceRecord[], date: string) {
+  const [first] = reconciledFrom(stored, date)
+  if (first) {
+    throw new ApiError(
+      "conflict",
+      `The Occurrence on ${formatDisplayDate(first.nominalDate)} is Reconciled; un-Reconcile it or pick a later date`,
+    )
+  }
+}
+
 /** Deletes the given stored Occurrences, never a Reconciled one; returns the ids it deleted. */
 async function deleteOverrides(tx: Tx, ids: readonly string[]): Promise<string[]> {
   if (ids.length === 0) return []
@@ -199,6 +215,7 @@ export function scheduleRoutes(db: Db) {
               .select()
               .from(financesOccurrences)
               .where(eq(financesOccurrences.scheduleId, schedule.id))
+            refuseReconciledFrom(stored, date)
             const doomed = overridesOffNewTerms(stored, date, terms).map((row) => row.id)
             confirmed(doomed, confirmDeleteOverrides)
             const deleted = await deleteOverrides(tx, doomed)
@@ -239,6 +256,7 @@ export function scheduleRoutes(db: Db) {
             .select()
             .from(financesOccurrences)
             .where(eq(financesOccurrences.scheduleId, schedule.id))
+          refuseReconciledFrom(stored, addDays(endDate, 1))
           const doomed = overridesAfter(stored, endDate).map((row) => row.id)
           confirmed(doomed, confirmDeleteOverrides)
           const deleted = await deleteOverrides(tx, doomed)

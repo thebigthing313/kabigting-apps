@@ -1,10 +1,9 @@
-import { eq } from "drizzle-orm"
 import { afterAll, beforeAll, describe, expect, test } from "vitest"
-import { financesOccurrences } from "#server/db/schema/index.ts"
 import { createTestServer, json, type TestServer } from "#server/test/server.ts"
 import {
   occurrenceRow,
   occurrenceRows,
+  reconcileResult,
   scheduleCommandResult,
   scheduleRow,
   scheduleRows,
@@ -62,12 +61,8 @@ async function override(scheduleId: string, nominalDate: string, body = {}) {
   return occurrenceRow.parse(await response.json())
 }
 
-/**
- * Reconciles one Occurrence to a hand-entered Actual. The Reconcile command arrives later; until
- * then the link is written straight to the table.
- */
+/** Reconciles one Occurrence to a hand-entered Actual and returns the stored Occurrence. */
 async function reconciled(scheduleId: string, nominalDate: string) {
-  const row = await override(scheduleId, nominalDate)
   const actualId = newId()
   const actual = await post("transactions", {
     id: actualId,
@@ -77,10 +72,14 @@ async function reconciled(scheduleId: string, nominalDate: string) {
     amountCents: -150_000,
   })
   expect(actual.status).toBe(201)
-  await server.db
-    .update(financesOccurrences)
-    .set({ overrideAmountCents: null, reconciledTransactionId: actualId })
-    .where(eq(financesOccurrences.id, row.id))
+  const response = await post("reconcile", {
+    plannedKind: "occurrence",
+    plannedRef: { scheduleId, nominalDate },
+    actualId,
+  })
+  expect(response.status).toBe(200)
+  const [row] = reconcileResult.parse(await response.json()).occurrences
+  if (!row) throw new Error("Nothing was Reconciled")
   return row
 }
 
@@ -136,7 +135,7 @@ describe("change from a date", () => {
       overrideDate: "2027-03-05",
     })
     const later = await override(before.id, "2027-04-01", { skipped: true })
-    const kept = await reconciled(before.id, "2027-05-01")
+    const kept = await reconciled(before.id, "2026-12-01")
 
     const response = await changeFrom(before.id, {
       date: "2027-03-01",
@@ -157,6 +156,21 @@ describe("change from a date", () => {
     expect(owner.get(kept.id)).toBe(before.id)
   })
 
+  test("is refused while an Occurrence on or after the date is Reconciled, changing nothing", async () => {
+    // The successor would fall on the same date again, so the Forecast would count it twice.
+    const before = await rent()
+    const kept = await reconciled(before.id, "2027-03-01")
+    await expectStatus(
+      await changeFrom(before.id, { date: "2027-03-01", changes: { amountCents: -160_000 } }),
+      409,
+      "conflict",
+    )
+    expect((await schedules([before.id]))[0]?.endDate).toBeNull()
+    expect((await occurrences([kept.id]))[0]?.scheduleId).toBe(before.id)
+    // From the day after, it stays on the old terms.
+    expect((await changeFrom(before.id, { date: "2027-03-02", changes: {} })).status).toBe(200)
+  })
+
   test("a new day and frequency start on their own first date", async () => {
     const before = await rent()
     const response = await changeFrom(before.id, {
@@ -175,7 +189,7 @@ describe("change from a date", () => {
     // The new terms fall on Fridays from Mar 5; neither Mar 1 nor Apr 1 is one.
     const march = await override(before.id, "2027-03-01")
     const april = await override(before.id, "2027-04-01", { skipped: true })
-    const kept = await reconciled(before.id, "2027-05-01")
+    const kept = await reconciled(before.id, "2027-01-01")
 
     const response = await changeFrom(before.id, {
       date: "2027-03-01",
@@ -293,7 +307,7 @@ describe("end", () => {
     const schedule = await rent()
     const onEnd = await override(schedule.id, "2027-02-01")
     const after = await override(schedule.id, "2027-03-01", { skipped: true })
-    const kept = await reconciled(schedule.id, "2027-04-01")
+    const kept = await reconciled(schedule.id, "2027-01-01")
 
     const response = await end(schedule.id, {
       endDate: "2027-02-01",
@@ -308,6 +322,20 @@ describe("end", () => {
     expect(result.deletedOccurrences).toEqual([after.id])
     const left = await occurrences([onEnd.id, after.id, kept.id])
     expect(left.map((row) => row.id).toSorted()).toEqual([onEnd.id, kept.id].toSorted())
+  })
+
+  test("is refused while an Occurrence after the end date is Reconciled", async () => {
+    const schedule = await rent()
+    await reconciled(schedule.id, "2027-03-01")
+    await expectStatus(
+      await end(schedule.id, { endDate: "2027-02-28", confirmDeleteOverrides: [] }),
+      409,
+      "conflict",
+    )
+    expect((await schedules([schedule.id]))[0]?.endDate).toBeNull()
+    // Ending on its date keeps it.
+    const response = await end(schedule.id, { endDate: "2027-03-01", confirmDeleteOverrides: [] })
+    expect(response.status).toBe(200)
   })
 
   test("is refused when the list doesn't match the overrides there are", async () => {

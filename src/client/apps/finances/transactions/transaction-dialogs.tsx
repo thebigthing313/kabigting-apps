@@ -1,5 +1,11 @@
 import { useState } from "react"
 import { toast } from "sonner"
+import {
+  type ActualOnWallet,
+  ReconcileSection,
+  reconcileBody,
+  SuggestedMatches,
+} from "@/apps/finances/transactions/reconcile-choices"
 import { TransactionForm } from "@/apps/finances/transactions/transaction-form"
 import {
   AlertDialog,
@@ -24,11 +30,15 @@ import {
   deleteTransaction,
   editTransaction,
   type NewTransaction,
+  reconcileActual,
   type Transaction,
 } from "@/data/finances-transactions"
 import { addTransfer, deleteTransfer, editTransfer, type Transfer } from "@/data/finances-transfers"
 import { useWallets } from "@/data/finances-wallets"
+import type { PlannedItem } from "@shared/finances/reconcile"
+import { transferAmountOn } from "@shared/finances/transfers"
 import { isImported, isImportedTransfer } from "@shared/finances/schemas"
+import { newId } from "@shared/ids"
 
 type Status = NewTransaction["status"]
 
@@ -42,8 +52,33 @@ function useWalletChoices(...keep: (string | undefined)[]) {
   return wallets.filter((wallet) => !wallet.archived || keep.includes(wallet.id))
 }
 
+/** An Activity row's Actual as the Wallet it is opened from sees it, to Reconcile. */
+function actualOnWallet(item: ActivityRow, walletId: string): ActualOnWallet {
+  if (item.kind === "transaction") return { ...item.row, between: null }
+  const { id, date, fromWalletId, toWalletId } = item.row
+  const amountCents = transferAmountOn(item.row, walletId)
+  return { id, walletId, date, amountCents, between: { fromWalletId, toWalletId } }
+}
+
 /** The form is taller than a phone, so it scrolls under a fixed header. */
 const SCROLLING = "max-h-[calc(100dvh-2rem)] grid-rows-[auto_minmax(0,1fr)]"
+
+/**
+ * Adds the row, then Reconciles a new Actual to the ticked match. False when the row was refused;
+ * an Actual whose Reconcile was refused is still added, and can be Reconciled from Activity.
+ */
+async function add(entry: NewTransaction, match: PlannedItem | null): Promise<boolean> {
+  const id = newId()
+  if (!(await addTransaction(entry, id))) return false
+  if (match === null) {
+    toast.success(entry.status === "actual" ? "Actual added" : "Planned added")
+  } else if (await reconcileActual(reconcileBody(match, id))) {
+    toast.success("Actual added and Reconciled")
+  } else {
+    toast.info("Actual added but not Reconciled; Reconcile it from its Wallet's Activity")
+  }
+  return true
+}
 
 /** Add Actual or one-off Planned, or a Transfer, starting on a Wallet when one is given. */
 export function AddTransactionDialog({
@@ -78,12 +113,10 @@ export function AddTransactionDialog({
             wallets={wallets}
             status={status}
             walletId={walletId}
-            onSave={async (entry) => {
+            matches={SuggestedMatches}
+            onSave={async (entry, match) => {
               // Stays open if the server refuses it, keeping what was typed.
-              if (await addTransaction(entry)) {
-                toast.success(entry.status === "actual" ? "Actual added" : "Planned added")
-                onOpenChange(false)
-              }
+              if (await add(entry, match)) onOpenChange(false)
             }}
             onSaveTransfer={async (entry) => {
               if (await addTransfer(entry)) {
@@ -112,9 +145,12 @@ function importedRow(editing: ActivityRow): boolean {
 
 /** The editor an Activity row opens: every field it may change, and Delete. */
 export function EditActivityDialog({
+  onWalletId,
   editing,
   onClose,
 }: {
+  /** The Wallet whose Activity it is opened from. */
+  onWalletId: string
   /** The row being edited; null while closed. */
   editing: ActivityRow | null
   onClose: () => void
@@ -127,6 +163,7 @@ export function EditActivityDialog({
       ? [shown.row.fromWalletId, shown.row.toWalletId]
       : [shown?.row.walletId]),
   )
+  const wallet = wallets.find((candidate) => candidate.id === onWalletId)
   const [confirming, setConfirming] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const noun = shown ? nounOf(shown) : "Actual"
@@ -197,6 +234,13 @@ export function EditActivityDialog({
                 }}
               />
             )}
+            {shown.row.status === "actual" ? (
+              <ReconcileSection
+                actual={actualOnWallet(shown, onWalletId)}
+                wallet={wallet ?? { shownAsOwed: false }}
+                onDone={onClose}
+              />
+            ) : null}
             <Button
               variant="outline"
               className="h-11 self-start text-destructive"
