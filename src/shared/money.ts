@@ -19,6 +19,31 @@ export function parse(input: string): number | null {
   return sign === "-" && cents !== 0 ? -cents : cents
 }
 
+// As AMOUNT, but with any number of decimals.
+const ANY_DECIMALS = /^([+-])?\$?(\d{1,3}(?:,\d{3})+|\d+)?(?:\.(\d+))?$/
+
+/**
+ * Parses a decimal amount with any number of decimals into cents, rounded to the nearest cent with
+ * halves away from zero ("12.345" → 1235, "-0.005" → -1). It works on the digits, never on floats.
+ * `rounded` is true when nonzero digits beyond the cent were dropped. Null when malformed.
+ */
+export function parseToCent(input: string): { cents: number; rounded: boolean } | null {
+  const match = ANY_DECIMALS.exec(input.trim())
+  if (!match) return null
+  const [, sign, whole, fraction] = match
+  if (whole === undefined && fraction === undefined) return null
+  const kept = fraction?.slice(0, 2)
+  const dropped = fraction?.slice(2) ?? ""
+  const truncated = parse(`${whole ?? "0"}${kept === undefined ? "" : `.${kept}`}`)
+  if (truncated === null) return null
+  const magnitude = truncated + ((dropped[0] ?? "0") >= "5" ? 1 : 0)
+  if (!Number.isSafeInteger(magnitude)) return null
+  return {
+    cents: sign === "-" && magnitude !== 0 ? -magnitude : magnitude,
+    rounded: /[1-9]/.test(dropped),
+  }
+}
+
 // Intl formats an exact decimal string, so large amounts never pass through float division.
 function toDecimal(cents: number): Intl.StringNumericLiteral {
   const abs = Math.abs(cents)

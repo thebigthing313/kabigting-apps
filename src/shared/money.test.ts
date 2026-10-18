@@ -1,6 +1,6 @@
 import fc from "fast-check"
 import { describe, expect, test } from "vitest"
-import { allocate, format, parse, roundHalfUp } from "./money.ts"
+import { allocate, format, parse, parseToCent, roundHalfUp } from "./money.ts"
 
 describe("parse", () => {
   test("reads typed decimals with thousands separators as cents", () => {
@@ -36,6 +36,37 @@ describe("parse", () => {
   test("rejects amounts beyond the safe integer range", () => {
     expect(parse("900719925474099.92")).toBeNull()
   })
+})
+
+describe("parseToCent", () => {
+  test.each([
+    ["12.345", 1235],
+    ["12.344", 1234],
+    ["-0.005", -1],
+    ["-12.345", -1235],
+    ["3,654.476", 365448],
+    ["1.2349", 123],
+    ["1.2350", 124],
+    ["-0.0049", 0],
+  ])("rounds %j to %i cents, halves away from zero", (input, cents) => {
+    expect(parseToCent(input)).toEqual({ cents, rounded: true })
+  })
+
+  test("leaves amounts of whole cents as they are, unrounded", () => {
+    expect(parseToCent("-12.30")).toEqual({ cents: -1230, rounded: false })
+    expect(parseToCent("12.300")).toEqual({ cents: 1230, rounded: false })
+  })
+
+  test("never returns negative zero", () => {
+    expect(Object.is(parseToCent("-0.004")?.cents, 0)).toBe(true)
+  })
+
+  test.each(["", "abc", "12.3x", "1e3", "12.5.0", "1,25.555"])(
+    "rejects malformed input: %j",
+    (input) => {
+      expect(parseToCent(input)).toBeNull()
+    },
+  )
 })
 
 describe("format", () => {

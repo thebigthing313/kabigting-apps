@@ -52,6 +52,7 @@ export function formatReport(plan: ImportPlan): string[] {
     `  dates from the linked transaction: ${report.counted.dateFromTransactionDate}`,
     `  impossible bank date, fell back: ${report.counted.impossibleBankDateFellBack}`,
     `  payees moved into notes: ${report.counted.payeesMovedToNotes}`,
+    `  balances rounded to the cent: ${report.counted.balancesRoundedToCent}`,
     `To write: 1 Wallet (${plan.wallet.name}), ${plan.categories.length} Categories, ${plan.accounts.length} Accounts, ${plan.actuals.length} Actuals, ${plan.balanceChecks.length} Balance checks`,
     "Monthly Category totals, old and new:",
     ...totalRows(plan),
