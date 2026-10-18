@@ -3,11 +3,19 @@ import { z } from "zod"
 import { AmountInput } from "@/components/amount-input"
 import { Button } from "@/components/ui/button"
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field"
+import { OverridesToDelete } from "@/apps/finances/schedules/overrides-to-delete"
 import { Input } from "@/components/ui/input"
 import type { Schedule } from "@/data/finances-schedules"
 import { addDays, formatDisplayDate } from "@shared/dates"
-import type { ChangeScheduleFrom } from "@shared/finances/schemas"
+import { overridesOffNewTerms } from "@shared/finances/occurrences"
+import type { ChangeScheduleFrom, OccurrenceRow } from "@shared/finances/schemas"
 import { fromShown, toShown } from "@shared/finances/wallets"
+
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/
+
+function isDate(value: string): boolean {
+  return ISO_DATE.test(value)
+}
 
 type ChangeFromValues = {
   /** The first day on the new terms; the Schedule ends the day before. */
@@ -60,11 +68,14 @@ function changeFromSchema(schedule: Pick<Schedule, "startDate" | "endDate">) {
  */
 export function ChangeFromForm({
   schedule,
+  stored,
   wallet,
   defaultFrom,
   onSave,
 }: {
   schedule: Schedule
+  /** The Schedule's stored Occurrences. */
+  stored: readonly OccurrenceRow[]
   /** The Wallet the Schedule draws on. */
   wallet: { shownAsOwed: boolean }
   defaultFrom: string
@@ -91,21 +102,33 @@ export function ChangeFromForm({
     startDate: "",
     endDate: schedule.endDate ?? "",
   }
+  /** The change the values describe, with the overrides it would delete. */
+  function changeOf(value: ChangeFromValues) {
+    const size = Math.abs(value.amount ?? 0)
+    const changes = {
+      amountCents: transfer ? size : fromShown(wallet, shownNegative ? -size : size),
+      unit: value.unit,
+      every: Number(value.every),
+      startDate: value.startDate === "" ? value.from : value.startDate,
+      endDate: value.endDate === "" ? null : value.endDate,
+    }
+    // Until the dates and frequency make sense there is nothing to list.
+    const complete =
+      isDate(value.from) &&
+      isDate(changes.startDate) &&
+      changes.startDate >= value.from &&
+      Number.isInteger(changes.every) &&
+      changes.every >= 1
+    const doomed = complete ? overridesOffNewTerms(stored, value.from, changes) : []
+    return { date: value.from, changes, doomed }
+  }
+
   const form = useForm({
     defaultValues,
     validators: { onSubmit: changeFromSchema(schedule) },
     onSubmit: async ({ value }) => {
-      const size = Math.abs(value.amount ?? 0)
-      await onSave({
-        date: value.from,
-        changes: {
-          amountCents: transfer ? size : fromShown(wallet, shownNegative ? -size : size),
-          unit: value.unit,
-          every: Number(value.every),
-          startDate: value.startDate === "" ? value.from : value.startDate,
-          endDate: value.endDate === "" ? null : value.endDate,
-        },
-      })
+      const { date, changes, doomed } = changeOf(value)
+      await onSave({ date, changes, confirmDeleteOverrides: doomed.map((row) => row.id) })
     },
   })
 
@@ -256,6 +279,17 @@ export function ChangeFromForm({
             }}
           </form.Field>
         </div>
+
+        <form.Subscribe selector={(state) => state.values}>
+          {(values) => (
+            <OverridesToDelete
+              rows={changeOf(values).doomed}
+              schedule={schedule}
+              wallet={wallet}
+              why="The new terms don't fall on their dates."
+            />
+          )}
+        </form.Subscribe>
 
         <form.Subscribe selector={(state) => state.isSubmitting}>
           {(isSubmitting) => (

@@ -9,6 +9,7 @@ import {
   occurrencesAround,
   overrideFor,
   overridesAfter,
+  overridesOffNewTerms,
   scheduleChain,
   type ScheduleTerms,
   type StoredOccurrence,
@@ -432,6 +433,37 @@ describe("overridesAfter", () => {
       stored("2026-06-01", { reconciledTransferId: "u" }),
     ]
     expect(overridesAfter(rows, "2026-04-30")).toEqual([])
+  })
+})
+
+describe("overridesOffNewTerms", () => {
+  const overridden = { overrideAmountCents: -160_000 }
+  // Rent on the 1st, changing from Mar 1.
+  const rows = [
+    stored("2027-02-01", overridden),
+    stored("2027-03-01", overridden),
+    stored("2027-04-01", { skipped: true }),
+    stored("2027-05-01", { reconciledTransactionId: "t" }),
+  ]
+
+  test("is empty when the new terms keep the same dates", () => {
+    const terms = schedule({ startDate: "2027-03-01", amountCents: -160_000 })
+    expect(overridesOffNewTerms(rows, "2027-03-01", terms)).toEqual([])
+  })
+
+  test("lists the later overrides and skips the new terms never fall on, in date order", () => {
+    const terms = schedule({ unit: "week", every: 2, startDate: "2027-03-05" })
+    expect(overridesOffNewTerms(rows, "2027-03-01", terms).map((o) => o.nominalDate)).toEqual([
+      "2027-03-01",
+      "2027-04-01",
+    ])
+  })
+
+  test("lists those before new terms that start later than the change", () => {
+    const terms = schedule({ startDate: "2027-04-01" })
+    expect(overridesOffNewTerms(rows, "2027-02-15", terms).map((o) => o.nominalDate)).toEqual([
+      "2027-03-01",
+    ])
   })
 })
 

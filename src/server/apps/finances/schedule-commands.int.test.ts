@@ -82,8 +82,9 @@ async function occurrences(ids: string[]) {
   return occurrenceRows.parse(await response.json()).rows
 }
 
-function changeFrom(scheduleId: string, body: unknown, as = headers) {
-  return post(`schedules/${scheduleId}/change-from`, body, as)
+/** Changes a Schedule from a date; the confirm list is empty unless the body names one. */
+function changeFrom(scheduleId: string, body: Record<string, unknown>, as = headers) {
+  return post(`schedules/${scheduleId}/change-from`, { confirmDeleteOverrides: [], ...body }, as)
 }
 
 async function expectStatus(response: Response, status: number, code: string) {
@@ -157,25 +158,67 @@ describe("change from a date", () => {
     ])
   })
 
-  test("is refused when a later override wouldn't fall on the new terms, changing nothing", async () => {
+  test("deletes the later overrides the new terms never fall on, as confirmed", async () => {
     const before = await rent()
-    const later = await override(before.id, "2027-04-01")
-    await expectStatus(
-      await changeFrom(before.id, {
-        date: "2027-03-02",
-        changes: { unit: "week", every: 2, startDate: "2027-03-05" },
-      }),
-      400,
-      "validation_failed",
-    )
-    // Starting the new terms later leaves an override in between with nowhere to go.
-    await expectStatus(
-      await changeFrom(before.id, { date: "2027-03-15", changes: { startDate: "2027-05-01" } }),
-      400,
-      "validation_failed",
-    )
+    // The new terms fall on Fridays from Mar 5; neither Mar 1 nor Apr 1 is one.
+    const march = await override(before.id, "2027-03-01")
+    const april = await override(before.id, "2027-04-01", { skipped: true })
+    const kept = await reconciled(before.id, "2027-05-01")
+
+    const response = await changeFrom(before.id, {
+      date: "2027-03-01",
+      changes: { unit: "week", every: 1, startDate: "2027-03-05" },
+      confirmDeleteOverrides: [march.id, april.id],
+    })
+    expect(response.status).toBe(200)
+    const result = scheduleCommandResult.parse(await response.json())
+    expect(result.deletedOccurrences.toSorted()).toEqual([march.id, april.id].toSorted())
+    expect(result.occurrences).toEqual([])
+    // A Reconciled one is never touched.
+    const left = await occurrences([march.id, april.id, kept.id])
+    expect(left.map((row) => [row.id, row.scheduleId])).toEqual([[kept.id, before.id]])
+  })
+
+  test("moves the overrides that fit and deletes only those that don't", async () => {
+    const before = await rent()
+    const fits = await override(before.id, "2027-05-01")
+    const between = await override(before.id, "2027-04-01")
+    // The new terms start May 1, so the Apr 1 override has nowhere to go.
+    const response = await changeFrom(before.id, {
+      date: "2027-03-15",
+      changes: { startDate: "2027-05-01" },
+      confirmDeleteOverrides: [between.id],
+    })
+    expect(response.status).toBe(200)
+    const result = scheduleCommandResult.parse(await response.json())
+    const successor = result.schedules.find((row) => row.id !== before.id)
+    expect(result.deletedOccurrences).toEqual([between.id])
+    expect(result.occurrences.map((row) => [row.id, row.scheduleId])).toEqual([
+      [fits.id, successor?.id],
+    ])
+  })
+
+  test("is refused unless the list matches the overrides it would delete, changing nothing", async () => {
+    const before = await rent()
+    const off = await override(before.id, "2027-04-01")
+    // Before the change, so it stays on the old terms and is never on the list.
+    const earlier = await override(before.id, "2027-03-01")
+    const change = {
+      date: "2027-03-02",
+      changes: { unit: "week", every: 2, startDate: "2027-03-05" },
+    }
+    for (const confirmDeleteOverrides of [[], [off.id, earlier.id], [off.id, newId()]]) {
+      await expectStatus(
+        await changeFrom(before.id, { ...change, confirmDeleteOverrides }),
+        409,
+        "conflict",
+      )
+    }
     expect((await schedules([before.id]))[0]?.endDate).toBeNull()
-    expect((await occurrences([later.id]))[0]?.scheduleId).toBe(before.id)
+    expect((await occurrences([off.id, earlier.id])).map((row) => row.scheduleId)).toEqual([
+      before.id,
+      before.id,
+    ])
   })
 
   test("a date outside the Schedule's terms is refused, changing nothing", async () => {

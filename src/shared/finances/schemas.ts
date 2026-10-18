@@ -253,10 +253,12 @@ export const scheduleRows = rowsResponse(scheduleRow)
 /**
  * Change from a date: the Schedule ends the day before `date`, and a successor carries the new
  * terms. Its first Occurrence is `startDate`, on or after `date`, and `date` when left out; any
- * term left out stays as it was.
+ * term left out stays as it was. `confirmDeleteOverrides` names the later stored Occurrences the
+ * new terms never fall on, which the person agreed to delete; it must be exactly the ones there are.
  */
 export const changeScheduleFrom = z.strictObject({
   date: isoDate,
+  confirmDeleteOverrides: z.array(id).max(1000),
   changes: z
     .strictObject({
       amountCents: scheduleFields.amountCents,

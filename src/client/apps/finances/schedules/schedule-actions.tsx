@@ -1,7 +1,7 @@
 import { useNavigate } from "@tanstack/react-router"
 import { useState } from "react"
 import { ChangeFromForm } from "@/apps/finances/schedules/change-from-form"
-import { shownOnWallet } from "@/apps/finances/schedules/schedule-display"
+import { OverridesToDelete } from "@/apps/finances/schedules/overrides-to-delete"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -32,7 +32,6 @@ import {
 import { addDays, formatDisplayDate, today } from "@shared/dates"
 import { nextOccurrence, overridesAfter } from "@shared/finances/occurrences"
 import type { OccurrenceRow } from "@shared/finances/schemas"
-import { format } from "@shared/money"
 
 type Dialogs = "change" | "end" | "delete" | null
 
@@ -108,6 +107,7 @@ export function ScheduleActions({
           <div className="-mx-4 overflow-y-auto px-4 pb-1">
             <ChangeFromForm
               schedule={schedule}
+              stored={stored}
               wallet={wallet}
               defaultFrom={defaultFrom}
               onSave={async (change) => {
@@ -202,36 +202,12 @@ function EndDialog({
               </FieldDescription>
             )}
           </Field>
-          {doomed.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No overrides will be deleted.</p>
-          ) : (
-            <section aria-labelledby="doomed-heading" className="flex flex-col gap-1">
-              <h3 id="doomed-heading" className="text-sm font-medium">
-                {doomed.length === 1
-                  ? "This override will be deleted"
-                  : `These ${doomed.length} overrides will be deleted`}
-              </h3>
-              <ul className="divide-y rounded-lg border text-sm">
-                {doomed.map((row) => (
-                  <li key={row.id} className="flex justify-between gap-3 px-3 py-2">
-                    <span>{formatDisplayDate(row.overrideDate ?? row.nominalDate)}</span>
-                    <span className="text-muted-foreground tabular-nums">
-                      {row.skipped
-                        ? "Skipped"
-                        : format(
-                            shownOnWallet(
-                              schedule,
-                              wallet,
-                              row.overrideAmountCents ?? schedule.amountCents,
-                            ),
-                            { sign: "always" },
-                          )}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </section>
-          )}
+          <OverridesToDelete
+            rows={doomed}
+            schedule={schedule}
+            wallet={wallet}
+            empty="No overrides will be deleted."
+          />
           <div className="flex flex-wrap gap-2">
             <Button
               type="submit"

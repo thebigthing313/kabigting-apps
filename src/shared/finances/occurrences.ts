@@ -223,6 +223,24 @@ export function overridesAfter<Row extends StoredOccurrence>(
     .toSorted((a, b) => a.nominalDate.localeCompare(b.nominalDate))
 }
 
+/**
+ * The stored overrides and skips that changing the Schedule from `date` to `terms` deletes: those
+ * on or after `date` (by nominal date) that the new terms never fall on, in date order. The rest
+ * move to the new terms. A Reconciled Occurrence is never among them.
+ */
+export function overridesOffNewTerms<Row extends StoredOccurrence>(
+  stored: readonly Row[],
+  date: string,
+  terms: ScheduleTerms,
+): Row[] {
+  return stored
+    .filter(
+      (row) =>
+        row.nominalDate >= date && !isReconciled(row) && !isOccurrenceDate(terms, row.nominalDate),
+    )
+    .toSorted((a, b) => a.nominalDate.localeCompare(b.nominalDate))
+}
+
 /** A Schedule's place in a chain: the Schedule a change from a date continued, if any. */
 export type ChainLink = { id: string; predecessorId: string | null }
 

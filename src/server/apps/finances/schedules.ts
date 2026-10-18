@@ -13,7 +13,11 @@ import { validate } from "#server/core/validate.ts"
 import type { Db } from "#server/db/client.ts"
 import { financesOccurrences, financesSchedules } from "#server/db/schema/index.ts"
 import { addDays } from "#shared/dates.ts"
-import { isOccurrenceDate, overridesAfter, scheduleChain } from "#shared/finances/occurrences.ts"
+import {
+  overridesAfter,
+  overridesOffNewTerms,
+  scheduleChain,
+} from "#shared/finances/occurrences.ts"
 import {
   changeScheduleFrom,
   createSchedule,
@@ -103,6 +107,27 @@ async function newestForUpdate(tx: Tx, scheduleId: string): Promise<ScheduleReco
   return schedule
 }
 
+/**
+ * The person confirmed a list of overrides to delete; go ahead only if it is still exactly what
+ * would go.
+ */
+function confirmed(doomed: readonly string[], confirmDeleteOverrides: readonly string[]) {
+  const listed = new Set(confirmDeleteOverrides)
+  if (doomed.length !== listed.size || doomed.some((doomedId) => !listed.has(doomedId))) {
+    throw new ApiError("conflict", "The overrides to delete have changed; look again")
+  }
+}
+
+/** Deletes the given stored Occurrences, never a Reconciled one; returns the ids it deleted. */
+async function deleteOverrides(tx: Tx, ids: readonly string[]): Promise<string[]> {
+  if (ids.length === 0) return []
+  const deleted = await tx
+    .delete(financesOccurrences)
+    .where(and(inArray(financesOccurrences.id, [...ids]), notReconciled))
+    .returning({ id: financesOccurrences.id })
+  return deleted.map((row) => row.id)
+}
+
 /** Schedules: recurrences that make Planned Transactions or Transfers. Shared household data. */
 export function scheduleRoutes(db: Db) {
   return new Hono<AppEnv>()
@@ -154,7 +179,7 @@ export function scheduleRoutes(db: Db) {
       validate("param", params),
       validate("json", changeScheduleFrom),
       async (c) => {
-        const { date, changes } = c.req.valid("json")
+        const { date, changes, confirmDeleteOverrides } = c.req.valid("json")
         const result = await db
           .transaction(async (tx): Promise<ScheduleCommandResult> => {
             const schedule = await newestForUpdate(tx, c.req.valid("param").id)
@@ -166,34 +191,24 @@ export function scheduleRoutes(db: Db) {
             }
             const startDate = changes.startDate ?? date
             if (startDate < date) invalid("The new terms can't start before the change")
+            const { id: _id, createdAt: _created, updatedAt: _updated, ...kept } = schedule
+            const terms = { ...kept, ...changes, startDate, predecessorId: schedule.id }
+            // The old terms stop at the change, so its later overrides belong to the new ones.
+            // Those the new terms never fall on go, once the person confirmed exactly that list.
+            const stored = await tx
+              .select()
+              .from(financesOccurrences)
+              .where(eq(financesOccurrences.scheduleId, schedule.id))
+            const doomed = overridesOffNewTerms(stored, date, terms).map((row) => row.id)
+            confirmed(doomed, confirmDeleteOverrides)
+            const deleted = await deleteOverrides(tx, doomed)
             const [ended] = await tx
               .update(financesSchedules)
               .set({ endDate: addDays(date, -1), updatedAt: sql`now()` })
               .where(eq(financesSchedules.id, schedule.id))
               .returning()
-            const { id: _id, createdAt: _created, updatedAt: _updated, ...kept } = schedule
-            const [successor] = await tx
-              .insert(financesSchedules)
-              .values({ ...kept, ...changes, startDate, predecessorId: schedule.id })
-              .returning()
+            const [successor] = await tx.insert(financesSchedules).values(terms).returning()
             if (!ended || !successor) throw new Error("The Schedule change wrote nothing")
-            // The old terms stop at the change, so its later overrides belong to the new ones.
-            // One the new terms never fall on would be lost from sight, so the change waits.
-            const later = await tx
-              .select({ nominalDate: financesOccurrences.nominalDate })
-              .from(financesOccurrences)
-              .where(
-                and(
-                  eq(financesOccurrences.scheduleId, schedule.id),
-                  gte(financesOccurrences.nominalDate, date),
-                  notReconciled,
-                ),
-              )
-            if (later.some((row) => !isOccurrenceDate(successor, row.nominalDate))) {
-              invalid(
-                "An override or skip from that date doesn't fall on the new terms. Put it back on schedule first.",
-              )
-            }
             const moved = await tx
               .update(financesOccurrences)
               .set({ scheduleId: successor.id, updatedAt: sql`now()` })
@@ -208,7 +223,7 @@ export function scheduleRoutes(db: Db) {
             return {
               schedules: [ended, successor].map(toRow),
               occurrences: moved.map(occurrenceToRow),
-              deletedOccurrences: [],
+              deletedOccurrences: deleted,
             }
           })
           .catch(refused)
@@ -224,33 +239,16 @@ export function scheduleRoutes(db: Db) {
             .select()
             .from(financesOccurrences)
             .where(eq(financesOccurrences.scheduleId, schedule.id))
-          // The person confirmed a list; delete only if it is still exactly what would go.
           const doomed = overridesAfter(stored, endDate).map((row) => row.id)
-          const confirmed = new Set(confirmDeleteOverrides)
-          if (
-            doomed.length !== confirmed.size ||
-            doomed.some((doomedId) => !confirmed.has(doomedId))
-          ) {
-            throw new ApiError("conflict", "The overrides to delete have changed; look again")
-          }
-          const deleted =
-            doomed.length === 0
-              ? []
-              : await tx
-                  .delete(financesOccurrences)
-                  .where(and(inArray(financesOccurrences.id, doomed), notReconciled))
-                  .returning({ id: financesOccurrences.id })
+          confirmed(doomed, confirmDeleteOverrides)
+          const deleted = await deleteOverrides(tx, doomed)
           const [ended] = await tx
             .update(financesSchedules)
             .set({ endDate, updatedAt: sql`now()` })
             .where(eq(financesSchedules.id, schedule.id))
             .returning()
           if (!ended) throw new Error("Ending the Schedule wrote nothing")
-          return {
-            schedules: [toRow(ended)],
-            occurrences: [],
-            deletedOccurrences: deleted.map((row) => row.id),
-          }
+          return { schedules: [toRow(ended)], occurrences: [], deletedOccurrences: deleted }
         })
         .catch(refused)
       return c.json(result)

@@ -82,6 +82,47 @@ test("a Schedule changes from a date, ends, reopens and keeps its History", asyn
   await expect(history.nth(0)).toContainText("no end date")
 })
 
+test("a change to a new day lists the overrides it deletes", async ({ page }, testInfo) => {
+  const run = `${testInfo.project.name} ${Date.now()}`
+  const walletId = await post(page, "wallets", { name: `E2E checking ${run}` })
+  // Rent on the 1st from next month, moving to the 5th from the month after.
+  const start = `${addMonthsClamped(today(), 1).slice(0, 7)}-01`
+  const change = addMonthsClamped(start, 1)
+  const overridden = addMonthsClamped(start, 2)
+  const scheduleId = await post(page, "schedules", {
+    walletId,
+    amountCents: -150_000,
+    unit: "month",
+    every: 1,
+    startDate: start,
+    note: `E2E rent ${run}`,
+  })
+  await post(page, "occurrences", {
+    scheduleId,
+    nominalDate: overridden,
+    overrideAmountCents: -157_500,
+  })
+
+  await page.goto(`/finances/schedules/${scheduleId}`)
+  await page.getByRole("button", { name: "Change from a date…" }).click()
+  const dialog = page.getByRole("dialog")
+  await dialog.getByLabel("Change from").fill(change)
+  const doomed = dialog.getByRole("region", { name: "This override will be deleted" })
+  await expect(doomed).toHaveCount(0)
+  await dialog.getByLabel("First date (optional)").fill(addDays(change, 4))
+  await expect(doomed.getByRole("listitem")).toHaveCount(1)
+  await expect(doomed.getByRole("listitem")).toContainText(formatDisplayDate(overridden))
+  await expect(doomed.getByRole("listitem")).toContainText("-$1,575.00")
+  await dialog.getByRole("button", { name: "Change Schedule" }).click()
+  await expect(dialog).toBeHidden()
+
+  const occurrence = (date: string) =>
+    page.getByRole("listitem", { name: formatDisplayDate(date), exact: true })
+  await expect(occurrence(overridden)).toHaveCount(0)
+  await expect(occurrence(addDays(overridden, 4))).toContainText("-$1,500.00")
+  await expect(page.getByText("Overridden")).toHaveCount(0)
+})
+
 test("an ended Schedule sits in the Ended group until it is deleted", async ({
   page,
 }, testInfo) => {
