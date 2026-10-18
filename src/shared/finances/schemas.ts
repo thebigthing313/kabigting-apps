@@ -378,10 +378,11 @@ export const createTransaction = z.strictObject({
 
 /**
  * Planned stays Planned and Actual stays Actual. An imported Actual keeps its amount, date and
- * Wallet; the server refuses changing them.
+ * Wallet; the server refuses changing them. `ignored` can only be cleared, which restores an
+ * ignored line; deleting is what ignores one.
  */
 export const updateTransaction = z
-  .strictObject(transactionFields)
+  .strictObject({ ...transactionFields, ignored: z.literal(false) })
   .partial()
   .refine(atLeastOneField, "Change at least one field")
 
@@ -415,6 +416,30 @@ export const transactionQuery = queryBody({
   order: onDemandFilters.order.optional(),
 })
 export const transactionRows = rowsResponse(transactionRow)
+
+// Uploads: a bank or card statement download, read into Actuals on one Wallet.
+
+/** All three are OFX with different headers, so one parser reads them (D27). */
+export const UPLOAD_EXTENSIONS = [".ofx", ".qfx", ".qbo"] as const
+
+/** The extensions in words, for messages. */
+export const UPLOAD_FORMATS = `${UPLOAD_EXTENSIONS.slice(0, -1).join(", ")} or ${UPLOAD_EXTENSIONS.at(-1)}`
+
+/** The file's bank account is new: the client asks which Wallet it is, then sends it again. */
+export const uploadNeedsWallet = z.object({
+  needsWallet: z.object({ last4: z.string() }),
+})
+
+/** The lines added, how many were already stored (ignored ones too), and the file's Wallet. */
+export const uploadDone = z.object({
+  inserted: z.array(transactionRow),
+  duplicates: z.int().min(0),
+  wallet: walletRow,
+})
+
+export const uploadResult = z.union([uploadNeedsWallet, uploadDone])
+
+export type UploadResult = z.infer<typeof uploadResult>
 
 export type CreateTransaction = z.input<typeof createTransaction>
 export type UpdateTransaction = z.infer<typeof updateTransaction>

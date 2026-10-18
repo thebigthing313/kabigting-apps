@@ -2,7 +2,7 @@ import { and, eq, sql } from "drizzle-orm"
 import { Hono } from "hono"
 import { isUniqueViolation } from "#server/apps/finances/db-errors.ts"
 import { occurrenceToRow } from "#server/apps/finances/occurrences.ts"
-import { isReconciledActual, transactionToRow } from "#server/apps/finances/transactions.ts"
+import { isReconciledActual, toTransactionRow } from "#server/apps/finances/transactions.ts"
 import { isReconciledTransfer, transferToRow } from "#server/apps/finances/transfers.ts"
 import type { AppEnv } from "#server/core/context.ts"
 import { ApiError } from "#server/core/errors.ts"
@@ -166,7 +166,7 @@ async function oneOffTarget(tx: Tx, plannedId: string): Promise<Target> {
         .where(eq(financesTransactions.id, planned.id))
         .returning()
       if (!linked) throw new Error("Reconciling the Planned item wrote nothing")
-      return { occurrences: [], transactions: [transactionToRow(linked)], transfers: [] }
+      return { occurrences: [], transactions: [toTransactionRow(linked)], transfers: [] }
     },
   }
 }
@@ -283,7 +283,7 @@ async function reconcileTo(tx: Tx, actual: Actual, target: Target): Promise<Reco
       .where(eq(financesTransactions.id, actual.row.id))
       .returning()
     if (!updated) throw new Error("Reconciling the Actual wrote nothing")
-    result.transactions.push(transactionToRow(updated))
+    result.transactions.push(toTransactionRow(updated))
     return result
   }
 
@@ -379,7 +379,7 @@ export function reconcileRoutes(db: Db) {
             .set({ reconciledActualId: null, updatedAt: sql`now()` })
             .where(eq(financesTransactions.reconciledActualId, actualId))
             .returning()
-          changed.transactions.push(...unlinked.map(transactionToRow))
+          changed.transactions.push(...unlinked.map(toTransactionRow))
         } else {
           const unlinked = await tx
             .update(financesTransfers)

@@ -174,7 +174,7 @@ export function EditActivityDialog({
     const deleted =
       target.kind === "transfer"
         ? await deleteTransfer(target.row.id)
-        : await deleteTransaction(target.row.id)
+        : await deleteTransaction(target.row)
     setDeleting(false)
     setConfirming(false)
     if (deleted) {
@@ -262,7 +262,7 @@ export function EditActivityDialog({
             <AlertDialogTitle>Delete this {noun}?</AlertDialogTitle>
             <AlertDialogDescription>
               {imported
-                ? "It came from the bank, so it is kept as an ignored line and won't be added again by a later upload."
+                ? "It came from the bank, so it is kept as an ignored line that a later upload won't add again. Restore it from Ignored lines."
                 : "It is removed for good."}
             </AlertDialogDescription>
           </AlertDialogHeader>

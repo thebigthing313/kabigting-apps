@@ -18,7 +18,8 @@ import { MAX_QUERY_IDS } from "#shared/schemas/query.ts"
 
 type WalletRecord = typeof financesWallets.$inferSelect
 
-function toRow(wallet: WalletRecord): WalletRow {
+/** The wire row for a stored Wallet; the bank account hash never leaves the server. */
+export function toWalletRow(wallet: WalletRecord): WalletRow {
   return {
     id: wallet.id,
     name: wallet.name,
@@ -69,7 +70,7 @@ export function walletRoutes(db: Db) {
         )
         .orderBy(asc(financesWallets.id))
         .limit(limit ?? MAX_QUERY_IDS)
-      return c.json({ rows: wallets.map(toRow) })
+      return c.json({ rows: wallets.map(toWalletRow) })
     })
     .post("/", validate("json", createWallet), async (c) => {
       // The client supplies the id; an existing id is a conflict, never an overwrite.
@@ -81,7 +82,7 @@ export function walletRoutes(db: Db) {
           .returning(),
       )
       if (!wallet) throw new ApiError("conflict", "A Wallet with this id already exists")
-      return c.json(toRow(wallet), 201)
+      return c.json(toWalletRow(wallet), 201)
     })
     .patch("/:id", validate("param", walletParams), validate("json", updateWallet), async (c) => {
       const { bankAccountLast4, ...changes } = c.req.valid("json")
@@ -94,7 +95,7 @@ export function walletRoutes(db: Db) {
           .where(eq(financesWallets.id, c.req.valid("param").id))
           .returning(),
       )
-      return wallet ? c.json(toRow(wallet)) : notFound()
+      return wallet ? c.json(toWalletRow(wallet)) : notFound()
     })
     .delete("/:id", validate("param", walletParams), async (c) => {
       // Only a Wallet nothing references may go; one with history is archived instead.
@@ -108,6 +109,6 @@ export function walletRoutes(db: Db) {
           }
           throw error
         })
-      return wallet ? c.json(toRow(wallet)) : notFound()
+      return wallet ? c.json(toWalletRow(wallet)) : notFound()
     })
 }
