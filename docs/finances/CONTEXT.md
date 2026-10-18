@@ -54,6 +54,13 @@ _Avoid_: Type, payee type, budget
 A Wallet's actual balance on a date, as entered from the bank.
 _Avoid_: Snapshot, statement, starting balance
 
+**Reconcile**:
+Pairing one Actual with the one Planned Transaction or Transfer it fulfils, suggested by the app
+and confirmed by a person. The Actual's amount and date are the truth; the Planned one leaves the
+Forecast, and Un-Reconcile puts it back at its own amount. An Actual Reconciled to nothing is
+unplanned, which is a normal end state.
+_Avoid_: Match, clear, link
+
 **Overdue**:
 A Planned Transaction or Transfer whose date has passed and that is not yet Reconciled or skipped.
 The Forecast counts it today until it is, except one dated on or before the Wallet's

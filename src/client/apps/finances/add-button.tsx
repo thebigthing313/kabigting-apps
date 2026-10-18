@@ -1,6 +1,7 @@
-import { CalendarPlusIcon, LandmarkIcon, PlusIcon, ReceiptTextIcon } from "lucide-react"
+import { CalendarPlusIcon, FileUpIcon, LandmarkIcon, PlusIcon, ReceiptTextIcon } from "lucide-react"
 import { useState } from "react"
 import { AddTransactionDialog } from "@/apps/finances/transactions/transaction-dialogs"
+import { UploadDialog } from "@/apps/finances/transactions/upload-dialog"
 import { BalanceCheckDialog } from "@/apps/finances/wallets/balance-check-dialog"
 import { Button } from "@/components/ui/button"
 import {
@@ -10,11 +11,11 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 
-type Adding = { kind: "actual" | "planned" | "check"; open: boolean }
+type Adding = { kind: "actual" | "planned" | "upload" | "check"; open: boolean }
 
 /**
- * The floating + button on Home and Wallet pages: Add Actual, Add one-off Planned and Enter
- * Balance check, each starting on the given Wallet, or asking for one when there is none.
+ * The floating + button on Home and Wallet pages: Add Actual, Add one-off Planned, Upload file and
+ * Enter Balance check, each starting on the given Wallet, or asking for one when there is none.
  */
 export function AddButton({ walletId }: { walletId?: string }) {
   // The kind is kept while a dialog closes, so it never changes as it fades.
@@ -45,6 +46,10 @@ export function AddButton({ walletId }: { walletId?: string }) {
             <CalendarPlusIcon />
             Add one-off Planned
           </DropdownMenuItem>
+          <DropdownMenuItem className="min-h-11" onClick={() => open("upload")}>
+            <FileUpIcon />
+            Upload file
+          </DropdownMenuItem>
           <DropdownMenuItem className="min-h-11" onClick={() => open("check")}>
             <LandmarkIcon />
             Enter Balance check
@@ -54,6 +59,8 @@ export function AddButton({ walletId }: { walletId?: string }) {
 
       {adding.kind === "check" ? (
         <BalanceCheckDialog open={adding.open} onOpenChange={onOpenChange} walletId={walletId} />
+      ) : adding.kind === "upload" ? (
+        <UploadDialog open={adding.open} onOpenChange={onOpenChange} walletId={walletId} />
       ) : (
         <AddTransactionDialog
           open={adding.open}

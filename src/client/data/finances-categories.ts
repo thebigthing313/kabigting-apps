@@ -3,7 +3,7 @@ import { api } from "@/data/api"
 import { defineRestCollection } from "@/data/collection-factory"
 import { readJson, reportError } from "@/data/error-handler"
 import { writeSchedules } from "@/data/finances-schedules"
-import { writeTransactions } from "@/data/finances-transactions"
+import { writeLoadedTransactions } from "@/data/finances-transactions"
 import { nowInstant } from "@shared/dates"
 import type { CategoryMergeResult, CategoryRow, UpdateCategory } from "@shared/finances/schemas"
 import { newId } from "@shared/ids"
@@ -84,7 +84,7 @@ export async function mergeCategory(id: string, intoId: string): Promise<boolean
     return false
   }
   await financesCategories().utils.writeUpsert(result.categories)
-  await writeTransactions(result.transactions)
+  await writeLoadedTransactions(result.transactions)
   await writeSchedules(result.schedules)
   return true
 }

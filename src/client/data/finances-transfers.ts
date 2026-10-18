@@ -1,4 +1,4 @@
-import { and, eq, gt, or, useLiveQuery } from "@tanstack/react-db"
+import { and, eq, gt, inArray, or, useLiveQuery } from "@tanstack/react-db"
 import { api } from "@/data/api"
 import { defineOnDemandCollection } from "@/data/collection-factory"
 import { readJson } from "@/data/error-handler"
@@ -83,8 +83,9 @@ export function useActualTransfersSince(walletId: string, after: string | undefi
 }
 
 /**
- * A Wallet's outstanding one-off Planned Transfers, out of it or into it, soonest first. A
- * Reconciled one is no longer outstanding.
+ * A Wallet's one-off Planned Transfers, out of it or into it, soonest first. `plannedTransfers`
+ * are the outstanding ones; a Reconciled one is no longer outstanding, and `planned` keeps those
+ * too, to show what an Actual Transfer is Reconciled to.
  */
 export function useOutstandingPlannedTransfers(walletId: string) {
   const transfers = financesTransfers()
@@ -97,7 +98,30 @@ export function useOutstandingPlannedTransfers(walletId: string) {
     [transfers, walletId],
   )
   // Few enough to filter here; the server has no filter for the Reconcile link.
-  return { plannedTransfers: data.filter((row) => row.reconciledActualId === null), isLoading }
+  return {
+    plannedTransfers: data.filter((row) => row.reconciledActualId === null),
+    planned: data,
+    isLoading,
+  }
+}
+
+/** The Transfers with these ids, such as the Actuals Transfer Occurrences are Reconciled to. */
+export function useTransfersById(ids: readonly string[]) {
+  const transfers = financesTransfers()
+  const key = ids.toSorted().join(",")
+  const { data } = useLiveQuery(
+    (q) =>
+      key === ""
+        ? undefined
+        : q.from({ row: transfers }).where(({ row }) => inArray(row.id, key.split(","))),
+    [transfers, key],
+  )
+  return new Map((data ?? []).map((row) => [row.id, row]))
+}
+
+/** Writes Transfers a command changed on the server into the collection. */
+export async function writeTransfers(rows: readonly TransferRow[]): Promise<void> {
+  if (rows.length > 0) await financesTransfers().utils.writeUpsert([...rows])
 }
 
 /**

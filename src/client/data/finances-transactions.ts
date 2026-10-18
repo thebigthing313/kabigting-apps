@@ -1,11 +1,18 @@
-import { and, eq, gt, gte, lte, useLiveQuery } from "@tanstack/react-db"
+import { and, eq, gt, gte, inArray, lte, useLiveQuery } from "@tanstack/react-db"
 import { api } from "@/data/api"
 import { defineOnDemandCollection } from "@/data/collection-factory"
-import { readJson } from "@/data/error-handler"
-import { useActualTransfersSince } from "@/data/finances-transfers"
+import { readJson, reportError } from "@/data/error-handler"
+import { applyOccurrenceChanges } from "@/data/finances-occurrences"
+import { useActualTransfersSince, writeTransfers } from "@/data/finances-transfers"
 import { settled } from "@/data/settled"
 import { monthDates, nowInstant, shiftMonth } from "@shared/dates"
-import type { TransactionRow, UpdateTransaction } from "@shared/finances/schemas"
+import {
+  isImported,
+  type Reconcile,
+  type ReconcileResult,
+  type TransactionRow,
+  type UpdateTransaction,
+} from "@shared/finances/schemas"
 import { AVERAGE_MONTHS } from "@shared/finances/summary"
 import { transferAmountOn } from "@shared/finances/transfers"
 import { newId } from "@shared/ids"
@@ -22,8 +29,10 @@ export type NewTransaction = Pick<
 export type TransactionChanges = Partial<Omit<NewTransaction, "status">>
 
 function editable(changes: Partial<TransactionRow>): UpdateTransaction {
-  const { walletId, date, amountCents, accountId, categoryId, note } = changes
+  const { walletId, date, amountCents, accountId, categoryId, note, ignored } = changes
   return {
+    // Only Restore changes `ignored` in place; Delete is what ignores an imported line.
+    ...(ignored === false ? { ignored } : {}),
     ...(walletId === undefined ? {} : { walletId }),
     ...(date === undefined ? {} : { date }),
     ...(amountCents === undefined ? {} : { amountCents }),
@@ -76,7 +85,12 @@ export function useActualsSince(walletId: string, after: string | undefined) {
         : q
             .from({ row: transactions })
             .where(({ row }) =>
-              and(eq(row.walletId, walletId), eq(row.status, "actual"), gt(row.date, after)),
+              and(
+                eq(row.walletId, walletId),
+                eq(row.status, "actual"),
+                eq(row.ignored, false),
+                gt(row.date, after),
+              ),
             ),
     [transactions, walletId, after],
   )
@@ -101,8 +115,9 @@ export function useActualsSince(walletId: string, after: string | undefined) {
 export type WalletMove = { id: string; date: string; amountCents: number }
 
 /**
- * A Wallet's outstanding one-off Planned Transactions, soonest first: upcoming ones, and Overdue
- * ones whose date has passed. A Reconciled one is no longer outstanding.
+ * A Wallet's one-off Planned Transactions, soonest first. `oneOffs` are the outstanding ones:
+ * upcoming, and Overdue once their date has passed. A Reconciled one is no longer outstanding;
+ * `planned` keeps those too, to show what an Actual is Reconciled to.
  */
 export function useOutstandingOneOffs(walletId: string) {
   const transactions = financesTransactions()
@@ -115,7 +130,25 @@ export function useOutstandingOneOffs(walletId: string) {
     [transactions, walletId],
   )
   // Few enough to filter here; the server has no filter for the Reconcile link.
-  return { oneOffs: data.filter((row) => row.reconciledActualId === null), isLoading }
+  return {
+    oneOffs: data.filter((row) => row.reconciledActualId === null),
+    planned: data,
+    isLoading,
+  }
+}
+
+/** The Transactions with these ids, such as the Actuals a Schedule's Occurrences are Reconciled to. */
+export function useTransactionsById(ids: readonly string[]) {
+  const transactions = financesTransactions()
+  const key = ids.toSorted().join(",")
+  const { data } = useLiveQuery(
+    (q) =>
+      key === ""
+        ? undefined
+        : q.from({ row: transactions }).where(({ row }) => inArray(row.id, key.split(","))),
+    [transactions, key],
+  )
+  return new Map((data ?? []).map((row) => [row.id, row]))
 }
 
 /**
@@ -128,11 +161,39 @@ export function useActivity(walletId: string, count: number) {
     (q) =>
       q
         .from({ row: transactions })
-        .where(({ row }) => and(eq(row.walletId, walletId), eq(row.status, "actual")))
+        .where(({ row }) =>
+          and(eq(row.walletId, walletId), eq(row.status, "actual"), eq(row.ignored, false)),
+        )
         .orderBy(({ row }) => row.date, NEWEST_FIRST)
         .limit(count + 1),
     [transactions, walletId, count],
   )
+}
+
+/**
+ * A Wallet's ignored lines (imported Actuals a person deleted), newest first. The server can only
+ * add ignored rows to a Wallet's others, so this loads all of them and keeps the ignored ones.
+ */
+export function useIgnoredLines(walletId: string, enabled: boolean) {
+  const transactions = financesTransactions()
+  const { data, isLoading } = useLiveQuery(
+    (q) =>
+      enabled
+        ? q
+            .from({ row: transactions })
+            .where(({ row }) =>
+              and(eq(row.walletId, walletId), eq(row.status, "actual"), eq(row.ignored, true)),
+            )
+            .orderBy(({ row }) => row.date, NEWEST_FIRST)
+        : undefined,
+    [transactions, walletId, enabled],
+  )
+  return { lines: data ?? [], isLoading: enabled && isLoading }
+}
+
+/** Writes rows the server added outside the collection's own writes, such as an upload's. */
+export async function writeTransactions(rows: readonly TransactionRow[]): Promise<void> {
+  if (rows.length > 0) await financesTransactions().utils.writeUpsert([...rows])
 }
 
 /** Every Wallet's Actuals dated `from` to `to`, inclusive, ignored lines left out. */
@@ -199,23 +260,25 @@ export function useCategoryTransactionCount(categoryId: string | undefined) {
 }
 
 /**
- * Writes rows a command changed, such as a Category merge, into the collection. Only rows already
- * loaded are written: the rest load when a screen asks for them, so unasked-for rows (ignored
- * lines among them) never reach a live query.
+ * Writes the rows a command changed that are already loaded, such as a Category merge's. The rest,
+ * possibly years of history, load when a screen asks for them.
  */
-export async function writeTransactions(rows: readonly TransactionRow[]): Promise<void> {
+export async function writeLoadedTransactions(rows: readonly TransactionRow[]): Promise<void> {
   const collection = financesTransactions()
   const loaded = rows.filter((row) => collection.has(row.id))
   if (loaded.length > 0) await collection.utils.writeUpsert(loaded)
 }
 
-/** Shows the row at once; resolves false after a refusal rolled it back (with a toast). */
-export function addTransaction(input: NewTransaction): Promise<boolean> {
+/**
+ * Shows the row at once; resolves false after a refusal rolled it back (with a toast). `id` is
+ * the new row's, given when something else will refer to it.
+ */
+export function addTransaction(input: NewTransaction, id: string = newId()): Promise<boolean> {
   const now = nowInstant()
   const actual = input.status === "actual"
   return settled(
     financesTransactions().insert({
-      id: newId(),
+      id,
       ...input,
       bankDescription: null,
       source: actual ? "manual" : null,
@@ -237,7 +300,65 @@ export function editTransaction(id: string, changes: TransactionChanges): Promis
   )
 }
 
-/** Deletes a hand-entered row; an imported Actual is kept by the server as an ignored line. */
-export function deleteTransaction(id: string): Promise<boolean> {
-  return settled(financesTransactions().delete(id))
+/**
+ * Deletes a hand-entered row. An imported Actual is kept by the server as an ignored line, which
+ * stays in the collection, marked, for the Ignored lines list.
+ */
+export async function deleteTransaction(row: Transaction): Promise<boolean> {
+  if (!isImported(row)) return settled(financesTransactions().delete(row.id))
+  try {
+    const ignored = await readJson(
+      await api.finances.transactions[":id"].$delete({ param: { id: row.id } }),
+    )
+    await writeTransactions([ignored])
+    return true
+  } catch (error) {
+    reportError(error, "Deleting")
+    return false
+  }
+}
+
+/** Brings an ignored line back into the Wallet's Actuals. */
+export function restoreTransaction(id: string): Promise<boolean> {
+  return settled(
+    financesTransactions().update(id, (draft) => {
+      draft.ignored = false
+    }),
+  )
+}
+
+/** Writes a Reconcile command's changed rows into the collections it touched. */
+async function applyReconcile(result: ReconcileResult): Promise<void> {
+  const transactions = financesTransactions()
+  if (result.transactions.length > 0) await transactions.utils.writeUpsert(result.transactions)
+  // A line Reconciled to a Planned Transfer became an Actual Transfer.
+  const gone = result.deletedTransactions.filter((id) => transactions.has(id))
+  if (gone.length > 0) await transactions.utils.writeDelete(gone)
+  await writeTransfers(result.transfers)
+  await applyOccurrenceChanges(result.occurrences, result.deletedOccurrences)
+}
+
+/** Runs a Reconcile command; false after a refusal, which is reported with a toast. */
+async function reconcileCommand(run: () => Promise<ReconcileResult>): Promise<boolean> {
+  let result: ReconcileResult
+  try {
+    result = await run()
+  } catch (error) {
+    reportError(error, "Saving")
+    return false
+  }
+  await applyReconcile(result)
+  return true
+}
+
+/** Reconciles an Actual to an outstanding Planned item, one to one. */
+export function reconcileActual(body: Reconcile): Promise<boolean> {
+  return reconcileCommand(async () => readJson(await api.finances.reconcile.$post({ json: body })))
+}
+
+/** Un-Reconciles an Actual: its Planned item is outstanding again, at its own amount. */
+export function unreconcileActual(actualId: string): Promise<boolean> {
+  return reconcileCommand(async () =>
+    readJson(await api.finances.unreconcile.$post({ json: { actualId } })),
+  )
 }

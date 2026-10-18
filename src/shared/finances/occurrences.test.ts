@@ -9,6 +9,7 @@ import {
   occurrencesAround,
   overrideFor,
   overridesAfter,
+  reconciledFrom,
   overridesOffNewTerms,
   scheduleChain,
   type ScheduleTerms,
@@ -433,6 +434,21 @@ describe("overridesAfter", () => {
       stored("2026-06-01", { reconciledTransferId: "u" }),
     ]
     expect(overridesAfter(rows, "2026-04-30")).toEqual([])
+  })
+})
+
+describe("reconciledFrom", () => {
+  test("lists the Reconciled Occurrences on or after the date, in date order", () => {
+    const rows = [
+      stored("2026-06-01", { reconciledTransferId: "u" }),
+      stored("2026-05-01", { reconciledTransactionId: "t" }),
+      stored("2026-04-30", { reconciledTransactionId: "s" }),
+      stored("2026-07-01", { overrideAmountCents: -1 }),
+    ]
+    expect(reconciledFrom(rows, "2026-05-01").map((o) => o.nominalDate)).toEqual([
+      "2026-05-01",
+      "2026-06-01",
+    ])
   })
 })
 

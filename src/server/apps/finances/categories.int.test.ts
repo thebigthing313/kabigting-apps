@@ -8,6 +8,7 @@ import {
   transactionRows,
   walletRow,
 } from "#shared/finances/schemas.ts"
+import { financesTransactions } from "#server/db/schema/index.ts"
 import { createTestServer, json, type TestServer } from "#server/test/server.ts"
 
 let server: TestServer
@@ -213,6 +214,46 @@ describe("merge", () => {
       archived: true,
       mergedIntoId: target.id,
     })
+  })
+
+  test("an ignored line and a Reconciled one-off move and keep their state", async () => {
+    const source = await created(category())
+    const target = await created(category())
+    const [imported] = await server.db
+      .insert(financesTransactions)
+      .values({
+        status: "actual",
+        walletId,
+        date: "2026-09-10",
+        amountCents: -1_200,
+        categoryId: source.id,
+        source: "ofx",
+        sourceKey: `FITID-${newId()}`,
+        bankDescription: "MADE-UP STORE",
+      })
+      .returning()
+    const deleted = await server.app.request(`/api/finances/transactions/${imported!.id}`, {
+      method: "DELETE",
+      headers,
+    })
+    expect(deleted.status).toBe(200)
+    const plannedId = newId()
+    const actualId = newId()
+    const row = { walletId, categoryId: source.id, date: "2026-09-11", amountCents: -800 }
+    await post("transactions", { ...row, id: plannedId, status: "planned" })
+    await post("transactions", { ...row, id: actualId, status: "actual" })
+    const reconciled = await server.app.request(
+      "/api/finances/reconcile",
+      json("POST", { plannedKind: "transaction", plannedRef: plannedId, actualId }, headers),
+    )
+    expect(reconciled.status).toBe(200)
+
+    expect((await merge(source.id, { intoId: target.id })).status).toBe(200)
+
+    const moved = new Map((await transactionsIn(target.id)).map((each) => [each.id, each]))
+    expect(moved.get(imported!.id)).toMatchObject({ ignored: true })
+    expect(moved.get(plannedId)).toMatchObject({ reconciledActualId: actualId })
+    expect(moved.get(actualId)).toMatchObject({ categoryId: target.id })
   })
 
   test("the Admin, with no access row, merges; an Account without access is refused", async () => {

@@ -3,11 +3,14 @@ import { z } from "zod"
 import { AmountInput } from "@/components/amount-input"
 import { Button } from "@/components/ui/button"
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field"
-import { OverridesToDelete } from "@/apps/finances/schedules/overrides-to-delete"
+import {
+  OverridesToDelete,
+  ReconciledInTheWay,
+} from "@/apps/finances/schedules/overrides-to-delete"
 import { Input } from "@/components/ui/input"
 import type { Schedule } from "@/data/finances-schedules"
 import { addDays, formatDisplayDate } from "@shared/dates"
-import { overridesOffNewTerms } from "@shared/finances/occurrences"
+import { overridesOffNewTerms, reconciledFrom } from "@shared/finances/occurrences"
 import type { ChangeScheduleFrom, OccurrenceRow } from "@shared/finances/schemas"
 import { fromShown, toShown } from "@shared/finances/wallets"
 
@@ -120,7 +123,8 @@ export function ChangeFromForm({
       Number.isInteger(changes.every) &&
       changes.every >= 1
     const doomed = complete ? overridesOffNewTerms(stored, value.from, changes) : []
-    return { date: value.from, changes, doomed }
+    const blocking = isDate(value.from) ? reconciledFrom(stored, value.from) : []
+    return { date: value.from, changes, doomed, blocking }
   }
 
   const form = useForm({
@@ -291,9 +295,17 @@ export function ChangeFromForm({
           )}
         </form.Subscribe>
 
-        <form.Subscribe selector={(state) => state.isSubmitting}>
-          {(isSubmitting) => (
-            <Button type="submit" className="h-11 self-start" disabled={isSubmitting}>
+        <form.Subscribe selector={(state) => state.values}>
+          {(values) => <ReconciledInTheWay rows={changeOf(values).blocking} />}
+        </form.Subscribe>
+
+        <form.Subscribe
+          selector={(state) =>
+            [state.isSubmitting, changeOf(state.values).blocking.length > 0] as const
+          }
+        >
+          {([isSubmitting, blocked]) => (
+            <Button type="submit" className="h-11 self-start" disabled={isSubmitting || blocked}>
               Change Schedule
             </Button>
           )}

@@ -146,6 +146,8 @@ function CategoryMonth({
   const { data: wallets } = useWallets()
   const { data: accounts } = useFinancesAccounts()
   const [editing, setEditing] = useState<ActivityRow | null>(null)
+  // Kept after the editor closes, so the row's Wallet is known while it fades.
+  const [editingWalletId, setEditingWalletId] = useState("")
   if (isLoading) return <CategorySkeleton />
 
   const under = countedUnder(categories)
@@ -206,7 +208,10 @@ function CategoryMonth({
                 <li key={row.id}>
                   <button
                     type="button"
-                    onClick={() => setEditing({ kind: "transaction", row })}
+                    onClick={() => {
+                      setEditingWalletId(row.walletId)
+                      setEditing({ kind: "transaction", row })
+                    }}
                     className="flex min-h-14 w-full items-center gap-3 px-3 py-2 text-left hover:bg-muted/50"
                   >
                     <div className="min-w-0 flex-1">
@@ -232,7 +237,11 @@ function CategoryMonth({
         )}
       </section>
 
-      <EditActivityDialog editing={editing} onClose={() => setEditing(null)} />
+      <EditActivityDialog
+        onWalletId={editingWalletId}
+        editing={editing}
+        onClose={() => setEditing(null)}
+      />
     </>
   )
 }

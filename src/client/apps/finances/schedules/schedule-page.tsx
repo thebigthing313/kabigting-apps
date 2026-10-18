@@ -9,6 +9,8 @@ import { useFinancesAccounts } from "@/data/finances-accounts"
 import { useCategories } from "@/data/finances-categories"
 import { saveOccurrence, useStoredOccurrences } from "@/data/finances-occurrences"
 import { useSchedules, type Schedule } from "@/data/finances-schedules"
+import { useTransactionsById } from "@/data/finances-transactions"
+import { useTransfersById } from "@/data/finances-transfers"
 import { useWallets, type Wallet } from "@/data/finances-wallets"
 import { addMonthsClamped, formatDisplayDate, today } from "@shared/dates"
 import {
@@ -25,6 +27,9 @@ import { cn } from "cn"
 /** How far back and ahead the Schedule page lists Occurrences, in months. */
 const MONTHS_BACK = 3
 const MONTHS_AHEAD = 6
+
+/** The amount and date of the Actual an Occurrence is Reconciled to; a Transfer's is positive. */
+type ReconciledActual = { amountCents: number; date: string }
 
 /** An Occurrence on the page, with the Schedule in the chain it falls on. */
 type ChainOccurrence = { schedule: Schedule; occurrence: Occurrence }
@@ -92,6 +97,16 @@ function ScheduleDetail({
   const stored = allStored.filter((row) => chainIds.includes(row.scheduleId))
   const storedOf = (member: Schedule) => stored.filter((row) => row.scheduleId === member.id)
   const reconciled = stored.some(isReconciled)
+  // The Actuals are the truth for what was Reconciled: their amounts and dates are shown.
+  const transactions = useTransactionsById(
+    stored.flatMap((row) =>
+      row.reconciledTransactionId === null ? [] : [row.reconciledTransactionId],
+    ),
+  )
+  const transfers = useTransfersById(
+    stored.flatMap((row) => (row.reconciledTransferId === null ? [] : [row.reconciledTransferId])),
+  )
+  const actuals = new Map<string, ReconciledActual>([...transactions, ...transfers])
 
   const now = today()
   const range = {
@@ -158,6 +173,7 @@ function ScheduleDetail({
             toWallet={toWallet}
             occurrences={occurrences}
             stored={stored}
+            actuals={actuals}
           />
         )}
       </section>
@@ -192,11 +208,14 @@ function OccurrenceList({
   toWallet,
   occurrences,
   stored,
+  actuals,
 }: {
   wallet: Wallet
   toWallet: Wallet | undefined
   occurrences: readonly ChainOccurrence[]
   stored: readonly OccurrenceRow[]
+  /** The Actuals Occurrences are Reconciled to, by id, as they load. */
+  actuals: ReadonlyMap<string, ReconciledActual>
 }) {
   // The key of the Occurrence whose editor is open.
   const [editing, setEditing] = useState<string | null>(null)
@@ -212,11 +231,14 @@ function OccurrenceList({
         const overridden =
           row !== undefined && (row.overrideAmountCents !== null || row.overrideDate !== null)
         const open = editing === key
+        const actualId = row?.reconciledTransactionId ?? row?.reconciledTransferId
+        const actual = actualId == null ? undefined : actuals.get(actualId)
         const summary = (
           <OccurrenceSummary
             occurrence={occurrence}
             overridden={overridden}
-            amount={shownOnWallet(schedule, wallet, occurrence.amountCents)}
+            amount={shownOnWallet(schedule, wallet, actual?.amountCents ?? occurrence.amountCents)}
+            actualDate={actual?.date}
           />
         )
         return (
@@ -299,10 +321,13 @@ function OccurrenceSummary({
   occurrence,
   overridden,
   amount,
+  actualDate,
 }: {
   occurrence: Occurrence
   overridden: boolean
   amount: number
+  /** The date of the Actual it is Reconciled to, once loaded. */
+  actualDate?: string | undefined
 }) {
   const moved = occurrence.date !== occurrence.nominalDate
   const skipped = occurrence.state === "skipped"
@@ -315,6 +340,11 @@ function OccurrenceSummary({
         {moved ? (
           <span className="text-xs text-muted-foreground">
             Moved from {formatDisplayDate(occurrence.nominalDate)}
+          </span>
+        ) : null}
+        {actualDate !== undefined && actualDate !== occurrence.date ? (
+          <span className="text-xs text-muted-foreground">
+            Actual on {formatDisplayDate(actualDate)}
           </span>
         ) : null}
         <span className="mt-1 flex flex-wrap gap-1 empty:hidden">

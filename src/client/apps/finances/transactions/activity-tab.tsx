@@ -1,6 +1,8 @@
 import { cn } from "cn"
 import { ChevronRightIcon } from "lucide-react"
 import { useState } from "react"
+import { IgnoredLinesDialog } from "@/apps/finances/transactions/ignored-lines-dialog"
+import { type ReconciledTo, useReconciledTo } from "@/apps/finances/transactions/reconcile-choices"
 import {
   type ActivityRow,
   EditActivityDialog,
@@ -27,6 +29,8 @@ const PAGE_SIZE = 25
 type Names = {
   account: ReadonlyMap<string, string>
   category: ReadonlyMap<string, string>
+  /** What each Reconciled Actual is Reconciled to, by its id. */
+  reconciledTo: ReadonlyMap<string, ReconciledTo>
   wallet: ReadonlyMap<string, string>
 }
 
@@ -45,11 +49,12 @@ function byDate(
 /**
  * A Wallet's Activity: its outstanding one-off Planned items, then its Actuals and Transfers
  * newest first, a page at a time. A Transfer shows in both of its Wallets. Each row opens its
- * editor.
+ * editor. Uploaded lines someone deleted are listed apart.
  */
 export function ActivityTab({ wallet }: { wallet: Wallet }) {
   const [count, setCount] = useState(PAGE_SIZE)
   const [editing, setEditing] = useState<ActivityRow | null>(null)
+  const [showIgnored, setShowIgnored] = useState(false)
   const { oneOffs, isLoading: oneOffsLoading } = useOutstandingOneOffs(wallet.id)
   const { plannedTransfers, isLoading: plannedTransfersLoading } = useOutstandingPlannedTransfers(
     wallet.id,
@@ -60,10 +65,12 @@ export function ActivityTab({ wallet }: { wallet: Wallet }) {
   const { data: accounts } = useFinancesAccounts()
   const { data: categories } = useCategories()
   const { data: wallets } = useWallets()
+  const reconciledTo = useReconciledTo(wallet.id)
   const names: Names = {
     account: new Map(accounts.map((account) => [account.id, account.name])),
     category: new Map(categories.map((category) => [category.id, category.name])),
     wallet: new Map(wallets.map((each) => [each.id, each.name])),
+    reconciledTo,
   }
   const now = today()
   const upcoming = byDate(
@@ -143,9 +150,21 @@ export function ActivityTab({ wallet }: { wallet: Wallet }) {
             Show older Actuals
           </Button>
         ) : null}
+        <Button
+          variant="link"
+          className="h-11 self-start px-0 text-muted-foreground"
+          onClick={() => setShowIgnored(true)}
+        >
+          Ignored lines
+        </Button>
       </section>
 
-      <EditActivityDialog editing={editing} onClose={() => setEditing(null)} />
+      <EditActivityDialog
+        onWalletId={wallet.id}
+        editing={editing}
+        onClose={() => setEditing(null)}
+      />
+      <IgnoredLinesDialog wallet={wallet} open={showIgnored} onOpenChange={setShowIgnored} />
     </div>
   )
 }
@@ -177,6 +196,7 @@ function ActivityItem({
           cents: item.row.amountCents,
         }
   const shown = toShown(wallet, cents)
+  const reconciledTo = names.reconciledTo.get(item.row.id)
   return (
     <li>
       <button
@@ -188,6 +208,7 @@ function ActivityItem({
           <p className="truncate font-medium">{label}</p>
           <p className="truncate text-sm text-muted-foreground">
             {formatDisplayDate(item.row.date)} · {detail}
+            {reconciledTo === undefined ? null : ` · Reconciled to ${reconciledTo.label}`}
             {overdue ? (
               <span className="text-amber-700 dark:text-amber-400"> · Overdue</span>
             ) : null}

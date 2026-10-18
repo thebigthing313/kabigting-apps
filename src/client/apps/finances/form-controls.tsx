@@ -39,7 +39,7 @@ export function WalletSelect({
   value: string
   invalid: boolean
   disabled?: boolean
-  onBlur: () => void
+  onBlur?: () => void
   onChange: (walletId: string) => void
 }) {
   return (
