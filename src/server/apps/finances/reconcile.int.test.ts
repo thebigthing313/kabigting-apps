@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm"
 import { afterAll, beforeAll, describe, expect, test } from "vitest"
-import { financesTransactions } from "#server/db/schema/index.ts"
+import { financesTransactions, financesTransfers } from "#server/db/schema/index.ts"
 import { createTestServer, json, type TestServer } from "#server/test/server.ts"
 import {
   categoryRow,
@@ -10,6 +10,8 @@ import {
   scheduleRow,
   transactionRow,
   transactionRows,
+  transferRow,
+  transferRows,
   walletRow,
 } from "#shared/finances/schemas.ts"
 import { newId } from "#shared/ids.ts"
@@ -84,7 +86,7 @@ async function transaction(
 }
 
 /** An unreviewed uploaded line, as an upload stores it. */
-async function uploaded(walletId: string) {
+async function uploaded(walletId: string, body: { amountCents?: number } = {}) {
   const [row] = await server.db
     .insert(financesTransactions)
     .values({
@@ -95,6 +97,7 @@ async function uploaded(walletId: string) {
       source: "ofx",
       sourceKey: `FITID-${newId()}`,
       bankDescription: "MADE-UP LANDLORD",
+      ...body,
     })
     .returning()
   return row!
@@ -218,7 +221,7 @@ describe("reconcile an Occurrence", () => {
     expect(planned?.reconciledActualId).toBeNull()
   })
 
-  test("refuses what isn't an outstanding Occurrence of this Wallet's Transaction Schedule", async () => {
+  test("refuses what isn't an outstanding Occurrence of this Wallet's Schedule", async () => {
     const walletId = await newWallet()
     const otherWallet = await newWallet()
     const schedule = await rent(walletId)
@@ -231,12 +234,6 @@ describe("reconcile an Occurrence", () => {
       skipped: true,
     })
     expect(skip.status).toBe(201)
-    const transfer = await rent(walletId, {
-      toWalletId: otherWallet,
-      amountCents: 10_000,
-      categoryId: null,
-    })
-
     // Not a date the Schedule falls on, or an unknown Schedule.
     await expectStatus(
       await reconcileOccurrence(schedule.id, "2026-11-02", actual.id),
@@ -257,12 +254,6 @@ describe("reconcile an Occurrence", () => {
     // Another Wallet's Actual.
     await expectStatus(
       await reconcileOccurrence(schedule.id, "2026-11-01", elsewhere.id),
-      400,
-      "validation_failed",
-    )
-    // A Transfer Schedule is Reconciled to a Transfer, not a Transaction.
-    await expectStatus(
-      await reconcileOccurrence(transfer.id, "2026-11-01", actual.id),
       400,
       "validation_failed",
     )
@@ -423,6 +414,182 @@ describe("a Reconciled Actual", () => {
   })
 })
 
+/** A hand-entered Transfer from one Wallet to another. */
+async function transfer(
+  fromWalletId: string,
+  toWalletId: string,
+  status: "actual" | "planned",
+  body: Record<string, unknown> = {},
+) {
+  const response = await post("transfers", {
+    id: newId(),
+    status,
+    fromWalletId,
+    toWalletId,
+    date: "2026-11-02",
+    amountCents: 20_000,
+    ...body,
+  })
+  expect(response.status).toBe(201)
+  return transferRow.parse(await response.json())
+}
+
+/** A made-up card payment: a Transfer Schedule on the 1st from Nov 2026. */
+async function cardPayment(fromWalletId: string, toWalletId: string) {
+  return rent(fromWalletId, { toWalletId, amountCents: 20_000, categoryId: null })
+}
+
+function reconcileTransfer(plannedId: string, actualId: string) {
+  return post("reconcile", { plannedKind: "transfer", plannedRef: plannedId, actualId })
+}
+
+async function transfers(ids: string[]) {
+  const response = await post("transfers/query", { ids, includeIgnored: true })
+  return transferRows.parse(await response.json()).rows
+}
+
+describe("reconcile to a Planned Transfer", () => {
+  test("an Actual Transfer links to a Transfer Schedule's Occurrence", async () => {
+    const checking = await newWallet()
+    const card = await newWallet()
+    const schedule = await cardPayment(checking, card)
+    const paid = await transfer(checking, card, "actual", { amountCents: 19_500 })
+
+    const response = await reconcileOccurrence(schedule.id, "2026-11-01", paid.id)
+    expect(response.status).toBe(200)
+    const result = reconcileResult.parse(await response.json())
+    expect(result.occurrences).toEqual([
+      expect.objectContaining({ reconciledTransferId: paid.id, reconciledTransactionId: null }),
+    ])
+    expect(result.deletedTransactions).toEqual([])
+  })
+
+  test("an Actual Transfer links to a one-off Planned Transfer between the same Wallets", async () => {
+    const checking = await newWallet()
+    const card = await newWallet()
+    const planned = await transfer(checking, card, "planned")
+    const reversed = await transfer(card, checking, "planned")
+    const paid = await transfer(checking, card, "actual")
+
+    await expectStatus(await reconcileTransfer(reversed.id, paid.id), 400, "validation_failed")
+    const response = await reconcileTransfer(planned.id, paid.id)
+    expect(response.status).toBe(200)
+    const result = reconcileResult.parse(await response.json())
+    expect(result.transfers).toEqual([
+      expect.objectContaining({ id: planned.id, reconciledActualId: paid.id }),
+    ])
+    // One to one.
+    const again = await transfer(checking, card, "actual")
+    await expectStatus(await reconcileTransfer(planned.id, again.id), 409, "conflict")
+  })
+
+  test("a line on the from Wallet becomes an Actual Transfer, keyed on that side", async () => {
+    const checking = await newWallet()
+    const card = await newWallet()
+    const schedule = await cardPayment(checking, card)
+    const line = await uploaded(checking, { amountCents: -19_500 })
+
+    const response = await reconcileOccurrence(schedule.id, "2026-11-01", line.id)
+    expect(response.status).toBe(200)
+    const result = reconcileResult.parse(await response.json())
+    expect(result.deletedTransactions).toEqual([line.id])
+    const [made] = result.transfers
+    expect(made).toMatchObject({
+      status: "actual",
+      fromWalletId: checking,
+      toWalletId: card,
+      date: "2026-11-02",
+      amountCents: 19_500,
+      fromSource: "ofx",
+      fromBankDescription: "MADE-UP LANDLORD",
+      toSource: null,
+    })
+    expect(result.occurrences).toEqual([
+      expect.objectContaining({ reconciledTransferId: made?.id, reconciledTransactionId: null }),
+    ])
+    // The line's key moved: the Transaction is gone, and the Transfer holds it.
+    expect(await transactions([line.id])).toEqual([])
+    const [stored] = await server.db
+      .select({ key: financesTransfers.fromSourceKey })
+      .from(financesTransfers)
+      .where(eq(financesTransfers.id, made!.id))
+    expect(stored?.key).toBe(line.sourceKey)
+  })
+
+  test("a line on the to Wallet becomes an Actual Transfer keyed on the to side", async () => {
+    const checking = await newWallet()
+    const card = await newWallet()
+    const planned = await transfer(checking, card, "planned", { note: "Card payment" })
+    const line = await uploaded(card, { amountCents: 20_000 })
+
+    const result = reconcileResult.parse(
+      await (await reconcileTransfer(planned.id, line.id)).json(),
+    )
+    const made = result.transfers.find((row) => row.id !== planned.id)
+    expect(made).toMatchObject({
+      fromWalletId: checking,
+      toWalletId: card,
+      fromSource: null,
+      toSource: "ofx",
+      note: "Card payment",
+    })
+    expect(result.transfers.find((row) => row.id === planned.id)?.reconciledActualId).toBe(made?.id)
+  })
+
+  test("refuses a line moving the wrong way, a line on another Wallet, and a Transfer to a Planned Transaction", async () => {
+    const checking = await newWallet()
+    const card = await newWallet()
+    const elsewhere = await newWallet()
+    const planned = await transfer(checking, card, "planned")
+    const refund = await uploaded(checking, { amountCents: 20_000 })
+    const stray = await uploaded(elsewhere, { amountCents: -20_000 })
+    const paid = await transfer(checking, card, "actual")
+    const oneOff = await transaction(checking, "planned")
+
+    await expectStatus(await reconcileTransfer(planned.id, refund.id), 400, "validation_failed")
+    await expectStatus(await reconcileTransfer(planned.id, stray.id), 400, "validation_failed")
+    await expectStatus(await reconcileOneOff(oneOff.id, paid.id), 400, "validation_failed")
+    await expectStatus(await reconcileTransfer(oneOff.id, paid.id), 404, "not_found")
+    expect(await transactions([refund.id, stray.id])).toHaveLength(2)
+    expect((await transfers([planned.id]))[0]?.reconciledActualId).toBeNull()
+  })
+
+  test("Un-Reconcile frees the Planned Transfer and keeps the Actual Transfer", async () => {
+    const checking = await newWallet()
+    const card = await newWallet()
+    const schedule = await cardPayment(checking, card)
+    const planned = await transfer(checking, card, "planned")
+    const first = await transfer(checking, card, "actual")
+    const second = await transfer(checking, card, "actual")
+    await reconcileOccurrence(schedule.id, "2026-11-01", first.id)
+    await reconcileTransfer(planned.id, second.id)
+
+    const fromOccurrence = reconcileResult.parse(await (await unreconcile(first.id)).json())
+    expect(fromOccurrence.deletedOccurrences).toHaveLength(1)
+    const fromOneOff = reconcileResult.parse(await (await unreconcile(second.id)).json())
+    expect(fromOneOff.transfers).toEqual([
+      expect.objectContaining({ id: planned.id, reconciledActualId: null }),
+    ])
+    expect(await transfers([first.id, second.id])).toHaveLength(2)
+  })
+
+  test("a Reconciled Transfer keeps its Wallets", async () => {
+    const checking = await newWallet()
+    const card = await newWallet()
+    const other = await newWallet()
+    const planned = await transfer(checking, card, "planned")
+    const paid = await transfer(checking, card, "actual")
+    await reconcileTransfer(planned.id, paid.id)
+    for (const id of [planned.id, paid.id]) {
+      const response = await server.app.request(
+        `/api/finances/transfers/${id}`,
+        json("PATCH", { toWalletId: other }, headers),
+      )
+      await expectStatus(response, 409, "conflict")
+    }
+  })
+})
+
 describe("access", () => {
   test("both commands need Finances access, which the Admin holds", async () => {
     const walletId = await newWallet()
@@ -442,7 +609,7 @@ describe("access", () => {
 
   test("a malformed body is refused", async () => {
     await expectStatus(
-      await post("reconcile", { plannedKind: "transfer", plannedRef: newId(), actualId: newId() }),
+      await post("reconcile", { plannedKind: "bill", plannedRef: newId(), actualId: newId() }),
       400,
       "validation_failed",
     )

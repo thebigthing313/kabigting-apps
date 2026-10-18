@@ -1,6 +1,7 @@
 import { useState } from "react"
 import { toast } from "sonner"
 import {
+  type ActualOnWallet,
   ReconcileSection,
   reconcileBody,
   SuggestedMatches,
@@ -35,6 +36,7 @@ import {
 import { addTransfer, deleteTransfer, editTransfer, type Transfer } from "@/data/finances-transfers"
 import { useWallets } from "@/data/finances-wallets"
 import type { PlannedItem } from "@shared/finances/reconcile"
+import { transferAmountOn } from "@shared/finances/transfers"
 import { isImported, isImportedTransfer } from "@shared/finances/schemas"
 import { newId } from "@shared/ids"
 
@@ -48,6 +50,14 @@ export type ActivityRow =
 function useWalletChoices(...keep: (string | undefined)[]) {
   const { data: wallets } = useWallets()
   return wallets.filter((wallet) => !wallet.archived || keep.includes(wallet.id))
+}
+
+/** An Activity row's Actual as the Wallet it is opened from sees it, to Reconcile. */
+function actualOnWallet(item: ActivityRow, walletId: string): ActualOnWallet {
+  if (item.kind === "transaction") return { ...item.row, between: null }
+  const { id, date, fromWalletId, toWalletId } = item.row
+  const amountCents = transferAmountOn(item.row, walletId)
+  return { id, walletId, date, amountCents, between: { fromWalletId, toWalletId } }
 }
 
 /** The form is taller than a phone, so it scrolls under a fixed header. */
@@ -135,9 +145,12 @@ function importedRow(editing: ActivityRow): boolean {
 
 /** The editor an Activity row opens: every field it may change, and Delete. */
 export function EditActivityDialog({
+  onWalletId,
   editing,
   onClose,
 }: {
+  /** The Wallet whose Activity it is opened from. */
+  onWalletId: string
   /** The row being edited; null while closed. */
   editing: ActivityRow | null
   onClose: () => void
@@ -150,9 +163,7 @@ export function EditActivityDialog({
       ? [shown.row.fromWalletId, shown.row.toWalletId]
       : [shown?.row.walletId]),
   )
-  const wallet = wallets.find(
-    (candidate) => shown?.kind === "transaction" && candidate.id === shown.row.walletId,
-  )
+  const wallet = wallets.find((candidate) => candidate.id === onWalletId)
   const [confirming, setConfirming] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const noun = shown ? nounOf(shown) : "Actual"
@@ -223,9 +234,9 @@ export function EditActivityDialog({
                 }}
               />
             )}
-            {shown.kind === "transaction" && shown.row.status === "actual" ? (
+            {shown.row.status === "actual" ? (
               <ReconcileSection
-                actual={shown.row}
+                actual={actualOnWallet(shown, onWalletId)}
                 wallet={wallet ?? { shownAsOwed: false }}
                 onDone={onClose}
               />

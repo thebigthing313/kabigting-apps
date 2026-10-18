@@ -3,7 +3,7 @@ import { api } from "@/data/api"
 import { defineOnDemandCollection } from "@/data/collection-factory"
 import { readJson, reportError } from "@/data/error-handler"
 import { applyOccurrenceChanges } from "@/data/finances-occurrences"
-import { useActualTransfersSince } from "@/data/finances-transfers"
+import { useActualTransfersSince, writeTransfers } from "@/data/finances-transfers"
 import { settled } from "@/data/settled"
 import { nowInstant } from "@shared/dates"
 import type {
@@ -231,9 +231,12 @@ export function deleteTransaction(id: string): Promise<boolean> {
 
 /** Writes a Reconcile command's changed rows into the collections it touched. */
 async function applyReconcile(result: ReconcileResult): Promise<void> {
-  if (result.transactions.length > 0) {
-    await financesTransactions().utils.writeUpsert(result.transactions)
-  }
+  const transactions = financesTransactions()
+  if (result.transactions.length > 0) await transactions.utils.writeUpsert(result.transactions)
+  // A line Reconciled to a Planned Transfer became an Actual Transfer.
+  const gone = result.deletedTransactions.filter((id) => transactions.has(id))
+  if (gone.length > 0) await transactions.utils.writeDelete(gone)
+  await writeTransfers(result.transfers)
   await applyOccurrenceChanges(result.occurrences, result.deletedOccurrences)
 }
 

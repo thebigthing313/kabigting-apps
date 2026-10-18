@@ -416,38 +416,6 @@ export const transactionQuery = queryBody({
 })
 export const transactionRows = rowsResponse(transactionRow)
 
-// Reconcile: pairing an Actual with the Planned item it fulfils, one to one.
-
-/**
- * Reconcile `actualId` to a Planned item: an Occurrence, named by its Schedule and nominal date,
- * or a one-off Planned Transaction, named by its id. Planned Transfers come with Transfers.
- */
-export const reconcile = z.discriminatedUnion("plannedKind", [
-  z.strictObject({
-    plannedKind: z.literal("occurrence"),
-    plannedRef: z.strictObject({ scheduleId: id, nominalDate: isoDate }),
-    actualId: id,
-  }),
-  z.strictObject({
-    plannedKind: z.literal("transaction"),
-    plannedRef: id,
-    actualId: id,
-  }),
-])
-
-/** Un-Reconcile the Actual: its Planned item is outstanding again. */
-export const unreconcile = z.strictObject({ actualId: id })
-
-/** What a Reconcile or Un-Reconcile changed: rows to upsert, and stored Occurrences deleted. */
-export const reconcileResult = z.object({
-  occurrences: z.array(occurrenceRow),
-  deletedOccurrences: z.array(id),
-  transactions: z.array(transactionRow),
-})
-
-export type Reconcile = z.infer<typeof reconcile>
-export type ReconcileResult = z.infer<typeof reconcileResult>
-
 export type CreateTransaction = z.input<typeof createTransaction>
 export type UpdateTransaction = z.infer<typeof updateTransaction>
 export type TransactionRow = z.infer<typeof transactionRow>
@@ -565,3 +533,37 @@ export function isImportedTransfer(transfer: { fromSource: Source; toSource: Sou
 export type CreateTransfer = z.input<typeof createTransfer>
 export type UpdateTransfer = z.infer<typeof updateTransfer>
 export type TransferRow = z.infer<typeof transferRow>
+
+// Reconcile: pairing an Actual with the Planned item it fulfils, one to one.
+
+/**
+ * Reconcile `actualId` (an Actual Transaction or Actual Transfer) to a Planned item: an
+ * Occurrence, named by its Schedule and nominal date; a one-off Planned Transaction; or a one-off
+ * Planned Transfer, each named by its id. An Actual Transaction Reconciled to a Planned Transfer
+ * becomes an Actual Transfer, keyed on its Wallet's side.
+ */
+export const reconcile = z.discriminatedUnion("plannedKind", [
+  z.strictObject({
+    plannedKind: z.literal("occurrence"),
+    plannedRef: z.strictObject({ scheduleId: id, nominalDate: isoDate }),
+    actualId: id,
+  }),
+  z.strictObject({ plannedKind: z.literal("transaction"), plannedRef: id, actualId: id }),
+  z.strictObject({ plannedKind: z.literal("transfer"), plannedRef: id, actualId: id }),
+])
+
+/** Un-Reconcile the Actual: its Planned item is outstanding again. */
+export const unreconcile = z.strictObject({ actualId: id })
+
+/** What a Reconcile or Un-Reconcile changed: rows to upsert, and the ids of rows deleted. */
+export const reconcileResult = z.object({
+  occurrences: z.array(occurrenceRow),
+  deletedOccurrences: z.array(id),
+  transactions: z.array(transactionRow),
+  /** An Actual Transaction that became an Actual Transfer. */
+  deletedTransactions: z.array(id),
+  transfers: z.array(transferRow),
+})
+
+export type Reconcile = z.infer<typeof reconcile>
+export type ReconcileResult = z.infer<typeof reconcileResult>

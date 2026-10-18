@@ -129,3 +129,52 @@ test("from Activity an Actual is Reconciled to any outstanding Planned item, and
   await expect(upcoming).toContainText(`E2E repair ${run}`)
   await expect(upcoming).toContainText("-$30.00")
 })
+
+test("an Actual Reconciled to a Planned Transfer becomes an Actual Transfer", async ({
+  page,
+}, testInfo) => {
+  test.slow()
+  const run = `${testInfo.project.name} ${Date.now()}`
+  const checking = await post(page, "wallets", { name: `E2E paying ${run}` })
+  const card = await post(page, "wallets", { name: `E2E card ${run}` })
+  await post(page, "transfers", {
+    status: "planned",
+    fromWalletId: checking,
+    toWalletId: card,
+    date: addDays(today(), 2),
+    amountCents: 20_000,
+  })
+  await post(page, "transactions", {
+    status: "actual",
+    walletId: checking,
+    date: today(),
+    amountCents: -20_000,
+    note: `E2E card payment ${run}`,
+  })
+
+  await page.goto(`/finances/wallets/${checking}`)
+  const upcoming = page.getByRole("list", { name: "Upcoming one-offs" })
+  await expect(upcoming).toContainText(`Transfer to E2E card ${run}`)
+  const actuals = page.getByRole("list", { name: "Actuals" })
+  await actuals
+    .getByRole("button")
+    .filter({ hasText: `E2E card payment ${run}` })
+    .click()
+
+  const editor = page.getByRole("dialog")
+  await editor.getByRole("button", { name: "Reconcile to Planned…" }).click()
+  const choice = editor
+    .getByRole("list", { name: "Outstanding Planned" })
+    .getByRole("button")
+    .filter({ hasText: `Transfer to E2E card ${run}` })
+  await expect(choice).toContainText("Suggested")
+  await choice.click()
+  await expect(editor).toBeHidden()
+
+  // The line is now the Transfer's paid side: a Transfer row, Reconciled, and nothing upcoming.
+  const row = actuals.getByRole("button").first()
+  await expect(row).toContainText(`Transfer to E2E card ${run}`)
+  await expect(row).toContainText(`Reconciled to Transfer to E2E card ${run}`)
+  await expect(row).toContainText("-$200.00")
+  await expect(page.getByText("No one-off Planned items.")).toBeVisible()
+})

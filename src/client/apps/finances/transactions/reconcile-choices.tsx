@@ -1,7 +1,7 @@
 import { useState } from "react"
 import { toast } from "sonner"
 import { scheduleLabel } from "@/apps/finances/schedules/schedule-display"
-import { transactionLabel } from "@/apps/finances/transactions/transaction-display"
+import { transactionLabel, transferLabel } from "@/apps/finances/transactions/transaction-display"
 import type { MatchesProps } from "@/apps/finances/transactions/transaction-form"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -11,17 +11,19 @@ import { useStoredOccurrences } from "@/data/finances-occurrences"
 import { useSchedules } from "@/data/finances-schedules"
 import {
   reconcileActual,
-  type Transaction,
   unreconcileActual,
   useOutstandingOneOffs,
 } from "@/data/finances-transactions"
+import { useOutstandingPlannedTransfers } from "@/data/finances-transfers"
 import { useWallets } from "@/data/finances-wallets"
 import { addMonthsClamped, formatDisplayDate, today } from "@shared/dates"
 import {
   outstandingPlanned,
   type PlannedItem,
   plannedKey,
+  reconcilableTo,
   suggestMatches,
+  type TransferWallets,
 } from "@shared/finances/reconcile"
 import type { Reconcile } from "@shared/finances/schemas"
 import { toShown } from "@shared/finances/wallets"
@@ -35,13 +37,15 @@ const MONTHS_BACK = 3
 const MONTHS_AHEAD = 6
 
 /**
- * A Wallet's outstanding Planned Transactions, by date: every outstanding one-off, and its
- * Schedules' Occurrences from their start to 6 months after `date`.
+ * A Wallet's outstanding Planned Transactions and Transfers, by date, signed as they move it:
+ * every outstanding one-off, and its Schedules' Occurrences from their start to 6 months after
+ * `date`.
  */
 export function useOutstandingPlanned(walletId: string, date: string): LabelledPlanned[] {
   const { data: schedules } = useSchedules()
   const { data: occurrences } = useStoredOccurrences()
   const { oneOffs } = useOutstandingOneOffs(walletId)
+  const { plannedTransfers } = useOutstandingPlannedTransfers(walletId)
   const { data: accounts } = useFinancesAccounts()
   const { data: wallets } = useWallets()
   const accountName = new Map(accounts.map((account) => [account.id, account.name]))
@@ -50,38 +54,51 @@ export function useOutstandingPlanned(walletId: string, date: string): LabelledP
   const oneOffOf = new Map(oneOffs.map((row) => [row.id, row]))
   // Back to the Wallet's first Schedule, so any Overdue Occurrence can be picked; every
   // outstanding one-off, however far off.
+  const touching = schedules.filter(
+    (schedule) => schedule.walletId === walletId || schedule.toWalletId === walletId,
+  )
   const dates = [
     addMonthsClamped(date, -MONTHS_BACK),
     addMonthsClamped(date, MONTHS_AHEAD),
-    ...schedules.filter((schedule) => schedule.walletId === walletId).map((s) => s.startDate),
+    ...touching.map((schedule) => schedule.startDate),
     ...oneOffs.map((row) => row.date),
+    ...plannedTransfers.map((row) => row.date),
   ].toSorted()
   const items = outstandingPlanned({
     walletId,
-    schedules,
+    schedules: touching,
     occurrences,
     planned: oneOffs,
+    plannedTransfers,
     range: { from: dates[0] ?? date, to: dates.at(-1) ?? date },
   })
   return items.map((item) => {
     if (item.kind === "occurrence") {
       const schedule = scheduleOf.get(item.scheduleId)
-      return { ...item, label: schedule ? scheduleLabel(schedule, walletName, accountName) : "" }
+      const label = schedule ? scheduleLabel(schedule, walletName, accountName, walletId) : ""
+      return { ...item, label }
+    }
+    if (item.kind === "transfer") {
+      return {
+        ...item,
+        label: item.between ? transferLabel(item.between, walletId, walletName) : "",
+      }
     }
     const oneOff = oneOffOf.get(item.id)
     return { ...item, label: oneOff ? transactionLabel(oneOff, accountName) : "" }
   })
 }
 
-/** What the Reconcile command names: the Occurrence, or the one-off's id. */
+/** What the Reconcile command names: the Occurrence, or the one-off's id and kind. */
 export function reconcileBody(item: PlannedItem, actualId: string): Reconcile {
-  return item.kind === "occurrence"
-    ? {
-        plannedKind: "occurrence",
-        plannedRef: { scheduleId: item.scheduleId, nominalDate: item.nominalDate },
-        actualId,
-      }
-    : { plannedKind: "transaction", plannedRef: item.id, actualId }
+  if (item.kind === "occurrence") {
+    return {
+      plannedKind: "occurrence",
+      plannedRef: { scheduleId: item.scheduleId, nominalDate: item.nominalDate },
+      actualId,
+    }
+  }
+  return { plannedKind: item.kind, plannedRef: item.id, actualId }
 }
 
 /** The label, date, Overdue mark and amount of a Planned item, as its Wallet shows them. */
@@ -110,7 +127,8 @@ function PlannedSummary({
 
 /**
  * The Add form's suggested Planned matches for the Actual being typed. A person may tick one to
- * Reconcile on save; ticking another moves the tick.
+ * Reconcile on save; ticking another moves the tick. A Planned Transfer among them turns the
+ * Actual into an Actual Transfer.
  */
 export function SuggestedMatches({
   walletId,
@@ -157,13 +175,14 @@ export function SuggestedMatches({
 export type ReconciledTo = { label: string; date: string }
 
 /**
- * What each of a Wallet's Reconciled Actuals is Reconciled to, by the Actual's id: an
- * Occurrence of one of its Schedules, or one of its one-off Planned items.
+ * What each of a Wallet's Reconciled Actuals (Transactions and Transfers) is Reconciled to, by
+ * the Actual's id: an Occurrence of a Schedule, or a one-off Planned Transaction or Transfer.
  */
 export function useReconciledTo(walletId: string): ReadonlyMap<string, ReconciledTo> {
   const { data: occurrences } = useStoredOccurrences()
   const { data: schedules } = useSchedules()
   const { planned } = useOutstandingOneOffs(walletId)
+  const { planned: plannedTransfers } = useOutstandingPlannedTransfers(walletId)
   const { data: accounts } = useFinancesAccounts()
   const { data: wallets } = useWallets()
   const accountName = new Map(accounts.map((account) => [account.id, account.name]))
@@ -172,9 +191,11 @@ export function useReconciledTo(walletId: string): ReadonlyMap<string, Reconcile
   const reconciled = new Map<string, ReconciledTo>()
   for (const row of occurrences) {
     const schedule = scheduleOf.get(row.scheduleId)
-    if (row.reconciledTransactionId === null || schedule?.walletId !== walletId) continue
-    reconciled.set(row.reconciledTransactionId, {
-      label: scheduleLabel(schedule, walletName, accountName),
+    const actualId = row.reconciledTransactionId ?? row.reconciledTransferId
+    const onWallet = schedule?.walletId === walletId || schedule?.toWalletId === walletId
+    if (actualId === null || !schedule || !onWallet) continue
+    reconciled.set(actualId, {
+      label: scheduleLabel(schedule, walletName, accountName, walletId),
       date: row.overrideDate ?? row.nominalDate,
     })
   }
@@ -185,25 +206,45 @@ export function useReconciledTo(walletId: string): ReadonlyMap<string, Reconcile
       date: row.date,
     })
   }
+  for (const row of plannedTransfers) {
+    if (row.reconciledActualId === null) continue
+    reconciled.set(row.reconciledActualId, {
+      label: transferLabel(row, walletId, walletName),
+      date: row.date,
+    })
+  }
   return reconciled
+}
+
+/** An Actual as the Wallet it is opened from sees it. */
+export type ActualOnWallet = {
+  id: string
+  /** The Wallet whose Activity it is opened from. */
+  walletId: string
+  date: string
+  /** Signed as it moves that Wallet. */
+  amountCents: number
+  /** Set on an Actual Transfer. */
+  between: TransferWallets | null
 }
 
 /**
  * The editor's Reconcile section for an Actual: what it is Reconciled to, with Un-Reconcile, or
- * the outstanding Planned items in its Wallet to Reconcile it to, suggestions first.
+ * the outstanding Planned items it can be Reconciled to, suggestions first. An Actual Transaction
+ * Reconciled to a Planned Transfer becomes an Actual Transfer.
  */
 export function ReconcileSection({
   actual,
   wallet,
   onDone,
 }: {
-  actual: Transaction
+  actual: ActualOnWallet
   wallet: { shownAsOwed: boolean }
   /** After a Reconcile or Un-Reconcile the server accepted. */
   onDone: () => void
 }) {
   const reconciledTo = useReconciledTo(actual.walletId).get(actual.id)
-  const outstanding = useOutstandingPlanned(actual.walletId, actual.date)
+  const outstanding = reconcilableTo(actual, useOutstandingPlanned(actual.walletId, actual.date))
   const [picking, setPicking] = useState(false)
   const [pending, setPending] = useState(false)
 

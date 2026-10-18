@@ -9,7 +9,8 @@ import { useFinancesAccounts } from "@/data/finances-accounts"
 import { useCategories } from "@/data/finances-categories"
 import { saveOccurrence, useStoredOccurrences } from "@/data/finances-occurrences"
 import { useSchedules, type Schedule } from "@/data/finances-schedules"
-import { type Transaction, useTransactionsById } from "@/data/finances-transactions"
+import { useTransactionsById } from "@/data/finances-transactions"
+import { useTransfersById } from "@/data/finances-transfers"
 import { useWallets, type Wallet } from "@/data/finances-wallets"
 import { addMonthsClamped, formatDisplayDate, today } from "@shared/dates"
 import {
@@ -26,6 +27,9 @@ import { cn } from "cn"
 /** How far back and ahead the Schedule page lists Occurrences, in months. */
 const MONTHS_BACK = 3
 const MONTHS_AHEAD = 6
+
+/** The amount and date of the Actual an Occurrence is Reconciled to; a Transfer's is positive. */
+type ReconciledActual = { amountCents: number; date: string }
 
 /** An Occurrence on the page, with the Schedule in the chain it falls on. */
 type ChainOccurrence = { schedule: Schedule; occurrence: Occurrence }
@@ -94,11 +98,15 @@ function ScheduleDetail({
   const storedOf = (member: Schedule) => stored.filter((row) => row.scheduleId === member.id)
   const reconciled = stored.some(isReconciled)
   // The Actuals are the truth for what was Reconciled: their amounts and dates are shown.
-  const actuals = useTransactionsById(
+  const transactions = useTransactionsById(
     stored.flatMap((row) =>
       row.reconciledTransactionId === null ? [] : [row.reconciledTransactionId],
     ),
   )
+  const transfers = useTransfersById(
+    stored.flatMap((row) => (row.reconciledTransferId === null ? [] : [row.reconciledTransferId])),
+  )
+  const actuals = new Map<string, ReconciledActual>([...transactions, ...transfers])
 
   const now = today()
   const range = {
@@ -207,7 +215,7 @@ function OccurrenceList({
   occurrences: readonly ChainOccurrence[]
   stored: readonly OccurrenceRow[]
   /** The Actuals Occurrences are Reconciled to, by id, as they load. */
-  actuals: ReadonlyMap<string, Transaction>
+  actuals: ReadonlyMap<string, ReconciledActual>
 }) {
   // The key of the Occurrence whose editor is open.
   const [editing, setEditing] = useState<string | null>(null)
@@ -223,10 +231,8 @@ function OccurrenceList({
         const overridden =
           row !== undefined && (row.overrideAmountCents !== null || row.overrideDate !== null)
         const open = editing === key
-        const actual =
-          row?.reconciledTransactionId == null
-            ? undefined
-            : actuals.get(row.reconciledTransactionId)
+        const actualId = row?.reconciledTransactionId ?? row?.reconciledTransferId
+        const actual = actualId == null ? undefined : actuals.get(actualId)
         const summary = (
           <OccurrenceSummary
             occurrence={occurrence}

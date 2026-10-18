@@ -291,6 +291,7 @@ describe("TransactionForm suggested matches", () => {
     amountCents: -4_000,
     accountId: null,
     categoryId: null,
+    between: null,
   }
 
   /** Stands in for the live suggestions: shows what it was asked about and offers one match. */

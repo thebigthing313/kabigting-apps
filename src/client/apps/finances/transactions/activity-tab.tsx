@@ -150,7 +150,11 @@ export function ActivityTab({ wallet }: { wallet: Wallet }) {
         ) : null}
       </section>
 
-      <EditActivityDialog editing={editing} onClose={() => setEditing(null)} />
+      <EditActivityDialog
+        onWalletId={wallet.id}
+        editing={editing}
+        onClose={() => setEditing(null)}
+      />
     </div>
   )
 }
