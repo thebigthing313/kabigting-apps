@@ -3,6 +3,7 @@ import { ChevronRightIcon } from "lucide-react"
 import { useState } from "react"
 import { IgnoredLinesDialog } from "@/apps/finances/transactions/ignored-lines-dialog"
 import { type ReconciledTo, useReconciledTo } from "@/apps/finances/transactions/reconcile-choices"
+import { ToReviewPanel } from "@/apps/finances/transactions/to-review"
 import {
   type ActivityRow,
   EditActivityDialog,
@@ -16,7 +17,7 @@ import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useFinancesAccounts } from "@/data/finances-accounts"
 import { useCategories } from "@/data/finances-categories"
-import { useActivity, useOutstandingOneOffs } from "@/data/finances-transactions"
+import { useActivity, useOutstandingOneOffs, useToReview } from "@/data/finances-transactions"
 import { useOutstandingPlannedTransfers, useTransferActivity } from "@/data/finances-transfers"
 import { useWallets, type Wallet } from "@/data/finances-wallets"
 import { formatDisplayDate, today } from "@shared/dates"
@@ -47,8 +48,8 @@ function byDate(
 }
 
 /**
- * A Wallet's Activity: its outstanding one-off Planned items, then its Actuals and Transfers
- * newest first, a page at a time. A Transfer shows in both of its Wallets. Each row opens its
+ * A Wallet's Activity: uploaded lines To review, its outstanding one-off Planned items, then its
+ * Actuals and Transfers newest first, a page at a time. A Transfer shows in both of its Wallets. Each row opens its
  * editor. Uploaded lines someone deleted are listed apart.
  */
 export function ActivityTab({ wallet }: { wallet: Wallet }) {
@@ -62,6 +63,7 @@ export function ActivityTab({ wallet }: { wallet: Wallet }) {
   // One more than shown of each, to know whether there are older ones.
   const { data: actuals, isLoading: actualsLoading } = useActivity(wallet.id, count)
   const { data: transfers, isLoading: transfersLoading } = useTransferActivity(wallet.id, count)
+  const { lines: toReview, isLoading: toReviewLoading } = useToReview(wallet.id)
   const { data: accounts } = useFinancesAccounts()
   const { data: categories } = useCategories()
   const { data: wallets } = useWallets()
@@ -86,8 +88,19 @@ export function ActivityTab({ wallet }: { wallet: Wallet }) {
   const upcomingLoading = oneOffsLoading || plannedTransfersLoading
   const pastLoading = actualsLoading || transfersLoading
 
+  // To review sits on top; the lists below wait for it, so they don't jump down when it appears.
+  if (toReviewLoading) {
+    return (
+      <div className="flex flex-col gap-2">
+        <Skeleton className="h-14" />
+        <Skeleton className="h-14" />
+      </div>
+    )
+  }
+
   return (
     <div className="flex flex-col gap-6">
+      <ToReviewPanel wallet={wallet} lines={toReview} />
       <section aria-labelledby="upcoming-one-offs" className="flex flex-col gap-2">
         <h2 id="upcoming-one-offs" className="font-medium">
           Upcoming one-offs

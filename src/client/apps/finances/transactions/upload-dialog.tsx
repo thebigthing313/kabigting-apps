@@ -18,7 +18,7 @@ type Step =
   | { step: "file" }
   /** The file's bank account is new to the household: which Wallet is it? */
   | { step: "wallet"; file: File; last4: string }
-  | { step: "done"; added: number; duplicates: number; walletName: string }
+  | { step: "done"; added: number; duplicates: number; toReview: number; walletName: string }
 
 const TITLES: Record<Step["step"], string> = {
   file: "Upload file",
@@ -56,6 +56,7 @@ export function UploadDialog({
         step: "done",
         added: result.inserted.length,
         duplicates: result.duplicates,
+        toReview: result.toReview,
         walletName: result.wallet.name,
       })
     }
@@ -95,6 +96,14 @@ export function UploadDialog({
             <p className="text-lg font-medium" role="status">
               {step.added} added, {step.duplicates} already here
             </p>
+            {step.toReview > 0 ? (
+              <p className="text-sm text-muted-foreground">
+                {step.toReview === 1
+                  ? "1 line has a suggestion"
+                  : `${step.toReview} lines have suggestions`}{" "}
+                to confirm in To review, on the Wallet&apos;s Activity tab.
+              </p>
+            ) : null}
             <Button
               className="h-11 self-start"
               onClick={() => {
