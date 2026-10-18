@@ -62,12 +62,24 @@ async function override(scheduleId: string, nominalDate: string, body = {}) {
   return occurrenceRow.parse(await response.json())
 }
 
-/** Reconciling arrives with hand entry; until then the link is written straight to the table. */
+/**
+ * Reconciles one Occurrence to a hand-entered Actual. The Reconcile command arrives later; until
+ * then the link is written straight to the table.
+ */
 async function reconciled(scheduleId: string, nominalDate: string) {
   const row = await override(scheduleId, nominalDate)
+  const actualId = newId()
+  const actual = await post("transactions", {
+    id: actualId,
+    status: "actual",
+    walletId: checking,
+    date: nominalDate,
+    amountCents: -150_000,
+  })
+  expect(actual.status).toBe(201)
   await server.db
     .update(financesOccurrences)
-    .set({ overrideAmountCents: null, reconciledTransactionId: newId() })
+    .set({ overrideAmountCents: null, reconciledTransactionId: actualId })
     .where(eq(financesOccurrences.id, row.id))
   return row
 }
