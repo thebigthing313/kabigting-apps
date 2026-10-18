@@ -21,7 +21,7 @@ import { useActivity, useOutstandingOneOffs, useToReview } from "@/data/finances
 import { useOutstandingPlannedTransfers, useTransferActivity } from "@/data/finances-transfers"
 import { useWallets, type Wallet } from "@/data/finances-wallets"
 import { formatDisplayDate, today } from "@shared/dates"
-import { transferAmountOn } from "@shared/finances/transfers"
+import { onlySideArrived, transferAmountOn } from "@shared/finances/transfers"
 import { toShown } from "@shared/finances/wallets"
 import { format } from "@shared/money"
 
@@ -210,6 +210,8 @@ function ActivityItem({
         }
   const shown = toShown(wallet, cents)
   const reconciledTo = names.reconciledTo.get(item.row.id)
+  // A Transfer whose line arrived from one Wallet still waits for the other Wallet's line.
+  const oneSide = item.kind === "transfer" && onlySideArrived(item.row) !== null
   return (
     <li>
       <button
@@ -224,6 +226,9 @@ function ActivityItem({
             {reconciledTo === undefined ? null : ` · Reconciled to ${reconciledTo.label}`}
             {overdue ? (
               <span className="text-amber-700 dark:text-amber-400"> · Overdue</span>
+            ) : null}
+            {oneSide ? (
+              <span className="text-amber-700 dark:text-amber-400"> · Only one side arrived</span>
             ) : null}
           </p>
         </div>

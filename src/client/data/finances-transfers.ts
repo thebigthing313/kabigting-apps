@@ -1,4 +1,4 @@
-import { and, eq, gt, inArray, or, useLiveQuery } from "@tanstack/react-db"
+import { and, eq, gt, gte, inArray, lte, or, useLiveQuery } from "@tanstack/react-db"
 import { api } from "@/data/api"
 import { defineOnDemandCollection } from "@/data/collection-factory"
 import { readJson } from "@/data/error-handler"
@@ -117,6 +117,37 @@ export function useTransfersById(ids: readonly string[]) {
     [transfers, key],
   )
   return new Map((data ?? []).map((row) => [row.id, row]))
+}
+
+/**
+ * A Wallet's Actual Transfers dated `from` to `to`, inclusive, out of it or into it, ignored ones
+ * left out: those an uploaded line may be the other side of. Nothing loads while `range` is null.
+ */
+export function useActualTransfersBetween(
+  walletId: string,
+  range: { from: string; to: string } | null,
+) {
+  const transfers = financesTransfers()
+  const from = range?.from
+  const to = range?.to
+  const { data } = useLiveQuery(
+    (q) =>
+      from === undefined || to === undefined
+        ? undefined
+        : q
+            .from({ row: transfers })
+            .where(({ row }) =>
+              and(
+                touches(row, walletId),
+                eq(row.status, "actual"),
+                eq(row.ignored, false),
+                gte(row.date, from),
+                lte(row.date, to),
+              ),
+            ),
+    [transfers, walletId, from, to],
+  )
+  return data ?? []
 }
 
 /** Writes Transfers a command changed on the server into the collection. */
