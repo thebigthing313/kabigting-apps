@@ -16,6 +16,7 @@ import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/c
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import type { NewSchedule } from "@/data/finances-schedules"
+import { inlineAddsSaved } from "@/data/inline-adds"
 import { today } from "@shared/dates"
 import { fromShown } from "@shared/finances/wallets"
 
@@ -133,7 +134,9 @@ export function ScheduleForm({
     defaultValues,
     validators: { onSubmit: scheduleFormSchema },
     onSubmit: async ({ value }) => {
-      await onSave(toSchedule(value, { shownAsOwed: isOwed(value.walletId) }))
+      const schedule = toSchedule(value, { shownAsOwed: isOwed(value.walletId) })
+      // A refused inline add clears its picker; the form stays open with the rest.
+      if (await inlineAddsSaved([schedule.accountId, schedule.categoryId])) await onSave(schedule)
     },
   })
 

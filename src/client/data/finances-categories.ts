@@ -4,6 +4,7 @@ import { defineRestCollection } from "@/data/collection-factory"
 import { readJson, reportError } from "@/data/error-handler"
 import { writeSchedules } from "@/data/finances-schedules"
 import { writeLoadedTransactions } from "@/data/finances-transactions"
+import { type InlineAdd, trackInlineAdd } from "@/data/inline-adds"
 import { nowInstant } from "@shared/dates"
 import type { CategoryMergeResult, CategoryRow, UpdateCategory } from "@shared/finances/schemas"
 import { newId } from "@shared/ids"
@@ -42,11 +43,14 @@ export function useCategories() {
   )
 }
 
-/** Shows the new Category at once and returns its id; a refusal rolls it back with a toast. */
-export function addCategory(name: string): string {
+/**
+ * Shows the new Category at once and returns its id, with whether the server stored it; a refusal
+ * rolls it back with a toast.
+ */
+export function addCategory(name: string): InlineAdd {
   const now = nowInstant()
   const id = newId()
-  financesCategories().insert({
+  const transaction = financesCategories().insert({
     id,
     name,
     archived: false,
@@ -54,7 +58,7 @@ export function addCategory(name: string): string {
     createdAt: now,
     updatedAt: now,
   })
-  return id
+  return trackInlineAdd(id, transaction)
 }
 
 export function renameCategory(id: string, name: string): void {

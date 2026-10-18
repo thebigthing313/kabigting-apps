@@ -1,5 +1,5 @@
 import { PencilIcon, PlusIcon } from "lucide-react"
-import { useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { NameDialog } from "@/apps/finances/name-dialog"
 import { Button } from "@/components/ui/button"
 import {
@@ -10,6 +10,7 @@ import {
   ComboboxItem,
   ComboboxList,
 } from "@/components/ui/combobox"
+import type { InlineAdd } from "@/data/inline-adds"
 
 export type PickerOption = { id: string; name: string; archived: boolean }
 
@@ -25,8 +26,8 @@ export type NamePickerProps = {
   /** The picked entry's id, or null for none. */
   value: string | null
   onValueChange: (id: string | null) => void
-  /** Creates an entry with this name and returns its id. */
-  onAdd: (name: string) => string
+  /** Creates an entry with this name: its id at once, and whether the server stored it. */
+  onAdd: (name: string) => InlineAdd
   onRename: (id: string, name: string) => void
 }
 
@@ -49,6 +50,11 @@ export function NamePicker({
 }: NamePickerProps) {
   const [query, setQuery] = useState("")
   const [renaming, setRenaming] = useState(false)
+  // What is picked now, for an add the server refuses after the pick has moved on.
+  const pickedNow = useRef(value)
+  useEffect(() => {
+    pickedNow.current = value
+  })
 
   const picked = options.find((option) => option.id === value) ?? null
   const selected: Item | null = picked ? { id: picked.id, name: picked.name, adding: false } : null
@@ -66,8 +72,14 @@ export function NamePicker({
         items={items}
         value={selected}
         onValueChange={(item) => {
-          if (item?.adding) onValueChange(onAdd(item.name))
-          else onValueChange(item?.id ?? null)
+          if (item?.adding) {
+            const { id: added, saved } = onAdd(item.name)
+            onValueChange(added)
+            // A refused add is rolled back; clear it, unless something else was picked since.
+            void saved.then((ok) => {
+              if (!ok && pickedNow.current === added) onValueChange(null)
+            })
+          } else onValueChange(item?.id ?? null)
         }}
         onInputValueChange={setQuery}
         itemToStringLabel={(item) => item.name}
