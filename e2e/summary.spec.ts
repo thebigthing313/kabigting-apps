@@ -1,5 +1,5 @@
 import type { Page } from "@playwright/test"
-import { formatMonth, shiftMonth, today } from "../src/shared/dates.ts"
+import { formatMonth, shiftMonth, thisMonth } from "../src/shared/dates.ts"
 import { expect, MEMBER_STATE, test } from "./fixtures.ts"
 
 test.use({ storageState: MEMBER_STATE })
@@ -16,11 +16,11 @@ test("the Monthly summary steps through months, counting only Actuals", async ({
 }, testInfo) => {
   test.slow()
   const run = `${testInfo.project.name} ${Date.now()}`
-  const thisMonth = today().slice(0, 7)
-  const lastMonth = shiftMonth(thisMonth, -1)
-  const twoMonthsAgo = shiftMonth(thisMonth, -2)
+  const current = thisMonth()
+  const lastMonth = shiftMonth(current, -1)
+  const twoMonthsAgo = shiftMonth(current, -2)
   // Older than anything else the e2e runs enter, so it is the first month with Actuals.
-  const firstMonth = shiftMonth(thisMonth, -40)
+  const firstMonth = shiftMonth(current, -40)
 
   const walletId = await post(page, "wallets", { name: `E2E summary wallet ${run}` })
   const otherWalletId = await post(page, "wallets", { name: `E2E summary other ${run}` })
@@ -37,7 +37,7 @@ test("the Monthly summary steps through months, counting only Actuals", async ({
   await actual(`${twoMonthsAgo}-10`, -10_000, foodId)
   await actual(`${lastMonth}-05`, -30_000, foodId)
   await actual(`${lastMonth}-15`, 100_000, payId)
-  await actual(`${thisMonth}-01`, -5_000, foodId)
+  await actual(`${current}-01`, -5_000, foodId)
   // Neither a Planned row nor a Transfer counts.
   await post(page, "transactions", {
     status: "planned",
@@ -79,7 +79,7 @@ test("the Monthly summary steps through months, counting only Actuals", async ({
 
   // Forward to this month, which reads "so far" and is as far as it goes.
   await page.getByRole("button", { name: "Next month" }).click()
-  await expect(month).toHaveText(`${formatMonth(thisMonth)} so far`)
+  await expect(month).toHaveText(`${formatMonth(current)} so far`)
   foodRow = spending.getByRole("listitem").filter({ hasText: food })
   await expect(foodRow).toContainText("-$50.00")
   await expect(foodRow).toContainText("Last month -$300.00")

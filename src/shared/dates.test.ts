@@ -11,6 +11,7 @@ import {
   monthInstantRange,
   monthDates,
   monthOf,
+  monthOfDate,
   nowInstant,
   shiftMonth,
   toPickerDate,
@@ -156,6 +157,10 @@ describe("calendar arithmetic", () => {
 })
 
 describe("calendar months", () => {
+  test("monthOfDate gives the calendar month a date falls in", () => {
+    expect(monthOfDate("2026-09-30")).toBe("2026-09")
+  })
+
   test("shiftMonth steps whole months across years", () => {
     expect(shiftMonth("2026-10", -1)).toBe("2026-09")
     expect(shiftMonth("2026-01", -1)).toBe("2025-12")

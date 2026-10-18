@@ -223,16 +223,26 @@ describe("isFarOverAverage", () => {
     expect(isFarOverAverage({ monthCents: -2_500, averageCents: 0 })).toBe(true)
     // Under the average.
     expect(isFarOverAverage({ monthCents: -1_000, averageCents: -15_000 })).toBe(false)
+    // A Category that usually earns, with nothing this month.
+    expect(isFarOverAverage({ monthCents: 0, averageCents: 300_000 })).toBe(false)
+    // Spending $30 where it usually earns: $30 over no usual spending.
+    expect(isFarOverAverage({ monthCents: -3_000, averageCents: 300_000 })).toBe(true)
   })
 })
 
 describe("summaryMonths", () => {
   test("opens on last month and reaches back to the first month with Actuals", () => {
-    expect(summaryMonths("2025-03", "2026-10")).toEqual({ earliest: "2025-03", opening: "2026-09" })
+    expect(summaryMonths("2025-03", "2026-10")).toEqual({ earliest: "2025-03", shown: "2026-09" })
   })
 
   test("opens on this month when the first Actuals are this month's, or there are none", () => {
-    expect(summaryMonths("2026-10", "2026-10")).toEqual({ earliest: "2026-10", opening: "2026-10" })
-    expect(summaryMonths(undefined, "2026-10")).toEqual({ earliest: "2026-10", opening: "2026-10" })
+    expect(summaryMonths("2026-10", "2026-10")).toEqual({ earliest: "2026-10", shown: "2026-10" })
+    expect(summaryMonths(undefined, "2026-10")).toEqual({ earliest: "2026-10", shown: "2026-10" })
+  })
+
+  test("shows a wanted month in reach, and the nearest one otherwise", () => {
+    expect(summaryMonths("2025-03", "2026-10", "2025-07").shown).toBe("2025-07")
+    expect(summaryMonths("2025-03", "2026-10", "2024-01").shown).toBe("2025-03")
+    expect(summaryMonths("2025-03", "2026-10", "2027-01").shown).toBe("2026-10")
   })
 })

@@ -116,6 +116,16 @@ export function formatMonthDay(date: string): string {
 
 // Calendar months are `YYYY-MM` strings.
 
+/** The calendar month a calendar date falls in. */
+export function monthOfDate(date: string): string {
+  return date.slice(0, 7)
+}
+
+/** The household's calendar month right now. */
+export function thisMonth(): string {
+  return monthOfDate(today())
+}
+
 /** The calendar month `months` after `month` (before it when negative). */
 export function shiftMonth(month: string, months: number): string {
   return addMonthsClamped(`${month}-01`, months).slice(0, 7)

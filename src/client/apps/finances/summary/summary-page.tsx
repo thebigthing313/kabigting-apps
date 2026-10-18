@@ -5,7 +5,14 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { useCategories } from "@/data/finances-categories"
 import { type Transaction, useActualsBetween, useFirstActual } from "@/data/finances-transactions"
 import { cn } from "cn"
-import { formatMonth, formatShortMonth, monthDates, shiftMonth, today } from "@shared/dates"
+import {
+  formatMonth,
+  formatShortMonth,
+  monthDates,
+  monthOfDate,
+  shiftMonth,
+  thisMonth,
+} from "@shared/dates"
 import {
   AVERAGE_MONTHS,
   type Figures,
@@ -19,12 +26,10 @@ import { format } from "@shared/money"
 
 /** One month's income, spending and net, and every Category, against last month and average. */
 export function SummaryPage({ month }: { month: string | undefined }) {
-  const thisMonth = today().slice(0, 7)
+  const current = thisMonth()
   const { first, isLoading } = useFirstActual()
-  const { earliest, opening } = summaryMonths(first?.date.slice(0, 7), thisMonth)
-  const wanted = month ?? opening
-  // A month out of reach (an old link) shows the nearest one there is.
-  const shown = wanted < earliest ? earliest : wanted > thisMonth ? thisMonth : wanted
+  const firstMonth = first === undefined ? undefined : monthOfDate(first.date)
+  const { earliest, shown } = summaryMonths(firstMonth, current, month)
 
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-4 pb-8">
@@ -33,7 +38,7 @@ export function SummaryPage({ month }: { month: string | undefined }) {
         <SummarySkeleton />
       ) : (
         <>
-          <MonthPicker month={shown} earliest={earliest} thisMonth={thisMonth} />
+          <MonthPicker month={shown} earliest={earliest} latest={current} />
           <MonthSummary month={shown} first={first} />
         </>
       )}
@@ -47,11 +52,11 @@ export function SummaryPage({ month }: { month: string | undefined }) {
 function MonthPicker({
   month,
   earliest,
-  thisMonth,
+  latest,
 }: {
   month: string
   earliest: string
-  thisMonth: string
+  latest: string
 }) {
   const navigate = useNavigate()
   const go = (to: string) => void navigate({ to: "/finances/summary", search: { month: to } })
@@ -68,7 +73,7 @@ function MonthPicker({
       </Button>
       <h2 className="text-center text-xl font-semibold">
         {formatMonth(month)}
-        {month === thisMonth ? (
+        {month === latest ? (
           <>
             {" "}
             <span className="text-sm font-normal text-muted-foreground">so far</span>
@@ -79,7 +84,7 @@ function MonthPicker({
         variant="outline"
         size="icon-lg"
         aria-label="Next month"
-        disabled={month >= thisMonth}
+        disabled={month >= latest}
         onClick={() => go(shiftMonth(month, 1))}
       >
         <ChevronRightIcon />

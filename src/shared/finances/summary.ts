@@ -2,7 +2,7 @@
  * The Monthly summary: one month's income, spending and net, and every Category's net, against
  * last month and the 12-month average. Only Actuals count; Planned rows and Transfers never do.
  */
-import { shiftMonth } from "../dates.ts"
+import { monthOfDate, shiftMonth } from "../dates.ts"
 import { roundHalfUp } from "../money.ts"
 
 export type SummaryActual = {
@@ -53,8 +53,7 @@ export const AVERAGE_MONTHS = 12
 const UNCATEGORISED = "Uncategorised"
 
 /** A merged Category counts under the one it was merged into, following a chain of merges. */
-function resolver(categories: readonly SummaryCategory[]) {
-  const byId = new Map(categories.map((category) => [category.id, category]))
+function mergeTarget(byId: ReadonlyMap<string, SummaryCategory>) {
   return (id: string | null): string | null => {
     let current = id
     const seen = new Set<string>()
@@ -95,7 +94,7 @@ export function monthlySummary(
 ): MonthlySummary {
   const counted = actuals.filter((row) => row.status === "actual" && !row.ignored)
   const firstMonth = counted.reduce<string | null>((first, row) => {
-    const rowMonth = row.date.slice(0, 7)
+    const rowMonth = monthOfDate(row.date)
     return first === null || rowMonth < first ? rowMonth : first
   }, null)
 
@@ -107,13 +106,14 @@ export function monthlySummary(
   const divisor = Math.max(1, averaged.length)
 
   // Net per month, per Category (null for Uncategorised).
-  const target = resolver(categories)
+  const byId = new Map(categories.map((category) => [category.id, category]))
+  const countedUnder = mergeTarget(byId)
   const nets = new Map<string, Map<string | null, number>>()
   for (const row of counted) {
-    const rowMonth = row.date.slice(0, 7)
+    const rowMonth = monthOfDate(row.date)
     if (rowMonth < windowStart || rowMonth > month) continue
     const byCategory = nets.get(rowMonth) ?? new Map<string | null, number>()
-    const id = target(row.categoryId)
+    const id = countedUnder(row.categoryId)
     byCategory.set(id, (byCategory.get(id) ?? 0) + row.amountCents)
     nets.set(rowMonth, byCategory)
   }
@@ -124,7 +124,6 @@ export function monthlySummary(
   const ids = new Set<string | null>()
   for (const byCategory of nets.values()) for (const id of byCategory.keys()) ids.add(id)
 
-  const byId = new Map(categories.map((category) => [category.id, category]))
   const lines = [...ids].map((id): SummaryLine => ({
     categoryId: id,
     name: id === null ? UNCATEGORISED : (byId.get(id)?.name ?? UNCATEGORISED),
@@ -163,20 +162,26 @@ export function monthlySummary(
 
 /**
  * A spending bar is highlighted when the month spent more than 25% over its 12-month average and
- * at least $25 over it.
+ * at least $25 over it. A month that spent nothing is never highlighted.
  */
 export function isFarOverAverage(line: Pick<SummaryLine, "monthCents" | "averageCents">): boolean {
   const spent = -line.monthCents
-  const usual = -line.averageCents
+  // An average that earns money is no usual spending at all.
+  const usual = Math.max(0, -line.averageCents)
   return spent - usual >= 2_500 && spent * 4 > usual * 5
 }
 
 /**
- * The months the summary can show: from the first month with Actuals (this month when there are
- * none) to this month. It opens on last month, or on the first month when that is later.
+ * The months the summary can show run from the first month with Actuals (this month when there
+ * are none) to this month. It opens on last month, or on the first month when that is later, and a
+ * wanted month out of reach shows the nearest one there is.
  */
-export function summaryMonths(firstMonth: string | undefined, thisMonth: string) {
+export function summaryMonths(
+  firstMonth: string | undefined,
+  thisMonth: string,
+  wanted?: string,
+): { earliest: string; shown: string } {
   const earliest = firstMonth === undefined || firstMonth > thisMonth ? thisMonth : firstMonth
-  const lastMonth = shiftMonth(thisMonth, -1)
-  return { earliest, opening: lastMonth < earliest ? earliest : lastMonth }
+  const month = wanted ?? shiftMonth(thisMonth, -1)
+  return { earliest, shown: month < earliest ? earliest : month > thisMonth ? thisMonth : month }
 }
