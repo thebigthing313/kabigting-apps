@@ -104,9 +104,9 @@ export function EditTransactionDialog({
   const [deleting, setDeleting] = useState(false)
   const noun = shown?.status === "planned" ? "Planned" : "Actual"
 
-  async function remove(id: string) {
+  async function remove(row: Transaction) {
     setDeleting(true)
-    const deleted = await deleteTransaction(id)
+    const deleted = await deleteTransaction(row)
     setDeleting(false)
     setConfirming(false)
     if (deleted) {
@@ -165,7 +165,7 @@ export function EditTransactionDialog({
             <AlertDialogTitle>Delete this {noun}?</AlertDialogTitle>
             <AlertDialogDescription>
               {shown && isImported(shown)
-                ? "It came from the bank, so it is kept as an ignored line and won't be added again by a later upload."
+                ? "It came from the bank, so it is kept as an ignored line that a later upload won't add again. Restore it from Ignored lines."
                 : "It is removed for good."}
             </AlertDialogDescription>
           </AlertDialogHeader>
@@ -178,7 +178,7 @@ export function EditTransactionDialog({
               className="h-11"
               disabled={deleting}
               onClick={() => {
-                if (shown) void remove(shown.id)
+                if (shown) void remove(shown)
               }}
             >
               Delete

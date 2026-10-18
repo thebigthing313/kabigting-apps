@@ -1,6 +1,7 @@
 import { cn } from "cn"
 import { ChevronRightIcon } from "lucide-react"
 import { useState } from "react"
+import { IgnoredLinesDialog } from "@/apps/finances/transactions/ignored-lines-dialog"
 import { EditTransactionDialog } from "@/apps/finances/transactions/transaction-dialogs"
 import { categoryLabel, transactionLabel } from "@/apps/finances/transactions/transaction-display"
 import { Button } from "@/components/ui/button"
@@ -19,11 +20,12 @@ type Names = { account: ReadonlyMap<string, string>; category: ReadonlyMap<strin
 
 /**
  * A Wallet's Activity: its outstanding one-off Planned items, then its Actuals newest first, a
- * page at a time. Each row opens its editor.
+ * page at a time. Each row opens its editor. Uploaded lines someone deleted are listed apart.
  */
 export function ActivityTab({ wallet }: { wallet: Wallet }) {
   const [count, setCount] = useState(PAGE_SIZE)
   const [editing, setEditing] = useState<Transaction | null>(null)
+  const [showIgnored, setShowIgnored] = useState(false)
   const { oneOffs, isLoading: oneOffsLoading } = useOutstandingOneOffs(wallet.id)
   // One more than shown, to know whether there are older ones.
   const { data: actuals, isLoading } = useActivity(wallet.id, count)
@@ -99,9 +101,17 @@ export function ActivityTab({ wallet }: { wallet: Wallet }) {
             Show older Actuals
           </Button>
         ) : null}
+        <Button
+          variant="link"
+          className="h-11 self-start px-0 text-muted-foreground"
+          onClick={() => setShowIgnored(true)}
+        >
+          Ignored lines
+        </Button>
       </section>
 
       <EditTransactionDialog transaction={editing} onClose={() => setEditing(null)} />
+      <IgnoredLinesDialog wallet={wallet} open={showIgnored} onOpenChange={setShowIgnored} />
     </div>
   )
 }
