@@ -1,5 +1,8 @@
+import { Link } from "@tanstack/react-router"
+import { cn } from "cn"
 import { PlusIcon } from "lucide-react"
-import { useState } from "react"
+import { type ReactNode, useState } from "react"
+import { StateMark } from "@/apps/finances/categories/state-mark"
 import { NameDialog } from "@/apps/finances/name-dialog"
 import { FinancesHeader } from "@/apps/finances/finances-header"
 import { Button } from "@/components/ui/button"
@@ -34,6 +37,15 @@ export function CategoriesPage() {
         <CategoryList
           categories={categories}
           onUnarchive={(category) => setCategoryArchived(category.id, false)}
+          renderName={(category, className) => (
+            <Link
+              to="/finances/categories/$categoryId"
+              params={{ categoryId: category.id }}
+              className={cn(className, "underline-offset-4 hover:underline")}
+            >
+              {category.name}
+            </Link>
+          )}
         />
       )}
 
@@ -51,12 +63,19 @@ export function CategoriesPage() {
   )
 }
 
+function nameClass(category: Category): string {
+  return category.archived ? "truncate text-muted-foreground" : "truncate font-medium"
+}
+
 export function CategoryList({
   categories,
   onUnarchive,
+  renderName,
 }: {
   categories: readonly Category[]
   onUnarchive: (category: Category) => void
+  /** Draws a Category's name, such as a link to its page; plain text when absent. */
+  renderName?: (category: Category, className: string) => ReactNode
 }) {
   if (categories.length === 0) {
     return (
@@ -71,18 +90,12 @@ export function CategoryList({
           className="flex min-h-12 items-center justify-between gap-3 px-4 py-2"
         >
           <span className="flex min-w-0 items-center gap-2">
-            <span
-              className={
-                category.archived ? "truncate text-muted-foreground" : "truncate font-medium"
-              }
-            >
-              {category.name}
-            </span>
-            {category.archived ? (
-              <span className="shrink-0 rounded-full border px-2 py-0.5 text-xs text-muted-foreground">
-                {category.mergedIntoId ? "Merged" : "Archived"}
-              </span>
-            ) : null}
+            {renderName ? (
+              renderName(category, nameClass(category))
+            ) : (
+              <span className={nameClass(category)}>{category.name}</span>
+            )}
+            <StateMark category={category} />
           </span>
           {/* A merged Category's rows now live under its target, so it stays archived. */}
           {category.archived && !category.mergedIntoId ? (

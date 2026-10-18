@@ -5,7 +5,7 @@ import { readJson, reportError } from "@/data/error-handler"
 import { applyOccurrenceChanges } from "@/data/finances-occurrences"
 import { useActualTransfersSince, writeTransfers } from "@/data/finances-transfers"
 import { settled } from "@/data/settled"
-import { nowInstant } from "@shared/dates"
+import { monthDates, nowInstant, shiftMonth } from "@shared/dates"
 import {
   isImported,
   type Reconcile,
@@ -13,6 +13,7 @@ import {
   type TransactionRow,
   type UpdateTransaction,
 } from "@shared/finances/schemas"
+import { AVERAGE_MONTHS } from "@shared/finances/summary"
 import { transferAmountOn } from "@shared/finances/transfers"
 import { newId } from "@shared/ids"
 import { MAX_QUERY_IDS } from "@shared/schemas/query"
@@ -270,6 +271,17 @@ export function useActualsBetween(from: string, to: string) {
   )
 }
 
+/**
+ * The Actuals a Monthly summary of `month` reads: every Wallet's in that month and the 12 before
+ * it, plus the household's `first` Actual when it is older, which places the first month.
+ */
+export function useSummaryActuals(month: string, first: Transaction | undefined) {
+  const from = monthDates(shiftMonth(month, -AVERAGE_MONTHS)).first
+  const { data, isLoading } = useActualsBetween(from, monthDates(month).last)
+  const actuals = first !== undefined && first.date < from ? [...data, first] : data
+  return { actuals, isLoading }
+}
+
 /** The household's first Actual in any Wallet, ignored lines left out; none when there is none. */
 export function useFirstActual() {
   const transactions = financesTransactions()
@@ -283,6 +295,34 @@ export function useFirstActual() {
     [transactions],
   )
   return { first: data[0], isLoading }
+}
+
+/**
+ * How many Transactions, Planned and Actual, a Category holds, ignored lines left out. Nothing
+ * loads while `categoryId` is undefined.
+ */
+export function useCategoryTransactionCount(categoryId: string | undefined) {
+  const transactions = financesTransactions()
+  const { data, isLoading } = useLiveQuery(
+    (q) =>
+      categoryId === undefined
+        ? undefined
+        : q
+            .from({ row: transactions })
+            .where(({ row }) => and(eq(row.categoryId, categoryId), eq(row.ignored, false))),
+    [transactions, categoryId],
+  )
+  return { count: data?.length ?? 0, isLoading: categoryId !== undefined && isLoading }
+}
+
+/**
+ * Writes the rows a command changed that are already loaded, such as a Category merge's. The rest,
+ * possibly years of history, load when a screen asks for them.
+ */
+export async function writeLoadedTransactions(rows: readonly TransactionRow[]): Promise<void> {
+  const collection = financesTransactions()
+  const loaded = rows.filter((row) => collection.has(row.id))
+  if (loaded.length > 0) await collection.utils.writeUpsert(loaded)
 }
 
 /**

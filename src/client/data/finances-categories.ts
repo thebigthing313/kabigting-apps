@@ -1,10 +1,12 @@
 import { useLiveQuery } from "@tanstack/react-db"
 import { api } from "@/data/api"
 import { defineRestCollection } from "@/data/collection-factory"
-import { readJson } from "@/data/error-handler"
+import { readJson, reportError } from "@/data/error-handler"
+import { writeSchedules } from "@/data/finances-schedules"
+import { writeLoadedTransactions } from "@/data/finances-transactions"
 import { type InlineAdd, trackInlineAdd } from "@/data/inline-adds"
 import { nowInstant } from "@shared/dates"
-import type { CategoryRow, UpdateCategory } from "@shared/finances/schemas"
+import type { CategoryMergeResult, CategoryRow, UpdateCategory } from "@shared/finances/schemas"
 import { newId } from "@shared/ids"
 
 export type Category = CategoryRow
@@ -69,4 +71,24 @@ export function setCategoryArchived(id: string, archived: boolean): void {
   financesCategories().update(id, (draft) => {
     draft.archived = archived
   })
+}
+
+/**
+ * Merges a Category into another: its Transactions and Schedule defaults move over, and it is
+ * archived as merged. False after a refusal, which is reported with a toast.
+ */
+export async function mergeCategory(id: string, intoId: string): Promise<boolean> {
+  let result: CategoryMergeResult
+  try {
+    result = await readJson(
+      await api.finances.categories[":id"].merge.$post({ param: { id }, json: { intoId } }),
+    )
+  } catch (error) {
+    reportError(error, "Merging")
+    return false
+  }
+  await financesCategories().utils.writeUpsert(result.categories)
+  await writeLoadedTransactions(result.transactions)
+  await writeSchedules(result.schedules)
+  return true
 }
