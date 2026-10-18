@@ -4,11 +4,15 @@ import {
   addMonthsClamped,
   daysBetween,
   formatDisplayDate,
+  formatMonth,
+  formatShortMonth,
   fromPickerDate,
   HOUSEHOLD_ZONE,
   monthInstantRange,
+  monthDates,
   monthOf,
   nowInstant,
+  shiftMonth,
   toPickerDate,
   today,
   weekdayName,
@@ -148,5 +152,25 @@ describe("calendar arithmetic", () => {
   test("weekdayName names the calendar date's day", () => {
     expect(weekdayName("2026-10-16")).toBe("Friday")
     expect(weekdayName("2026-11-01")).toBe("Sunday")
+  })
+})
+
+describe("calendar months", () => {
+  test("shiftMonth steps whole months across years", () => {
+    expect(shiftMonth("2026-10", -1)).toBe("2026-09")
+    expect(shiftMonth("2026-01", -1)).toBe("2025-12")
+    expect(shiftMonth("2026-12", 1)).toBe("2027-01")
+    expect(shiftMonth("2026-10", -13)).toBe("2025-09")
+  })
+
+  test("monthDates gives a month's first and last calendar dates", () => {
+    expect(monthDates("2026-02")).toEqual({ first: "2026-02-01", last: "2026-02-28" })
+    expect(monthDates("2028-02")).toEqual({ first: "2028-02-01", last: "2028-02-29" })
+    expect(monthDates("2026-12")).toEqual({ first: "2026-12-01", last: "2026-12-31" })
+  })
+
+  test("formatMonth and formatShortMonth name the month", () => {
+    expect(formatMonth("2026-09")).toBe("September 2026")
+    expect(formatShortMonth("2026-09")).toBe("Sep")
   })
 })

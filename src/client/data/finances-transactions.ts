@@ -1,4 +1,4 @@
-import { and, eq, gt, useLiveQuery } from "@tanstack/react-db"
+import { and, eq, gt, gte, lte, useLiveQuery } from "@tanstack/react-db"
 import { api } from "@/data/api"
 import { defineOnDemandCollection } from "@/data/collection-factory"
 import { readJson } from "@/data/error-handler"
@@ -132,6 +132,40 @@ export function useActivity(walletId: string, count: number) {
         .limit(count + 1),
     [transactions, walletId, count],
   )
+}
+
+/** Every Wallet's Actuals dated `from` to `to`, inclusive, ignored lines left out. */
+export function useActualsBetween(from: string, to: string) {
+  const transactions = financesTransactions()
+  return useLiveQuery(
+    (q) =>
+      q
+        .from({ row: transactions })
+        .where(({ row }) =>
+          and(
+            eq(row.status, "actual"),
+            eq(row.ignored, false),
+            gte(row.date, from),
+            lte(row.date, to),
+          ),
+        ),
+    [transactions, from, to],
+  )
+}
+
+/** The household's first Actual in any Wallet, ignored lines left out; none when there is none. */
+export function useFirstActual() {
+  const transactions = financesTransactions()
+  const { data, isLoading } = useLiveQuery(
+    (q) =>
+      q
+        .from({ row: transactions })
+        .where(({ row }) => and(eq(row.status, "actual"), eq(row.ignored, false)))
+        .orderBy(({ row }) => row.date, OLDEST_FIRST)
+        .limit(1),
+    [transactions],
+  )
+  return { first: data[0], isLoading }
 }
 
 /** Shows the row at once; resolves false after a refusal rolled it back (with a toast). */

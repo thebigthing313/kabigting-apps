@@ -113,3 +113,26 @@ export function weekdayName(date: string): string {
 export function formatMonthDay(date: string): string {
   return format(toPickerDate(date), "MMM d")
 }
+
+// Calendar months are `YYYY-MM` strings.
+
+/** The calendar month `months` after `month` (before it when negative). */
+export function shiftMonth(month: string, months: number): string {
+  return addMonthsClamped(`${month}-01`, months).slice(0, 7)
+}
+
+/** A calendar month's first and last dates. */
+export function monthDates(month: string): { first: string; last: string } {
+  const first = `${month}-01`
+  return { first, last: addDays(addMonthsClamped(first, 1), -1) }
+}
+
+/** A calendar month for display, e.g. "September 2026". */
+export function formatMonth(month: string): string {
+  return format(toPickerDate(`${month}-01`), "MMMM yyyy")
+}
+
+/** A calendar month's short name, e.g. "Sep". */
+export function formatShortMonth(month: string): string {
+  return format(toPickerDate(`${month}-01`), "MMM")
+}
