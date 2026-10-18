@@ -1,3 +1,4 @@
+import { eq } from "drizzle-orm"
 import { afterAll, beforeAll, describe, expect, test } from "vitest"
 import { financesTransactions, financesTransfers } from "#server/db/schema/index.ts"
 import { createTestServer, json, type TestServer } from "#server/test/server.ts"
@@ -305,18 +306,13 @@ describe("pair a Transfer's other side", () => {
     }
   })
 
-  test("refuses a Transfer not waiting for a side: both arrived, by hand, or ignored", async () => {
+  test("refuses a Transfer not waiting for a side: both arrived, or ignored", async () => {
     const checking = await newWallet()
     const card = await newWallet()
     const both = await waiting(checking, card, { toSource: "ofx", toSourceKey: `FITID-${newId()}` })
-    const byHand = await waiting(checking, card, {
-      fromSource: "manual",
-      fromSourceKey: null,
-      toSource: "manual",
-    })
     const ignored = await waiting(checking, card, { ignored: true })
     const line = await uploaded(card, { amountCents: 25_000 })
-    for (const transfer of [both, byHand, ignored]) {
+    for (const transfer of [both, ignored]) {
       await expectStatus(await pair(transfer.id, line.id), 400, "validation_failed")
     }
     await expectStatus(await pair(newId(), line.id), 404, "not_found")
@@ -352,6 +348,128 @@ describe("pair a Transfer's other side", () => {
     const line = await uploaded(card, { amountCents: 25_000 })
     await expectStatus(await pair(transfer.id, line.id, noAccessHeaders), 403, "forbidden_app")
     expect((await pair(transfer.id, line.id, adminHeaders)).status).toBe(200)
+  })
+})
+
+/** A made-up card payment entered by hand from checking to the card: neither side keyed. */
+async function handEnteredTransfer(fromWalletId: string, toWalletId: string, date = "2026-11-03") {
+  const response = await post("transfers", {
+    id: newId(),
+    status: "actual",
+    date,
+    amountCents: 25_000,
+    fromWalletId,
+    toWalletId,
+  })
+  expect(response.status).toBe(201)
+  return transferRow.parse(await response.json())
+}
+
+describe("pair a line with a hand-entered Transfer", () => {
+  test("the card's line becomes the to side; the Transfer keeps its date and amount", async () => {
+    const checking = await newWallet()
+    const card = await newWallet()
+    const transfer = await handEnteredTransfer(checking, card)
+    expect(transfer).toMatchObject({ fromSource: "manual", toSource: "manual" })
+    const line = await uploaded(card, {
+      amountCents: 25_000,
+      date: "2026-11-05",
+      bankDescription: "MADE-UP PAYMENT THANK YOU",
+    })
+
+    const response = await pair(transfer.id, line.id)
+    expect(response.status).toBe(200)
+    const result = reconcileResult.parse(await response.json())
+    expect(result.deletedTransactions).toEqual([line.id])
+    expect(result.transfers).toEqual([
+      expect.objectContaining({
+        id: transfer.id,
+        date: "2026-11-03",
+        amountCents: 25_000,
+        fromSource: "manual",
+        fromBankDescription: null,
+        toSource: "ofx",
+        toBankDescription: "MADE-UP PAYMENT THANK YOU",
+      }),
+    ])
+    expect(await transactions({ ids: [line.id] })).toEqual([])
+    const [stored] = await server.db
+      .select()
+      .from(financesTransfers)
+      .where(eq(financesTransfers.id, transfer.id))
+    expect(stored).toMatchObject({ toSourceKey: line.sourceKey, fromSourceKey: null })
+  })
+
+  test("the checking line becomes the from side", async () => {
+    const checking = await newWallet()
+    const card = await newWallet()
+    const transfer = await handEnteredTransfer(checking, card)
+    const line = await uploaded(checking, { date: "2026-11-01" })
+    const response = await pair(transfer.id, line.id)
+    expect(response.status).toBe(200)
+    const [paired] = reconcileResult.parse(await response.json()).transfers
+    expect(paired).toMatchObject({ fromSource: "ofx", toSource: "manual" })
+  })
+
+  test("a hand-entered Actual marked as a Transfer takes either Wallet's line", async () => {
+    const checking = await newWallet()
+    const card = await newWallet()
+    for (const [lineWallet, amountCents] of [
+      [checking, -25_000],
+      [card, 25_000],
+    ] as const) {
+      const created = await post("transactions", {
+        id: newId(),
+        status: "actual",
+        walletId: checking,
+        date: "2026-11-03",
+        amountCents: -25_000,
+      })
+      const hand = transactionRow.parse(await created.json())
+      const marked = await markTransfer(hand.id, card)
+      const [transfer] = reconcileResult.parse(await marked.json()).transfers
+      const line = await uploaded(lineWallet, { amountCents })
+      const response = await pair(transfer!.id, line.id)
+      expect(response.status).toBe(200)
+      const [paired] = reconcileResult.parse(await response.json()).transfers
+      expect(lineWallet === checking ? paired?.fromSource : paired?.toSource).toBe("ofx")
+    }
+  })
+
+  test("refuses another amount, the wrong way, another Wallet or more than 3 days off", async () => {
+    const checking = await newWallet()
+    const card = await newWallet()
+    const savings = await newWallet()
+    const transfer = await handEnteredTransfer(checking, card)
+    const refused = [
+      await uploaded(card, { amountCents: 25_001 }),
+      await uploaded(card, { amountCents: -25_000 }),
+      await uploaded(checking, { amountCents: 25_000 }),
+      await uploaded(savings, { amountCents: 25_000 }),
+      await uploaded(card, { amountCents: 25_000, date: "2026-11-07" }),
+      await uploaded(checking, { date: "2026-10-30" }),
+    ]
+    for (const line of refused) {
+      await expectStatus(await pair(transfer.id, line.id), 400, "validation_failed")
+    }
+    const [stored] = await transfers({ ids: [transfer.id] })
+    expect(stored).toMatchObject({ fromSource: "manual", toSource: "manual" })
+  })
+
+  test("refuses a line that would write over a side's key", async () => {
+    const checking = await newWallet()
+    const card = await newWallet()
+    const transfer = await handEnteredTransfer(checking, card)
+    const first = await uploaded(card, { amountCents: 25_000 })
+    expect((await pair(transfer.id, first.id)).status).toBe(200)
+    const second = await uploaded(card, { amountCents: 25_000, date: "2026-11-04" })
+    await expectStatus(await pair(transfer.id, second.id), 400, "validation_failed")
+    const [stored] = await server.db
+      .select()
+      .from(financesTransfers)
+      .where(eq(financesTransfers.id, transfer.id))
+    expect(stored?.toSourceKey).toBe(first.sourceKey)
+    expect(await transactions({ ids: [second.id] })).toHaveLength(1)
   })
 })
 
@@ -469,6 +587,23 @@ describe("a card payment seen from both Wallets", () => {
     for (const file of [files.checkingFile, files.cardFile]) {
       expect((await upload(file)).inserted).toEqual([])
     }
+  })
+
+  test("entered by hand and paired from the checking file, re-uploading adds nothing", async () => {
+    const checking = await newWallet()
+    const card = await newWallet()
+    const transfer = await handEnteredTransfer(checking, card, "2026-11-02")
+    counter += 1
+    const checkingFile = statement(`${Date.now()}5${counter}`, [
+      { date: "20261103", amount: "-250.00", fitid: "HAND-PAY" },
+    ])
+    const [line] = (await upload(checkingFile, checking)).inserted
+    expect((await pair(transfer.id, line!.id)).status).toBe(200)
+    expect(await transfers({ walletId: checking })).toHaveLength(1)
+    expect(await transactions({ walletId: checking })).toEqual([])
+    const again = await upload(checkingFile)
+    expect(again.inserted).toEqual([])
+    expect(again.duplicates).toBe(1)
   })
 
   test("only the side that arrived is here: the other Wallet's file still adds its line", async () => {

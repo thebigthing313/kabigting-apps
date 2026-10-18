@@ -64,9 +64,9 @@ _Avoid_: Match, clear, link
 **To review**:
 The uploaded Actuals waiting for a person because the app has a suggestion for them: a Planned
 item to Reconcile to, a hand-entered Actual the line repeats (its hand-entry twin), or an Actual
-Transfer whose other side the line is. Each is confirmed, Reconciled to another Planned item, or
-called unplanned. Uploaded lines with nothing to suggest are unplanned at once, and hand-entered
-Actuals never wait here.
+Transfer the line is one side of (its other side, or a side of one entered by hand). Each is
+confirmed, Reconciled to another Planned item, or called unplanned. Uploaded lines with nothing to
+suggest are unplanned at once, and hand-entered Actuals never wait here.
 _Avoid_: Inbox, pending, unmatched
 
 **Overdue**:

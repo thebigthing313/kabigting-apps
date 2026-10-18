@@ -32,7 +32,7 @@ import {
   reviewSuggestion,
   TWIN_WINDOW_DAYS,
 } from "@shared/finances/reconcile"
-import { bankDescriptionOn, onlySideArrived } from "@shared/finances/transfers"
+import { bankDescriptionOn, enteredByHand, onlySideArrived } from "@shared/finances/transfers"
 import { toShown } from "@shared/finances/wallets"
 import { format } from "@shared/money"
 
@@ -44,7 +44,7 @@ type Names = {
 
 /**
  * To review: a Wallet's uploaded lines that had a suggestion when they arrived. Each shows its
- * best suggestion (a hand entry it repeats, else the Transfer it is the other side of, else a
+ * best suggestion (a hand entry it repeats, else the Transfer it is one side of, else a
  * suggested Planned item) with Confirm, Pick another and Unplanned. Hidden when nothing waits.
  */
 export function ToReviewPanel({
@@ -154,13 +154,25 @@ function ReviewItem({
         </div>
       ) : suggestion?.kind === "transfer" ? (
         <div className="rounded-lg bg-muted/50 px-3 py-2 text-sm">
-          <p className="font-medium">
-            Other side of {transferLabel(suggestion.transfer, wallet.id, names.wallet)}?
-          </p>
-          <p className="truncate text-muted-foreground">
-            {arrivedDescription(suggestion.transfer)}
-            {formatDisplayDate(suggestion.transfer.date)}
-          </p>
+          {enteredByHand(suggestion.transfer) ? (
+            <>
+              <p className="font-medium">Same as your hand-entered Transfer?</p>
+              <p className="truncate text-muted-foreground">
+                {transferLabel(suggestion.transfer, wallet.id, names.wallet)} ·{" "}
+                {formatDisplayDate(suggestion.transfer.date)}
+              </p>
+            </>
+          ) : (
+            <>
+              <p className="font-medium">
+                Other side of {transferLabel(suggestion.transfer, wallet.id, names.wallet)}?
+              </p>
+              <p className="truncate text-muted-foreground">
+                {arrivedDescription(suggestion.transfer)}
+                {formatDisplayDate(suggestion.transfer.date)}
+              </p>
+            </>
+          )}
         </div>
       ) : suggestion?.kind === "planned" ? (
         <div className="flex flex-col gap-1 rounded-lg bg-muted/50 px-3 py-2 text-sm">
