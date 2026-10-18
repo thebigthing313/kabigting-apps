@@ -352,7 +352,7 @@ describe("pair a Transfer's other side", () => {
 })
 
 /** A made-up card payment entered by hand from checking to the card: neither side keyed. */
-async function enteredByHand(fromWalletId: string, toWalletId: string, date = "2026-11-03") {
+async function handEnteredTransfer(fromWalletId: string, toWalletId: string, date = "2026-11-03") {
   const response = await post("transfers", {
     id: newId(),
     status: "actual",
@@ -369,7 +369,7 @@ describe("pair a line with a hand-entered Transfer", () => {
   test("the card's line becomes the to side; the Transfer keeps its date and amount", async () => {
     const checking = await newWallet()
     const card = await newWallet()
-    const transfer = await enteredByHand(checking, card)
+    const transfer = await handEnteredTransfer(checking, card)
     expect(transfer).toMatchObject({ fromSource: "manual", toSource: "manual" })
     const line = await uploaded(card, {
       amountCents: 25_000,
@@ -403,7 +403,7 @@ describe("pair a line with a hand-entered Transfer", () => {
   test("the checking line becomes the from side", async () => {
     const checking = await newWallet()
     const card = await newWallet()
-    const transfer = await enteredByHand(checking, card)
+    const transfer = await handEnteredTransfer(checking, card)
     const line = await uploaded(checking, { date: "2026-11-01" })
     const response = await pair(transfer.id, line.id)
     expect(response.status).toBe(200)
@@ -440,7 +440,7 @@ describe("pair a line with a hand-entered Transfer", () => {
     const checking = await newWallet()
     const card = await newWallet()
     const savings = await newWallet()
-    const transfer = await enteredByHand(checking, card)
+    const transfer = await handEnteredTransfer(checking, card)
     const refused = [
       await uploaded(card, { amountCents: 25_001 }),
       await uploaded(card, { amountCents: -25_000 }),
@@ -459,7 +459,7 @@ describe("pair a line with a hand-entered Transfer", () => {
   test("refuses a line that would write over a side's key", async () => {
     const checking = await newWallet()
     const card = await newWallet()
-    const transfer = await enteredByHand(checking, card)
+    const transfer = await handEnteredTransfer(checking, card)
     const first = await uploaded(card, { amountCents: 25_000 })
     expect((await pair(transfer.id, first.id)).status).toBe(200)
     const second = await uploaded(card, { amountCents: 25_000, date: "2026-11-04" })
@@ -592,7 +592,7 @@ describe("a card payment seen from both Wallets", () => {
   test("entered by hand and paired from the checking file, re-uploading adds nothing", async () => {
     const checking = await newWallet()
     const card = await newWallet()
-    const transfer = await enteredByHand(checking, card, "2026-11-02")
+    const transfer = await handEnteredTransfer(checking, card, "2026-11-02")
     counter += 1
     const checkingFile = statement(`${Date.now()}5${counter}`, [
       { date: "20261103", amount: "-250.00", fitid: "HAND-PAY" },

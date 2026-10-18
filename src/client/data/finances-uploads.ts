@@ -47,8 +47,8 @@ export async function uploadStatement(
 }
 
 /**
- * Marks the new lines with no Planned match, no hand-entry twin and no Transfer they are the other
- * side of reviewed, so only those with a suggestion wait in To review. Returns how many wait. If
+ * Marks the new lines with no Planned match, no hand-entry twin and no Actual Transfer they are a side
+ * of reviewed, so only those with a suggestion wait in To review. Returns how many wait. If
  * this fails, every new line waits, each still with Unplanned to clear it.
  */
 async function sortForReview(walletId: string, lines: readonly TransactionRow[]): Promise<number> {

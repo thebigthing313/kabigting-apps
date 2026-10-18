@@ -403,7 +403,8 @@ grouped by collection:
     amount the Transfer's way, within ±3 days. The line's source, key and bank description go
     on that Wallet's side, and the line is deleted, in one database transaction. A Transfer has
     one date for both sides, so it keeps its date. It never writes over a side that already
-    holds a key (`validation_failed` from the rule; 409 if the key is found at write time).
+    holds a key: the rule refuses it (`validation_failed`), and the write itself only fills a side
+    whose key is empty, as a guard (409).
     (Decided for #81.)
 - `POST /schedules/:id/change-from` with `{ date, changes, confirmDeleteOverrides: string[] }`:
   ends the Schedule on `date − 1` and creates the successor with `predecessorId`. Stored
