@@ -416,10 +416,6 @@ export const transactionQuery = queryBody({
 })
 export const transactionRows = rowsResponse(transactionRow)
 
-export type CreateTransaction = z.input<typeof createTransaction>
-export type UpdateTransaction = z.infer<typeof updateTransaction>
-export type TransactionRow = z.infer<typeof transactionRow>
-
 // Reconcile: pairing an Actual with the Planned item it fulfils, one to one.
 
 /**
@@ -451,3 +447,7 @@ export const reconcileResult = z.object({
 
 export type Reconcile = z.infer<typeof reconcile>
 export type ReconcileResult = z.infer<typeof reconcileResult>
+
+export type CreateTransaction = z.input<typeof createTransaction>
+export type UpdateTransaction = z.infer<typeof updateTransaction>
+export type TransactionRow = z.infer<typeof transactionRow>
