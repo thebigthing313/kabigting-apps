@@ -31,3 +31,13 @@ export function lowPoint(
 export function lowBalanceDetail(wallet: LowBalanceWallet, days: number): string {
   return `${wallet.shownAsOwed ? "Owed" : "Low balance"} in the next ${days} days`
 }
+
+/**
+ * Whether a balance shows in red: under $0, or on a Wallet shown as owed, owing more than its
+ * threshold, as owing is normal for it. A $0 threshold leaves nothing red on such a Wallet.
+ */
+export function inTheRed(wallet: LowBalanceWallet, balanceCents: number): boolean {
+  if (!wallet.shownAsOwed) return balanceCents < 0
+  const threshold = wallet.lowBalanceThresholdCents
+  return threshold !== 0 && balanceCents < threshold
+}

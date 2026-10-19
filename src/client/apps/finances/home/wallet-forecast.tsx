@@ -5,7 +5,7 @@ import { AttentionBanner } from "@/apps/finances/attention/attention-banner"
 import { dayAnchor } from "@/apps/finances/attention/attention-item"
 import { useForecastWalletAttention } from "@/apps/finances/attention/use-attention"
 import { ForecastChart } from "@/apps/finances/home/forecast-chart"
-import { lowPoint, thresholdWarning } from "@/apps/finances/home/low-balance"
+import { inTheRed, lowPoint, thresholdWarning } from "@/apps/finances/home/low-balance"
 import { forecastItemKey, isOverdue } from "@/apps/finances/home/use-wallet-forecast"
 import { useScrollToHash } from "@/hooks/use-scroll-to-hash"
 import { Button } from "@/components/ui/button"
@@ -79,7 +79,7 @@ export function WalletForecast({
             data-testid="today-balance"
             className={cn(
               "text-4xl font-semibold break-words tabular-nums",
-              result.todayBalanceCents < 0 && "text-destructive",
+              inTheRed(wallet, result.todayBalanceCents) && "text-destructive",
             )}
           >
             {shown(result.todayBalanceCents)}
@@ -92,6 +92,7 @@ export function WalletForecast({
       <ForecastChart
         forecast={result}
         thresholdCents={threshold}
+        shownAsOwed={wallet.shownAsOwed}
         formatAmount={shown}
         description={`End-of-day balance over the next ${days} days. ${lowPoint(wallet, low)}`}
       />
@@ -108,7 +109,7 @@ export function WalletForecast({
               <span
                 className={cn(
                   "font-semibold tabular-nums",
-                  day.balanceCents < 0 && "text-destructive",
+                  inTheRed(wallet, day.balanceCents) && "text-destructive",
                 )}
               >
                 {shown(day.balanceCents)}

@@ -2,7 +2,7 @@ import { Link } from "@tanstack/react-router"
 import { cn } from "cn"
 import { useId } from "react"
 import { useForecastWalletAttention } from "@/apps/finances/attention/use-attention"
-import { lowPoint } from "@/apps/finances/home/low-balance"
+import { inTheRed, lowPoint } from "@/apps/finances/home/low-balance"
 import { forecastItemKey } from "@/apps/finances/home/use-wallet-forecast"
 import { ForecastWarnings, ItemAmount } from "@/apps/finances/home/wallet-forecast"
 import { Button } from "@/components/ui/button"
@@ -116,7 +116,7 @@ function ForecastCard({
         <p
           className={cn(
             "shrink-0 text-2xl font-semibold tabular-nums",
-            result.todayBalanceCents < 0 && "text-destructive",
+            inTheRed(wallet, result.todayBalanceCents) && "text-destructive",
           )}
         >
           {formatShown(wallet, result.todayBalanceCents)}

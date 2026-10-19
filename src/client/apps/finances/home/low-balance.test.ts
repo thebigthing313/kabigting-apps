@@ -1,5 +1,10 @@
 import { describe, expect, test } from "vitest"
-import { lowBalanceDetail, lowPoint, thresholdWarning } from "@/apps/finances/home/low-balance"
+import {
+  inTheRed,
+  lowBalanceDetail,
+  lowPoint,
+  thresholdWarning,
+} from "@/apps/finances/home/low-balance"
 
 const checking = { shownAsOwed: false, lowBalanceThresholdCents: 50_000 }
 const card = { shownAsOwed: true, lowBalanceThresholdCents: -500_000 }
@@ -34,5 +39,23 @@ describe("lowBalanceDetail", () => {
   test("a low balance, or owed on a Wallet shown as owed", () => {
     expect(lowBalanceDetail(checking, 30)).toBe("Low balance in the next 30 days")
     expect(lowBalanceDetail(card, 90)).toBe("Owed in the next 90 days")
+  })
+})
+
+describe("inTheRed", () => {
+  test("a balance under $0 is red, whatever the threshold", () => {
+    expect(inTheRed(checking, -1)).toBe(true)
+    expect(inTheRed(checking, 0)).toBe(false)
+    expect(inTheRed(checking, 10_000)).toBe(false)
+  })
+
+  test("on a Wallet shown as owed, only owing more than its threshold is red", () => {
+    expect(inTheRed(card, -450_000)).toBe(false)
+    expect(inTheRed(card, -500_000)).toBe(false)
+    expect(inTheRed(card, -500_001)).toBe(true)
+  })
+
+  test("nothing is red on a Wallet shown as owed with a $0 threshold", () => {
+    expect(inTheRed({ shownAsOwed: true, lowBalanceThresholdCents: 0 }, -900_000)).toBe(false)
   })
 })
