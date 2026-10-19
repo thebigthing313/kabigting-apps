@@ -1,11 +1,12 @@
-# Runs on every pull request and every push to main. Railway deploys main only after these
-# checks pass ("wait for GitHub checks"). No production secret is used here: tests run against
-# throwaway Postgres databases with throwaway auth secrets.
+# Runs on every pull request and every push to develop and main. Feature work merges into develop,
+# which deploys nothing; a release is a pull request from develop into main. Railway deploys main
+# only after these checks pass ("wait for GitHub checks"). No production secret is used here:
+# tests run against throwaway Postgres databases with throwaway auth secrets.
 name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [develop, main]
   pull_request:
 
 permissions:
@@ -34,9 +35,23 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm check
       - name: Every change needs a changeset
-        # The "Version Packages" pull request consumes changesets rather than adding one.
-        if: github.event_name == 'pull_request' && !startsWith(github.head_ref, 'changeset-release/')
+        # The "Version Packages" pull request consumes changesets rather than adding one, and a
+        # release (develop into main) carries changes that were checked on their way into develop.
+        if: >-
+          github.event_name == 'pull_request' && github.head_ref != 'develop' &&
+          !startsWith(github.head_ref, 'changeset-release/')
         run: pnpm changeset status --since=origin/${{ github.base_ref }}
+      - name: A release is versioned first
+        # Merge the "Version Packages" pull request into develop before releasing, so main gets
+        # the version bump and CHANGELOG.md in the same deploy.
+        if: github.event_name == 'pull_request' && github.head_ref == 'develop'
+        run: |
+          pending=$(find .changeset -name '*.md' ! -name README.md)
+          if [ -n "$pending" ]; then
+            echo "Unreleased changesets; merge the Version Packages pull request into develop first:"
+            echo "$pending"
+            exit 1
+          fi
       - name: Audit production dependencies (information only)
         run: pnpm audit --prod
         continue-on-error: true

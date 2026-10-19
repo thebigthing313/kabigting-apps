@@ -1,10 +1,11 @@
-# On main, Changesets keeps a "Version Packages" pull request up to date with the pending
-# changesets. Merging it bumps the version and writes CHANGELOG.md. Nothing is published.
+# On develop, Changesets keeps a "Version Packages" pull request up to date with the pending
+# changesets. Merging it bumps the version and writes CHANGELOG.md; releasing develop into main
+# then deploys. Nothing is published.
 name: Release
 
 on:
   push:
-    branches: [main]
+    branches: [develop]
 
 permissions:
   contents: write

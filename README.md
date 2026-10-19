@@ -44,3 +44,16 @@ pnpm exec railway config apply
 ```
 
 Migrations run as the pre-deploy step. Backups and restore: `docs/restore.md`.
+
+## Branches and releases
+
+Railway deploys `main` only. Work happens on `develop`, which deploys nothing:
+
+1. Branch from `develop` and open pull requests into `develop`, each with a changeset. A feature
+   can take several pull requests.
+2. On `develop`, the Release workflow keeps a "Version Packages" pull request open with the
+   pending changesets. When `develop` is ready to ship, merge that pull request.
+3. Open a pull request from `develop` into `main` and merge it with a merge commit. CI refuses it
+   while unreleased changesets remain. Railway deploys once CI passes on `main`.
+
+A hotfix branches from `main`, merges into `main`, then `main` is merged back into `develop`.
