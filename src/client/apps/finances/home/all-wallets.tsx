@@ -2,6 +2,7 @@ import { Link } from "@tanstack/react-router"
 import { cn } from "cn"
 import { useId } from "react"
 import { useForecastWalletAttention } from "@/apps/finances/attention/use-attention"
+import { lowPoint } from "@/apps/finances/home/low-balance"
 import { forecastItemKey } from "@/apps/finances/home/use-wallet-forecast"
 import { ForecastWarnings, ItemAmount } from "@/apps/finances/home/wallet-forecast"
 import { Button } from "@/components/ui/button"
@@ -89,8 +90,6 @@ function ForecastCard({
     )
   }
 
-  const shown = (cents: number) => formatShown(wallet, cents)
-  const { low } = result
   const items = result.days.flatMap((day) => day.items).filter((item) => item.kind !== "actual")
   const counts = attentionCounts(attention.map((named) => named.item))
   const waiting = [
@@ -120,12 +119,10 @@ function ForecastCard({
             result.todayBalanceCents < 0 && "text-destructive",
           )}
         >
-          {shown(result.todayBalanceCents)}
+          {formatShown(wallet, result.todayBalanceCents)}
         </p>
       </div>
-      <p className="text-sm text-muted-foreground">
-        Lowest {shown(low.balanceCents)} on {formatDisplayDate(low.date)}
-      </p>
+      <p className="text-sm text-muted-foreground">{lowPoint(wallet, result.low)}</p>
       <ForecastWarnings wallet={wallet} forecast={result} worstOnly />
       {items.length > 0 ? (
         <ul aria-label="Next items" className="flex flex-col gap-1 text-sm">

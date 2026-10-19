@@ -5,6 +5,7 @@ import { AttentionBanner } from "@/apps/finances/attention/attention-banner"
 import { dayAnchor } from "@/apps/finances/attention/attention-item"
 import { useForecastWalletAttention } from "@/apps/finances/attention/use-attention"
 import { ForecastChart } from "@/apps/finances/home/forecast-chart"
+import { lowPoint, thresholdWarning } from "@/apps/finances/home/low-balance"
 import { forecastItemKey, isOverdue } from "@/apps/finances/home/use-wallet-forecast"
 import { useScrollToHash } from "@/hooks/use-scroll-to-hash"
 import { Button } from "@/components/ui/button"
@@ -83,9 +84,7 @@ export function WalletForecast({
           >
             {shown(result.todayBalanceCents)}
           </p>
-          <p className="text-sm text-muted-foreground">
-            Lowest {shown(low.balanceCents)} on {formatDisplayDate(low.date)}
-          </p>
+          <p className="text-sm text-muted-foreground">{lowPoint(wallet, low)}</p>
         </div>
         <HorizonPicker days={days} />
       </div>
@@ -94,7 +93,7 @@ export function WalletForecast({
         forecast={result}
         thresholdCents={threshold}
         formatAmount={shown}
-        description={`End-of-day balance over the next ${days} days, lowest ${shown(low.balanceCents)} on ${formatDisplayDate(low.date)}`}
+        description={`End-of-day balance over the next ${days} days. ${lowPoint(wallet, low)}`}
       />
 
       <ForecastWarnings wallet={wallet} forecast={result} />
@@ -164,7 +163,6 @@ export function ForecastWarnings({
   forecast: Forecast
   worstOnly?: boolean
 }) {
-  const threshold = wallet.lowBalanceThresholdCents
   const warnings = lowBalanceWarnings(wallet, forecast)
   const { underZero } = warnings
   const underThreshold = worstOnly && underZero ? null : warnings.underThreshold
@@ -172,10 +170,7 @@ export function ForecastWarnings({
   return (
     <div role="status" className="flex flex-col gap-1">
       {underThreshold ? (
-        <Warning tone="warn">
-          Under the {formatShown(wallet, threshold)} threshold on{" "}
-          {formatDisplayDate(underThreshold)}
-        </Warning>
+        <Warning tone="warn">{thresholdWarning(wallet, underThreshold)}</Warning>
       ) : null}
       {underZero ? <Warning tone="bad">Below $0 on {formatDisplayDate(underZero)}</Warning> : null}
     </div>

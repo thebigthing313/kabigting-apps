@@ -2,12 +2,13 @@ import { Link } from "@tanstack/react-router"
 import { cn } from "cn"
 import { ChevronRightIcon } from "lucide-react"
 import type { NamedItem } from "@/apps/finances/attention/use-attention"
+import { lowBalanceDetail, thresholdWarning } from "@/apps/finances/home/low-balance"
 import { UPCOMING_ONE_OFFS } from "@/apps/finances/transactions/activity-tab"
 import type { Wallet } from "@/data/finances-wallets"
 import { formatDisplayDate } from "@shared/dates"
 import type { AttentionItem } from "@shared/finances/attention"
 import type { ForecastHorizon } from "@shared/finances/forecast"
-import { formatShown, toShown } from "@shared/finances/wallets"
+import { toShown } from "@shared/finances/wallets"
 import { format } from "@shared/money"
 
 /** The id of a day on a Wallet's home tab, which a low-balance item scrolls to. */
@@ -161,8 +162,8 @@ function describe(
     title:
       item.under === "zero"
         ? `Below $0 on ${formatDisplayDate(item.date)}`
-        : `Under the ${formatShown(wallet, item.thresholdCents)} threshold on ${formatDisplayDate(item.date)}`,
-    detail: `Low balance in the next ${days} days`,
+        : thresholdWarning(wallet, item.date),
+    detail: lowBalanceDetail(wallet, days),
     overdue: false,
   }
 }
