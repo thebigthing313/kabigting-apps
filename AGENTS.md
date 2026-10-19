@@ -27,3 +27,18 @@ Finances App, also read `docs/finances/CONTEXT.md`: there, Account means a payee
 - Add a changeset (`pnpm changeset`) for user-facing changes.
 - Never commit secrets, real data, the Access database or exports, or personal names, emails or
   local paths. The repository is public. Never use `--no-verify`.
+
+## Agent skills
+
+### Issue tracker
+
+GitHub Issues on this repo, through the `gh` CLI. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+The five default labels: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`,
+`wontfix`. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Multi-context: `CONTEXT-MAP.md` lists one glossary per context. See `docs/agents/domain.md`.
