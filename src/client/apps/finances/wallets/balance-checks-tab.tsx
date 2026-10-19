@@ -3,7 +3,7 @@ import { useState } from "react"
 import { BalanceCheckDialog } from "@/apps/finances/wallets/balance-check-dialog"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
-import { useBalanceChecks } from "@/data/finances-balance-checks"
+import { useBalanceChecks, usePreviousBalanceCheck } from "@/data/finances-balance-checks"
 import { useActualsSince } from "@/data/finances-transactions"
 import type { Wallet } from "@/data/finances-wallets"
 import { formatDisplayDate } from "@shared/dates"
@@ -14,13 +14,22 @@ const PAGE_SIZE = 20
 
 /** A Wallet's Balance checks, newest first, a page at a time, each against its computed balance. */
 export function BalanceChecksTab({ wallet }: { wallet: Wallet }) {
-  const [count, setCount] = useState(PAGE_SIZE)
   const [entering, setEntering] = useState(false)
-  // One more than shown, so the last shown check has its previous to compare with.
-  const { data: checks, isLoading } = useBalanceChecks(wallet.id, count)
-  const shown = checks.slice(0, count)
+  const {
+    data: shown,
+    isLoading,
+    hasNextPage,
+    fetchNextPage,
+  } = useBalanceChecks(wallet.id, PAGE_SIZE)
+  // The oldest shown check is compared with the one before it, which is not shown yet.
+  const { check: beforeOldest, isLoading: beforeLoading } = usePreviousBalanceCheck(
+    wallet.id,
+    shown.at(-1)?.date,
+  )
+  // The shown checks, then the one before the oldest: what each shown check is compared with.
+  const compared = beforeOldest === undefined ? shown : [...shown, beforeOldest]
   // Each shown check is compared with the one before it, so the Actuals since the oldest loaded.
-  const { actuals, isLoading: actualsLoading } = useActualsSince(wallet.id, checks.at(-1)?.date)
+  const { actuals, isLoading: actualsLoading } = useActualsSince(wallet.id, compared.at(-1)?.date)
 
   return (
     <div className="flex flex-col gap-4">
@@ -29,7 +38,7 @@ export function BalanceChecksTab({ wallet }: { wallet: Wallet }) {
         Enter Balance check
       </Button>
 
-      {isLoading && checks.length === 0 ? (
+      {isLoading && shown.length === 0 ? (
         <div className="flex flex-col gap-2">
           <Skeleton className="h-14" />
           <Skeleton className="h-14" />
@@ -43,9 +52,10 @@ export function BalanceChecksTab({ wallet }: { wallet: Wallet }) {
         <ul className="divide-y rounded-xl border" aria-label="Balance checks">
           {shown.map((check, index) => {
             // Compared only once the Actuals are in, so no false "off by" shows meanwhile.
-            const comparison = actualsLoading
-              ? null
-              : compareToComputed(check, checks[index + 1], actuals)
+            const comparison =
+              actualsLoading || beforeLoading
+                ? null
+                : compareToComputed(check, compared[index + 1], actuals)
             return (
               <li
                 key={check.id}
@@ -66,12 +76,8 @@ export function BalanceChecksTab({ wallet }: { wallet: Wallet }) {
         </ul>
       )}
 
-      {checks.length > count ? (
-        <Button
-          variant="outline"
-          className="h-11 self-center"
-          onClick={() => setCount((current) => current + PAGE_SIZE)}
-        >
+      {hasNextPage ? (
+        <Button variant="outline" className="h-11 self-center" onClick={() => void fetchNextPage()}>
           Show older checks
         </Button>
       ) : null}

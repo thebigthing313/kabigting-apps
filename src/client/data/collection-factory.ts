@@ -7,7 +7,7 @@
 import { BasicIndex, createCollection } from "@tanstack/db"
 import { type QueryCollectionConfig, queryCollectionOptions } from "@tanstack/query-db-collection"
 import type { QueryClient, QueryFunctionContext, QueryKey } from "@tanstack/react-query"
-import { reportError } from "@/data/error-handler"
+import { ApiRequestError, reportError } from "@/data/error-handler"
 import { toOnDemandQueries } from "@/data/on-demand-query"
 import { queryClient } from "@/data/query-client"
 import type { OnDemandQuery } from "@shared/finances/schemas"
@@ -109,7 +109,17 @@ export function buildOnDemandCollection<Row extends { id: string; date: string }
       getKey: (row: Row) => row.id,
       queryFn: async ({ meta }) => {
         const queries = toOnDemandQueries(meta?.loadSubsetOptions ?? {})
-        const pages = await Promise.all(queries.map((query) => spec.fetchRows(query)))
+        // A load the server refused, such as one matching more rows than it sends, is shown, not
+        // left as a list that quietly stays empty. Refusals are never retried, so this shows
+        // once; other failures are retried and not reported here.
+        const pages = await Promise.all(queries.map((query) => spec.fetchRows(query))).catch(
+          (error: unknown) => {
+            if (error instanceof ApiRequestError && error.status >= 400 && error.status < 500) {
+              reportError(error, "Loading")
+            }
+            throw error
+          },
+        )
         // A paged load asks twice; the two answers never overlap, but be sure.
         return [...new Map(pages.flat().map((row) => [row.id, row])).values()]
       },

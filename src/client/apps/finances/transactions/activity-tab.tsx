@@ -53,8 +53,8 @@ function byDate(
 
 /**
  * A Wallet's Activity: uploaded lines To review, its outstanding one-off Planned items, then its
- * Actuals and Transfers newest first, a page at a time. A Transfer shows in both of its Wallets. Each row opens its
- * editor. Uploaded lines someone deleted are listed apart.
+ * Actuals and Transfers newest first, a page at a time. A Transfer shows in both of its Wallets.
+ * Each row opens its editor. Uploaded lines someone deleted are listed apart.
  */
 export function ActivityTab({ wallet }: { wallet: Wallet }) {
   const [count, setCount] = useState(PAGE_SIZE)
@@ -64,9 +64,9 @@ export function ActivityTab({ wallet }: { wallet: Wallet }) {
   const { plannedTransfers, isLoading: plannedTransfersLoading } = useOutstandingPlannedTransfers(
     wallet.id,
   )
-  // One more than shown of each, to know whether there are older ones.
-  const { data: actuals, isLoading: actualsLoading } = useActivity(wallet.id, count)
-  const { data: transfers, isLoading: transfersLoading } = useTransferActivity(wallet.id, count)
+  // Each pages on its own; both always hold at least the `count` newest of their kind.
+  const actuals = useActivity(wallet.id, PAGE_SIZE)
+  const transfers = useTransferActivity(wallet.id, PAGE_SIZE)
   const { lines: toReview, isLoading: toReviewLoading } = useToReview(wallet.id)
   const { data: accounts } = useFinancesAccounts()
   const { data: categories } = useCategories()
@@ -85,12 +85,19 @@ export function ActivityTab({ wallet }: { wallet: Wallet }) {
     "asc",
   )
   const past = byDate(
-    actuals.map((row) => ({ kind: "transaction", row })),
-    transfers.map((row) => ({ kind: "transfer", row })),
+    actuals.data.map((row) => ({ kind: "transaction", row })),
+    transfers.data.map((row) => ({ kind: "transfer", row })),
     "desc",
   )
   const upcomingLoading = oneOffsLoading || plannedTransfersLoading
-  const pastLoading = actualsLoading || transfersLoading
+  const pastLoading = actuals.isLoading || transfers.isLoading
+  const hasOlder = past.length > count || actuals.hasNextPage || transfers.hasNextPage
+
+  function showOlder() {
+    setCount((current) => current + PAGE_SIZE)
+    if (actuals.hasNextPage) void actuals.fetchNextPage()
+    if (transfers.hasNextPage) void transfers.fetchNextPage()
+  }
   // An Overdue one-off in the bell opens this tab at Upcoming one-offs, once they are in place.
   useScrollToHash(!toReviewLoading && !upcomingLoading)
 
@@ -160,12 +167,8 @@ export function ActivityTab({ wallet }: { wallet: Wallet }) {
             ))}
           </ul>
         )}
-        {past.length > count ? (
-          <Button
-            variant="outline"
-            className="h-11 self-center"
-            onClick={() => setCount((current) => current + PAGE_SIZE)}
-          >
+        {hasOlder ? (
+          <Button variant="outline" className="h-11 self-center" onClick={showOlder}>
             Show older Actuals
           </Button>
         ) : null}
