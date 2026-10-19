@@ -1,4 +1,14 @@
-import { and, eq, gt, gte, inArray, lte, or, useLiveQuery } from "@tanstack/react-db"
+import {
+  and,
+  eq,
+  gt,
+  gte,
+  inArray,
+  lte,
+  or,
+  useLiveInfiniteQuery,
+  useLiveQuery,
+} from "@tanstack/react-db"
 import { api } from "@/data/api"
 import { defineOnDemandCollection } from "@/data/collection-factory"
 import { readJson } from "@/data/error-handler"
@@ -174,19 +184,20 @@ export async function writeTransfers(rows: readonly TransferRow[]): Promise<void
 }
 
 /**
- * A Wallet's Actual Transfers, newest first: the `count` newest, plus one more when there are
- * older ones. Raising `count` loads the next page.
+ * A Wallet's Actual Transfers, newest first (then by id), a page at a time: `fetchNextPage` adds
+ * the next older page under the ones loaded, without reloading them.
  */
-export function useTransferActivity(walletId: string, count: number) {
+export function useTransferActivity(walletId: string, pageSize: number) {
   const transfers = financesTransfers()
-  return useLiveQuery(
+  return useLiveInfiniteQuery(
     (q) =>
       q
         .from({ row: transfers })
         .where(({ row }) => and(touches(row, walletId), eq(row.status, "actual")))
         .orderBy(({ row }) => row.date, NEWEST_FIRST)
-        .limit(count + 1),
-    [transfers, walletId, count],
+        .orderBy(({ row }) => row.id, "desc"),
+    { pageSize },
+    [transfers, walletId],
   )
 }
 

@@ -13,6 +13,7 @@ import {
   walletRow,
 } from "#shared/finances/schemas.ts"
 import { newId } from "#shared/ids.ts"
+import { MAX_QUERY_IDS } from "#shared/schemas/query.ts"
 
 let server: TestServer
 let headers: Headers
@@ -272,6 +273,24 @@ describe("query", () => {
     ).toEqual([a.id])
     expect(await idsOf({ walletId: wallet.id, status: "planned" })).toEqual([c.id])
     expect(await idsOf({ walletId: wallet.id, status: "actual" })).toEqual([b.id, a.id])
+  })
+
+  test("a query without a limit that matches more than the cap is refused, never cut short", async () => {
+    const wallet = await newWallet()
+    const rows = Array.from({ length: MAX_QUERY_IDS + 1 }, () => ({
+      id: newId(),
+      status: "actual" as const,
+      walletId: wallet.id,
+      date: "2026-10-01",
+      amountCents: -1,
+      source: "manual" as const,
+    }))
+    for (let start = 0; start < rows.length; start += 1000) {
+      await server.db.insert(financesTransactions).values(rows.slice(start, start + 1000))
+    }
+
+    await expectStatus(await queryResponse({ walletId: wallet.id }), 400, "validation_failed")
+    expect(await idsOf({ walletId: wallet.id, limit: MAX_QUERY_IDS })).toHaveLength(MAX_QUERY_IDS)
   })
 
   test("filters by Category, null meaning Uncategorised", async () => {
