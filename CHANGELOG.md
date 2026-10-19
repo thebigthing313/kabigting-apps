@@ -1,5 +1,14 @@
 # kabigting-apps
 
+## 0.3.1
+
+### Patch Changes
+
+- b741424: Cards shown as owed no longer warn about being below $0.
+- 3db2859: Cards shown as owed show red only past their threshold.
+- 4119463: Cards shown as owed describe their threshold as the most owed.
+- 18fa228: Finances: "Show older Actuals" on a Wallet's Activity tab and "Show older checks" on its Balance checks tab now add the next older page under the ones shown, newest first, without the list going blank. Before, a Wallet with a long history could jump from its recent Actuals straight to ones years old. Actuals on the same day keep one order from page to page, and a load the server refuses now shows an error instead of an empty list.
+
 ## 0.3.0
 
 ### Minor Changes
