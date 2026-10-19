@@ -28,7 +28,7 @@ function input(
 ): AttentionInput {
   const forForecast = forecastInput(changes)
   return {
-    wallet: { inForecast: true, ...forForecast.wallet },
+    wallet: { inForecast: true, shownAsOwed: false, ...forForecast.wallet },
     hasBalanceCheck: forForecast.latestCheck !== null,
     toReview: [],
     forecast: forecast(forForecast),
@@ -63,7 +63,7 @@ describe("To review", () => {
 
   test("a Wallet outside the forecast still lists its lines", () => {
     const items = walletAttention({
-      wallet: { id: CHECKING, inForecast: false, lowBalanceThresholdCents: 0 },
+      wallet: { id: CHECKING, inForecast: false, shownAsOwed: false, lowBalanceThresholdCents: 0 },
       hasBalanceCheck: false,
       toReview: [{ id: "line-1", date: "2026-03-02", amountCents: -500 }],
       forecast: null,
@@ -165,7 +165,7 @@ describe("No Balance check", () => {
 
   test("a Wallet outside the forecast needs none", () => {
     const items = walletAttention({
-      wallet: { id: CHECKING, inForecast: false, lowBalanceThresholdCents: 0 },
+      wallet: { id: CHECKING, inForecast: false, shownAsOwed: false, lowBalanceThresholdCents: 0 },
       hasBalanceCheck: false,
       toReview: [],
       forecast: null,
@@ -224,20 +224,39 @@ describe("low balance", () => {
     )
     expect(items).toEqual([])
   })
+})
 
-  test("an owed Wallet's threshold uses the stored sign", () => {
-    // A card owing $300.00 with a threshold of -$500.00 (owing more than $500 is low).
-    const items = walletAttention(
-      input({
-        wallet: { id: CHECKING, lowBalanceThresholdCents: -50_000 },
-        latestCheck: { date: "2026-03-01", amountCents: -30_000 },
-        planned: [bill("2026-03-12", -30_000)],
-      }),
-    )
-    expect(items.map((item) => item.kind === "lowBalance" && item.under)).toEqual([
-      "threshold",
-      "zero",
+/** A Wallet shown as owed, owing $300.00 on Mar 1 with `thresholdCents` (stored negative), and `planned`. */
+function owed(thresholdCents: number, planned: ForecastInput["planned"]): AttentionInput {
+  const changes = input({
+    wallet: { id: CHECKING, lowBalanceThresholdCents: thresholdCents },
+    latestCheck: { date: "2026-03-01", amountCents: -30_000 },
+    planned,
+  })
+  return { ...changes, wallet: { ...changes.wallet, shownAsOwed: true } }
+}
+
+describe("low balance on a Wallet shown as owed", () => {
+  test("owing all horizon is normal for it, so it is not under $0", () => {
+    expect(walletAttention(owed(-50_000, []))).toEqual([])
+  })
+
+  test("owing more than its threshold is its only low-balance item", () => {
+    // Owing $600.00 from Mar 12, past the $500.00 most owed.
+    const items = walletAttention(owed(-50_000, [bill("2026-03-12", -30_000)]))
+    expect(items).toEqual([
+      {
+        kind: "lowBalance",
+        walletId: CHECKING,
+        under: "threshold",
+        thresholdCents: -50_000,
+        date: "2026-03-12",
+      },
     ])
+  })
+
+  test("a $0 threshold means no warning", () => {
+    expect(walletAttention(owed(0, [bill("2026-03-12", -300_000)]))).toEqual([])
   })
 })
 

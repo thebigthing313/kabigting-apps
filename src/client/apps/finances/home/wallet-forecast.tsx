@@ -152,8 +152,8 @@ export function WalletForecast({
 }
 
 /**
- * The warnings for the first day under the Wallet's threshold and the first day under $0. With
- * `worstOnly`, just the worse of the two: under $0 wins.
+ * The warnings for the first day under the Wallet's threshold and the first day under $0 (never on
+ * a Wallet shown as owed). With `worstOnly`, just the worse of the two: under $0 wins.
  */
 export function ForecastWarnings({
   wallet,
@@ -165,7 +165,7 @@ export function ForecastWarnings({
   worstOnly?: boolean
 }) {
   const threshold = wallet.lowBalanceThresholdCents
-  const warnings = lowBalanceWarnings(threshold, forecast)
+  const warnings = lowBalanceWarnings(wallet, forecast)
   const { underZero } = warnings
   const underThreshold = worstOnly && underZero ? null : warnings.underThreshold
   if (!underZero && !underThreshold) return null
