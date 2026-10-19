@@ -2,7 +2,7 @@
   "changelog": "@changesets/cli/changelog",
   "commit": false,
   "format": "prettier",
-  "baseBranch": "main",
+  "baseBranch": "develop",
   "access": "restricted",
   "privatePackages": { "version": true, "tag": false }
 }
