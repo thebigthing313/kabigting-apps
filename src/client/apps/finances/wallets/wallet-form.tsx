@@ -156,7 +156,9 @@ export function WalletForm({
                 const invalid = field.state.meta.isTouched && !field.state.meta.isValid
                 return (
                   <Field data-invalid={invalid || undefined}>
-                    <FieldLabel htmlFor="wallet-threshold">Low-balance threshold</FieldLabel>
+                    <FieldLabel htmlFor="wallet-threshold">
+                      {shownAsOwed ? "Most owed" : "Low-balance threshold"}
+                    </FieldLabel>
                     <AmountInput
                       // Remounts on a flip, so the text shows the flipped amount.
                       key={String(shownAsOwed)}
@@ -170,7 +172,7 @@ export function WalletForm({
                     />
                     <FieldDescription>
                       {shownAsOwed
-                        ? "Warn when the amount owed goes above this."
+                        ? "Warn when the amount owed goes above this. $0 means no warning."
                         : "Warn when the balance goes below this."}
                     </FieldDescription>
                     {invalid ? <FieldError errors={field.state.meta.errors} /> : null}

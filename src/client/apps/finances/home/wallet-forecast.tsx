@@ -5,6 +5,7 @@ import { AttentionBanner } from "@/apps/finances/attention/attention-banner"
 import { dayAnchor } from "@/apps/finances/attention/attention-item"
 import { useForecastWalletAttention } from "@/apps/finances/attention/use-attention"
 import { ForecastChart } from "@/apps/finances/home/forecast-chart"
+import { inTheRed, lowPoint, thresholdWarning } from "@/apps/finances/home/low-balance"
 import { forecastItemKey, isOverdue } from "@/apps/finances/home/use-wallet-forecast"
 import { useScrollToHash } from "@/hooks/use-scroll-to-hash"
 import { Button } from "@/components/ui/button"
@@ -78,14 +79,12 @@ export function WalletForecast({
             data-testid="today-balance"
             className={cn(
               "text-4xl font-semibold break-words tabular-nums",
-              result.todayBalanceCents < 0 && "text-destructive",
+              inTheRed(wallet, result.todayBalanceCents) && "text-destructive",
             )}
           >
             {shown(result.todayBalanceCents)}
           </p>
-          <p className="text-sm text-muted-foreground">
-            Lowest {shown(low.balanceCents)} on {formatDisplayDate(low.date)}
-          </p>
+          <p className="text-sm text-muted-foreground">{lowPoint(wallet, low)}</p>
         </div>
         <HorizonPicker days={days} />
       </div>
@@ -93,8 +92,9 @@ export function WalletForecast({
       <ForecastChart
         forecast={result}
         thresholdCents={threshold}
+        shownAsOwed={wallet.shownAsOwed}
         formatAmount={shown}
-        description={`End-of-day balance over the next ${days} days, lowest ${shown(low.balanceCents)} on ${formatDisplayDate(low.date)}`}
+        description={`End-of-day balance over the next ${days} days. ${lowPoint(wallet, low)}`}
       />
 
       <ForecastWarnings wallet={wallet} forecast={result} />
@@ -109,7 +109,7 @@ export function WalletForecast({
               <span
                 className={cn(
                   "font-semibold tabular-nums",
-                  day.balanceCents < 0 && "text-destructive",
+                  inTheRed(wallet, day.balanceCents) && "text-destructive",
                 )}
               >
                 {shown(day.balanceCents)}
@@ -152,8 +152,8 @@ export function WalletForecast({
 }
 
 /**
- * The warnings for the first day under the Wallet's threshold and the first day under $0. With
- * `worstOnly`, just the worse of the two: under $0 wins.
+ * The warnings for the first day under the Wallet's threshold and the first day under $0 (never on
+ * a Wallet shown as owed). With `worstOnly`, just the worse of the two: under $0 wins.
  */
 export function ForecastWarnings({
   wallet,
@@ -164,18 +164,14 @@ export function ForecastWarnings({
   forecast: Forecast
   worstOnly?: boolean
 }) {
-  const threshold = wallet.lowBalanceThresholdCents
-  const warnings = lowBalanceWarnings(threshold, forecast)
+  const warnings = lowBalanceWarnings(wallet, forecast)
   const { underZero } = warnings
   const underThreshold = worstOnly && underZero ? null : warnings.underThreshold
   if (!underZero && !underThreshold) return null
   return (
     <div role="status" className="flex flex-col gap-1">
       {underThreshold ? (
-        <Warning tone="warn">
-          Under the {formatShown(wallet, threshold)} threshold on{" "}
-          {formatDisplayDate(underThreshold)}
-        </Warning>
+        <Warning tone="warn">{thresholdWarning(wallet, underThreshold)}</Warning>
       ) : null}
       {underZero ? <Warning tone="bad">Below $0 on {formatDisplayDate(underZero)}</Warning> : null}
     </div>
