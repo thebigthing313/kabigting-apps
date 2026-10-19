@@ -1,4 +1,4 @@
-import { and, eq, lt, useLiveQuery } from "@tanstack/react-db"
+import { and, eq, lt, useLiveInfiniteQuery, useLiveQuery } from "@tanstack/react-db"
 import { api } from "@/data/api"
 import { defineOnDemandCollection } from "@/data/collection-factory"
 import { readJson } from "@/data/error-handler"
@@ -39,30 +39,45 @@ const financesBalanceChecks = defineOnDemandCollection<BalanceCheckRow>({
 /** Dates are `YYYY-MM-DD`, so plain string order is date order and can page. */
 const NEWEST_FIRST = { direction: "desc", stringSort: "lexical" } as const
 
-/** A Wallet's newest `count` checks, only those before `before` when given. */
-function useNewestChecks(walletId: string, count: number, before?: string) {
+/**
+ * A Wallet's newest `count` checks, only those before `before` when given. Nothing loads when
+ * `enabled` is false.
+ */
+function useNewestChecks(walletId: string, count: number, before?: string, enabled = true) {
   const checks = financesBalanceChecks()
-  return useLiveQuery(
+  const { data, isLoading } = useLiveQuery(
     (q) =>
-      q
-        .from({ check: checks })
-        .where(({ check }) =>
-          before === undefined
-            ? eq(check.walletId, walletId)
-            : and(eq(check.walletId, walletId), lt(check.date, before)),
-        )
-        .orderBy(({ check }) => check.date, NEWEST_FIRST)
-        .limit(count),
-    [checks, walletId, count, before],
+      enabled
+        ? q
+            .from({ check: checks })
+            .where(({ check }) =>
+              before === undefined
+                ? eq(check.walletId, walletId)
+                : and(eq(check.walletId, walletId), lt(check.date, before)),
+            )
+            .orderBy(({ check }) => check.date, NEWEST_FIRST)
+            .limit(count)
+        : undefined,
+    [checks, walletId, count, before, enabled],
   )
+  return { data: data ?? [], isLoading: enabled && isLoading }
 }
 
 /**
- * A Wallet's checks, newest first: the `count` newest, plus the one before them so each shown
- * check can be compared with its previous. Raising `count` loads the next page.
+ * A Wallet's checks, newest first, a page at a time: `fetchNextPage` adds the next older page
+ * under the ones loaded, without reloading them.
  */
-export function useBalanceChecks(walletId: string, count: number) {
-  return useNewestChecks(walletId, count + 1)
+export function useBalanceChecks(walletId: string, pageSize: number) {
+  const checks = financesBalanceChecks()
+  return useLiveInfiniteQuery(
+    (q) =>
+      q
+        .from({ check: checks })
+        .where(({ check }) => eq(check.walletId, walletId))
+        .orderBy(({ check }) => check.date, NEWEST_FIRST),
+    { pageSize },
+    [checks, walletId],
+  )
 }
 
 /** A Wallet's latest check, the starting point of its balance; undefined when it has none. */
@@ -71,9 +86,12 @@ export function useLatestBalanceCheck(walletId: string) {
   return { check: data[0], isLoading }
 }
 
-/** The Wallet's check before `date`, the one a check on `date` is compared with. */
-export function usePreviousBalanceCheck(walletId: string, date: string) {
-  const { data, isLoading } = useNewestChecks(walletId, 1, date)
+/**
+ * The Wallet's check before `date`, the one a check on `date` is compared with. Nothing loads
+ * while `date` is undefined.
+ */
+export function usePreviousBalanceCheck(walletId: string, date: string | undefined) {
+  const { data, isLoading } = useNewestChecks(walletId, 1, date, date !== undefined)
   return { check: data[0], isLoading }
 }
 

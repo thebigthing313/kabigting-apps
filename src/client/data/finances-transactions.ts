@@ -1,4 +1,14 @@
-import { and, eq, gt, gte, inArray, isNull, lte, useLiveQuery } from "@tanstack/react-db"
+import {
+  and,
+  eq,
+  gt,
+  gte,
+  inArray,
+  isNull,
+  lte,
+  useLiveInfiniteQuery,
+  useLiveQuery,
+} from "@tanstack/react-db"
 import { api } from "@/data/api"
 import { defineOnDemandCollection } from "@/data/collection-factory"
 import { readJson, reportError } from "@/data/error-handler"
@@ -187,12 +197,12 @@ export function useTransactionsById(ids: readonly string[]) {
 }
 
 /**
- * A Wallet's Actuals, newest first: the `count` newest, plus one more when there are older ones.
- * Raising `count` loads the next page.
+ * A Wallet's Actuals, newest first (then by id), a page at a time: `fetchNextPage` adds the next
+ * older page under the ones loaded, without reloading them.
  */
-export function useActivity(walletId: string, count: number) {
+export function useActivity(walletId: string, pageSize: number) {
   const transactions = financesTransactions()
-  return useLiveQuery(
+  return useLiveInfiniteQuery(
     (q) =>
       q
         .from({ row: transactions })
@@ -200,8 +210,9 @@ export function useActivity(walletId: string, count: number) {
           and(eq(row.walletId, walletId), eq(row.status, "actual"), eq(row.ignored, false)),
         )
         .orderBy(({ row }) => row.date, NEWEST_FIRST)
-        .limit(count + 1),
-    [transactions, walletId, count],
+        .orderBy(({ row }) => row.id, "desc"),
+    { pageSize },
+    [transactions, walletId],
   )
 }
 

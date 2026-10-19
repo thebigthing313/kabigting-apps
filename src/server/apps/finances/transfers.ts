@@ -4,6 +4,7 @@ import { z } from "zod"
 import { isForeignKeyViolation } from "#server/apps/finances/db-errors.ts"
 import type { AppEnv } from "#server/core/context.ts"
 import { ApiError } from "#server/core/errors.ts"
+import { queryLimit, withinCap } from "#server/core/query-limit.ts"
 import { validate } from "#server/core/validate.ts"
 import type { Db } from "#server/db/client.ts"
 import { financesOccurrences, financesTransfers } from "#server/db/schema/index.ts"
@@ -16,7 +17,6 @@ import {
   updateTransfer,
 } from "#shared/finances/schemas.ts"
 import { id } from "#shared/schemas/primitives.ts"
-import { MAX_QUERY_IDS } from "#shared/schemas/query.ts"
 
 type TransferRecord = typeof financesTransfers.$inferSelect
 
@@ -121,8 +121,8 @@ export function transferRoutes(db: Db) {
           ),
         )
         .orderBy(direction(table.date), direction(table.id))
-        .limit(limit ?? MAX_QUERY_IDS)
-      return c.json({ rows: transfers.map(transferToRow) })
+        .limit(queryLimit(limit))
+      return c.json({ rows: withinCap(transfers, limit).map(transferToRow) })
     })
     .post("/", validate("json", createTransfer), async (c) => {
       const input = c.req.valid("json")

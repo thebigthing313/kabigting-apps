@@ -43,10 +43,13 @@ jobs:
         run: pnpm changeset status --since=origin/${{ github.base_ref }}
       - name: A release is versioned first
         # Merge the "Version Packages" pull request into develop before releasing, so main gets
-        # the version bump and CHANGELOG.md in the same deploy.
+        # the version bump and CHANGELOG.md in the same deploy. Empty changesets (no bump) are
+        # ignored: Changesets opens no Version Packages pull request for them alone.
         if: github.event_name == 'pull_request' && github.head_ref == 'develop'
         run: |
-          pending=$(find .changeset -name '*.md' ! -name README.md)
+          pending=$(for f in $(find .changeset -name '*.md' ! -name README.md); do
+            awk '/^---/ { n++; next } n == 1 && NF { found = 1 } END { exit !found }' "$f" && echo "$f"
+          done)
           if [ -n "$pending" ]; then
             echo "Unreleased changesets; merge the Version Packages pull request into develop first:"
             echo "$pending"

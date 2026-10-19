@@ -29,7 +29,10 @@ export type AttentionItem =
   /** A forecast Wallet with no Balance check, so no Forecast. */
   | { kind: "noBalanceCheck"; walletId: string }
   | {
-      /** The first day in the horizon under the Wallet's threshold, or under $0. */
+      /**
+       * The first day in the horizon under the Wallet's threshold, or under $0. A Wallet shown as
+       * owed is never warned about $0, as owing is normal for it.
+       */
       kind: "lowBalance"
       walletId: string
       under: "threshold" | "zero"
@@ -38,7 +41,12 @@ export type AttentionItem =
     }
 
 export type AttentionInput = {
-  wallet: { id: string; inForecast: boolean; lowBalanceThresholdCents: number }
+  wallet: {
+    id: string
+    inForecast: boolean
+    shownAsOwed: boolean
+    lowBalanceThresholdCents: number
+  }
   hasBalanceCheck: boolean
   /** The Wallet's uploaded lines no one has reviewed yet. */
   toReview: readonly { id: string; date: string; amountCents: number }[]
@@ -48,15 +56,16 @@ export type AttentionInput = {
 
 /**
  * The days a Forecast first goes under the Wallet's threshold and under $0. A $0 threshold is the
- * $0 warning already, so it is not given twice.
+ * $0 warning already, so it is not given twice. A Wallet shown as owed gets no $0 warning, so its
+ * $0 threshold means no warning at all; its threshold already means "owes more than this".
  */
 export function lowBalanceWarnings(
-  thresholdCents: number,
+  wallet: { shownAsOwed: boolean; lowBalanceThresholdCents: number },
   forecast: Forecast,
 ): { underThreshold: string | null; underZero: string | null } {
   return {
-    underThreshold: thresholdCents === 0 ? null : forecast.firstUnderThreshold,
-    underZero: forecast.firstUnderZero,
+    underThreshold: wallet.lowBalanceThresholdCents === 0 ? null : forecast.firstUnderThreshold,
+    underZero: wallet.shownAsOwed ? null : forecast.firstUnderZero,
   }
 }
 
@@ -114,7 +123,7 @@ export function walletAttention({
   items.push(...overdue.toSorted((a, b) => dateOf(a).localeCompare(dateOf(b))))
 
   const thresholdCents = wallet.lowBalanceThresholdCents
-  const { underThreshold, underZero } = lowBalanceWarnings(thresholdCents, forecast)
+  const { underThreshold, underZero } = lowBalanceWarnings(wallet, forecast)
   if (underThreshold !== null) {
     items.push({
       kind: "lowBalance",

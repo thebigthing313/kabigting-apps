@@ -15,16 +15,19 @@ const config = {
 /**
  * The Forecast's end-of-day balances as a step line, with the $0 and low-balance threshold lines
  * and the low point marked. Amounts keep their stored sign, so lower is always worse, on a Wallet
- * shown as owed too; `formatAmount` writes them as the Wallet shows them.
+ * shown as owed too; `formatAmount` writes them as the Wallet shows them. There $0 means paid
+ * off, so its line is muted rather than a warning.
  */
 export function ForecastChart({
   forecast,
   thresholdCents,
+  shownAsOwed,
   formatAmount,
   description,
 }: {
   forecast: Forecast
   thresholdCents: number
+  shownAsOwed: boolean
   formatAmount: (cents: number) => string
   /** What the chart shows, for screen readers. */
   description: string
@@ -60,7 +63,11 @@ export function ForecastChart({
               />
             }
           />
-          <ReferenceLine y={0} stroke="var(--destructive)" strokeDasharray="6 4" />
+          <ReferenceLine
+            y={0}
+            stroke={shownAsOwed ? "var(--muted-foreground)" : "var(--destructive)"}
+            strokeDasharray="6 4"
+          />
           {thresholdCents === 0 ? null : (
             <ReferenceLine
               y={thresholdCents}
