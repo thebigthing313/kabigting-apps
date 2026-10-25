@@ -35,3 +35,8 @@ _Avoid_: Wet/dirty, #1/#2
 **Dry**:
 A Diaper change with neither Pee nor Poop.
 _Avoid_: Empty, clean
+
+**History**:
+Every Feeding and Diaper change in one list, newest first, grouped by household day, where entries
+are reviewed, corrected and deleted.
+_Avoid_: Log, timeline, feed
