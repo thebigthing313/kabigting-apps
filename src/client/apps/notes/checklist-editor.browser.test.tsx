@@ -14,7 +14,16 @@ const AT_ONCE = { timeout: 300 }
 
 const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
-const blank = { kind: "checklist", title: null, body: null, editedAt: null } as const
+const me = { id: "me", name: "Mara" }
+
+const blank = {
+  kind: "checklist",
+  title: null,
+  body: null,
+  editedAt: null,
+  creator: me,
+  audience: [],
+} as const
 const saved = { ...blank, title: "Groceries", editedAt: "2026-10-01T09:00:00.000Z" } as const
 
 function item(name: string, position: string, checkedAt: string | null = null): DraftItem {
@@ -39,12 +48,15 @@ function callbacks() {
     ),
     onDelete: vi.fn<(onServer: Promise<boolean>) => void>(),
     onBack: vi.fn<() => void>(),
+    onShare: vi.fn(),
   }
 }
 
 async function renderChecklist(props: Partial<NoteEditorProps> = {}) {
   const spies = callbacks()
-  const screen = await render(<NoteEditor note={blank} saved={false} {...spies} {...props} />)
+  const screen = await render(
+    <NoteEditor note={blank} saved={false} viewerId={me.id} people={[]} {...spies} {...props} />,
+  )
   const listed = (name: "To do" | "Checked") =>
     screen
       .getByRole("list", { name })
@@ -170,6 +182,21 @@ describe("Items", () => {
 })
 
 describe("ticking", () => {
+  test("an Audience member ticks an Item of a Checklist someone else made", async () => {
+    const ana = { id: "ana", name: "Ana" }
+    const { screen, onUpdateItem } = await renderChecklist({
+      note: { ...saved, creator: ana, audience: [me] },
+      saved: true,
+      items: [item("Milk", "c")],
+    })
+    await expect.element(screen.getByText("Shared by Ana")).toBeVisible()
+    await screen.getByRole("checkbox", { name: "Milk" }).click()
+    await vi.waitFor(
+      () => expect(onUpdateItem).toHaveBeenCalledWith("id-Milk", { checked: true }),
+      AT_ONCE,
+    )
+  })
+
   test("saves at once and folds the Item, struck through, under N checked", async () => {
     const { screen, listed, onUpdateItem } = await renderSaved([
       item("Milk", "c"),

@@ -15,6 +15,7 @@ function note(overrides: Partial<Note>): Note {
     title: null,
     body: "",
     creator: { id: "me", name: "Someone" },
+    audience: [],
     createdAt: minutesAgo(600),
     editedAt: minutesAgo(600),
     ...overrides,
@@ -25,7 +26,7 @@ async function renderList(notes: Note[], items: Item[] = []) {
   const onNew = vi.fn<(kind: NoteKind) => void>()
   const onOpen = vi.fn<(id: string) => void>()
   const screen = await render(
-    <NotesList notes={notes} items={items} onNew={onNew} onOpen={onOpen} />,
+    <NotesList notes={notes} items={items} viewerId="me" onNew={onNew} onOpen={onOpen} />,
   )
   return { onNew, onOpen, screen }
 }
@@ -59,13 +60,37 @@ describe("the list", () => {
     await expect.element(screen.getByText("Call the plumber")).toBeVisible()
     const rows = screen.getByRole("listitem")
     expect(rows.elements().map((row) => row.textContent)).toEqual([
-      "Call the plumberabout the sink5 minutes ago",
-      "Packing3 hours ago",
+      "Call the plumberabout the sinkOnly you · 5 minutes ago",
+      "PackingOnly you · 3 hours ago",
     ])
     await expect.element(rows.nth(0).getByRole("img", { name: "Text note" })).toBeInTheDocument()
 
     await rows.nth(1).getByRole("button").click()
     expect(onOpen).toHaveBeenCalledWith("0190a000-0000-7000-8000-00000000000a")
+  })
+
+  test("each row says who the Note is shared with", async () => {
+    const ben = { id: "ben", name: "Ben" }
+    const cy = { id: "cy", name: "Cy" }
+    const { screen } = await renderList([
+      note({ id: "0190a000-0000-7000-8000-00000000000a", title: "Private" }),
+      note({ id: "0190a000-0000-7000-8000-00000000000b", title: "Mine", audience: [ben, cy] }),
+      note({
+        id: "0190a000-0000-7000-8000-00000000000c",
+        title: "Theirs",
+        creator: ben,
+        audience: [{ id: "me", name: "Me" }],
+      }),
+    ])
+    const rows = screen.getByRole("listitem")
+    await expect.element(rows.nth(0)).toBeVisible()
+    expect(rows.elements().map((row) => row.textContent)).toEqual([
+      "TheirsBShared by Ben · 10 hours ago",
+      "MineShared with Ben, Cy · 10 hours ago",
+      "PrivateOnly you · 10 hours ago",
+    ])
+    // Someone else's Note shows its Creator's avatar.
+    await expect.element(rows.nth(0).getByRole("img", { name: "Ben" })).toBeInTheDocument()
   })
 
   test("a Checklist row shows what is left to do and how much is done", async () => {
@@ -99,7 +124,7 @@ describe("the list", () => {
     await expect.element(row.getByRole("img", { name: "Checklist" })).toBeInTheDocument()
     await expect
       .element(row)
-      .toHaveTextContent("GroceriesMilk, Bread, Eggs3 to do · 1 done · 5 minutes ago")
+      .toHaveTextContent("GroceriesMilk, Bread, Eggs3 to do · 1 done · Only you · 5 minutes ago")
   })
 
   test("with no Notes, says so", async () => {

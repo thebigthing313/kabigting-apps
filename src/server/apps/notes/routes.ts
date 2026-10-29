@@ -1,6 +1,7 @@
 import { clearCheckedRoutes } from "#server/apps/notes/clear-checked.ts"
 import { itemRoutes } from "#server/apps/notes/items.ts"
 import { noteRoutes } from "#server/apps/notes/notes.ts"
+import { peopleRoutes } from "#server/apps/notes/people.ts"
 import type { Deps } from "#server/core/context.ts"
 import { createAppRouter } from "#server/core/create-app-router.ts"
 
@@ -12,5 +13,6 @@ export function notesRoutes(deps: Deps) {
   return createAppRouter("notes", deps)
     .route("/notes", noteRoutes(deps.db))
     .route("/notes", clearCheckedRoutes(deps.db))
+    .route("/people", peopleRoutes(deps.db))
     .route("/items", itemRoutes(deps.db))
 }

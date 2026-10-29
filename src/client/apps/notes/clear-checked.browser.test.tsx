@@ -9,11 +9,15 @@ import { instantAt } from "@shared/dates"
 /** Well inside the typing pause: what saves "at once" has saved by then. */
 const AT_ONCE = { timeout: 300 }
 
+const me = { id: "me", name: "Mara" }
+
 const note = {
   kind: "checklist",
   title: "Groceries",
   body: null,
   editedAt: "2026-10-01T09:00:00.000Z",
+  creator: me,
+  audience: [],
 } as const
 
 function item(name: string, position: string, checkedAt: string | null = null): DraftItem {
@@ -47,8 +51,11 @@ async function renderChecklist(items: DraftItem[]) {
     ),
     onDelete: vi.fn<(onServer: Promise<boolean>) => void>(),
     onBack: vi.fn<() => void>(),
+    onShare: vi.fn(),
   }
-  const screen = await render(<NoteEditor note={note} saved items={items} {...spies} />)
+  const screen = await render(
+    <NoteEditor note={note} saved items={items} viewerId={me.id} people={[]} {...spies} />,
+  )
   const listed = (name: "To do" | "Checked") =>
     screen
       .getByRole("list", { name })
