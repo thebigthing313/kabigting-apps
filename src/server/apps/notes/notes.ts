@@ -1,6 +1,6 @@
 import { and, asc, desc, eq, inArray, notInArray, sql, type SQL } from "drizzle-orm"
 import { Hono } from "hono"
-import { notePeople } from "#server/apps/notes/people.ts"
+import { addableAmong } from "#server/apps/notes/people.ts"
 import { visibleTo } from "#server/apps/notes/visibility.ts"
 import type { AppEnv } from "#server/core/context.ts"
 import { ApiError } from "#server/core/errors.ts"
@@ -129,22 +129,23 @@ export function noteRoutes(db: Db) {
         const noteId = c.req.valid("param").id
         const accountId = c.get("account").id
         const wanted = [...new Set(c.req.valid("json").accountIds)]
-        const note = await readNote(db, accountId, noteId)
-        if (note.creator.id !== accountId) creatorOnly("change who it's shared with")
-        // Someone already in the Audience may stay whatever their access now; anyone added must
-        // hold App access to Notes, and the Creator is never in their own Audience.
-        const current = new Set(note.audience.map((person) => person.id))
-        const added = wanted.filter((id) => !current.has(id))
-        const allowed = new Set((await notePeople(db, accountId, added)).map((p) => p.id))
-        const refused = added.filter((id) => !allowed.has(id))
-        if (refused.length > 0) {
-          throw new ApiError("validation_failed", "Only people with access to Notes can be added", {
-            accountIds: refused,
-          })
-        }
-        // Not a content change, so edited at stays. A removed member's row goes, so adding them
-        // back later starts a fresh row.
         await db.transaction(async (tx) => {
+          // Locked until the change commits, so a delete or another Audience change waits.
+          const [note] = await tx
+            .select({ creatorId: notes.creatorId })
+            .from(notes)
+            .where(and(eq(notes.id, noteId), visibleTo(accountId)))
+            .for("update")
+          if (!note) notFound()
+          if (note.creatorId !== accountId) creatorOnly("change who it's shared with")
+          const members = await tx
+            .select({ accountId: noteAudience.accountId })
+            .from(noteAudience)
+            .where(eq(noteAudience.noteId, noteId))
+          const current = new Set(members.map((member) => member.accountId))
+          const added = wanted.filter((id) => !current.has(id))
+          // Not a content change, so edited at stays. A removed member's row goes, so adding
+          // them back later starts a fresh row.
           await tx
             .delete(noteAudience)
             .where(
@@ -153,11 +154,35 @@ export function noteRoutes(db: Db) {
                 wanted.length > 0 ? notInArray(noteAudience.accountId, wanted) : undefined,
               ),
             )
-          if (added.length > 0) {
-            await tx
-              .insert(noteAudience)
-              .values(added.map((id) => ({ noteId, accountId: id })))
-              .onConflictDoNothing()
+          if (added.length === 0) return
+          // Someone already in the Audience may stay whatever their access now; anyone added
+          // must hold App access to Notes as the insert runs, and the Creator is never in their
+          // own Audience. Anyone refused undoes the whole change.
+          const inserted = await tx
+            .insert(noteAudience)
+            .select((qb) =>
+              qb
+                .select({
+                  noteId: sql<string>`${noteId}::uuid`.as("note_id"),
+                  accountId: auth_user.id,
+                  addedAt: sql<Date>`now()`.as("added_at"),
+                  openedAt: sql<Date | null>`null`.as("opened_at"),
+                })
+                .from(auth_user)
+                .where(addableAmong(accountId, added)),
+            )
+            .onConflictDoNothing()
+            .returning({ accountId: noteAudience.accountId })
+          const stored = new Set(inserted.map((row) => row.accountId))
+          const refused = added.filter((id) => !stored.has(id))
+          if (refused.length > 0) {
+            throw new ApiError(
+              "validation_failed",
+              "Only people with access to Notes can be added",
+              {
+                accountIds: refused,
+              },
+            )
           }
         })
         return c.json(await readNote(db, accountId, noteId))

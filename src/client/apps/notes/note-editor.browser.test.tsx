@@ -285,12 +285,33 @@ describe("the header", () => {
     })
     await expect.element(screen.getByText("Shared by Ana")).toBeVisible()
     await expect.element(screen.getByRole("img", { name: "Ana" })).toBeVisible()
-    await expect.element(screen.getByRole("button", { name: /Share/ })).not.toBeInTheDocument()
+    await expect
+      .element(screen.getByRole("button", { name: "Share", exact: true }))
+      .not.toBeInTheDocument()
     await expect.element(screen.getByRole("button", { name: "More" })).not.toBeInTheDocument()
     await expect.element(screen.getByText("Delete note")).not.toBeInTheDocument()
 
     await userEvent.type(screen.getByLabelText("Note"), "Eggs")
     await vi.waitFor(() => expect(onUpdate).toHaveBeenCalledWith({ body: "Eggs" }), SAVED_WITHIN)
+  })
+
+  test("a member sees everyone who can see it, and can change none of it", async () => {
+    const { screen, onShare } = await renderEditor({
+      note: { ...saved, creator: ana, audience: [me, ben] },
+      saved: true,
+    })
+    await screen.getByRole("button", { name: /Shared by Ana/ }).click()
+    const sheet = screen.getByRole("dialog", { name: "Who can see this note" })
+    await expect.element(sheet).toBeVisible()
+    expect(
+      sheet
+        .getByRole("listitem")
+        .elements()
+        .map((row) => row.textContent),
+    ).toEqual(["AAnaCreator", "MYou", "BBen"])
+    await expect.element(sheet.getByRole("checkbox")).not.toBeInTheDocument()
+    await expect.element(sheet.getByText(SHARE_LINE)).not.toBeInTheDocument()
+    expect(onShare).not.toHaveBeenCalled()
   })
 
   test("a new Note can't be shared until it is saved", async () => {

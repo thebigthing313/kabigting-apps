@@ -35,8 +35,8 @@ export function NotePage({
   if (!note && newKind === undefined) {
     return (
       <div className="mx-auto flex max-w-2xl flex-col gap-2 text-muted-foreground">
-        <p className="font-medium text-foreground">This note isn't here</p>
-        <p>It may have been deleted.</p>
+        {/* Deleted, or no longer shared with this Account: either way, nothing is announced. */}
+        <p className="font-medium text-foreground">This note isn't available</p>
         <Link to="/notes" className="text-primary underline-offset-4 hover:underline">
           Back to notes
         </Link>

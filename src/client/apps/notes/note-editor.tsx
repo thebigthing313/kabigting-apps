@@ -1,7 +1,7 @@
 import { ArrowLeftIcon, MoreVerticalIcon, UsersIcon } from "lucide-react"
 import { useState } from "react"
 import { Avatar, AvatarStack, useNow } from "@/apps/notes/note-parts"
-import { ShareSheet } from "@/apps/notes/share-sheet"
+import { AudienceSheet, ShareSheet } from "@/apps/notes/share-sheet"
 import { useNoteDraft, type NoteDraftOptions } from "@/apps/notes/use-note-draft"
 import {
   AlertDialog,
@@ -83,10 +83,16 @@ export function NoteEditor({
         </Button>
         <span className="flex-1" />
         {!isCreator ? (
-          <span className="flex items-center gap-2 text-sm text-muted-foreground">
+          // Opens who else can see it, read-only.
+          <Button
+            variant="ghost"
+            size="lg"
+            className="text-muted-foreground"
+            onClick={() => setSharing(true)}
+          >
             <Avatar person={note.creator} />
             <span>Shared by {note.creator.name}</span>
-          </span>
+          </Button>
         ) : (
           // A new Note can be shared once it is saved.
           saved && (
@@ -130,6 +136,15 @@ export function NoteEditor({
       />
       {note.editedAt !== null && (
         <p className="text-xs text-muted-foreground">Edited {timeAgo(note.editedAt, now)}</p>
+      )}
+      {!isCreator && (
+        <AudienceSheet
+          open={sharing}
+          onOpenChange={setSharing}
+          creator={note.creator}
+          audience={note.audience}
+          viewerId={viewerId}
+        />
       )}
       {isCreator && saved && (
         <ShareSheet

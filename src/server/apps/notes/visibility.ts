@@ -1,4 +1,5 @@
-import { sql, type SQL } from "drizzle-orm"
+import { and, eq, exists, or, sql, type SQL } from "drizzle-orm"
+import { subquery } from "#server/db/client.ts"
 import { noteAudience, notes } from "#server/db/schema/index.ts"
 
 /**
@@ -8,5 +9,9 @@ import { noteAudience, notes } from "#server/db/schema/index.ts"
  * (docs/notes/adr/0001-per-note-audience.md).
  */
 export function visibleTo(accountId: string): SQL {
-  return sql`(${notes.creatorId} = ${accountId} or exists (select 1 from ${noteAudience} where ${noteAudience.noteId} = ${notes.id} and ${noteAudience.accountId} = ${accountId}))`
+  const inAudience = subquery
+    .select({ noteId: noteAudience.noteId })
+    .from(noteAudience)
+    .where(and(eq(noteAudience.noteId, notes.id), eq(noteAudience.accountId, accountId)))
+  return or(eq(notes.creatorId, accountId), exists(inAudience)) ?? sql`false`
 }

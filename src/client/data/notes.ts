@@ -2,11 +2,11 @@
 // Account. Each refetch returns the complete visible set, so a Note that stops being visible (a
 // member removed from its Audience, say) drops out silently; refetches follow the Shell's focus and
 // reconnect defaults.
-import { eq, useLiveQuery } from "@tanstack/react-db"
+import { createOptimisticAction, eq, useLiveQuery } from "@tanstack/react-db"
 import { useQuery } from "@tanstack/react-query"
 import { api } from "@/data/api"
 import { defineRestCollection } from "@/data/collection-factory"
-import { readJson } from "@/data/error-handler"
+import { ApiRequestError, readJson, reportError } from "@/data/error-handler"
 import { settled } from "@/data/settled"
 import { nowInstant } from "@shared/dates"
 import { titleOrNull } from "@shared/notes/notes"
@@ -25,17 +25,6 @@ function editable(changes: Partial<NoteRow>): UpdateNote {
   }
 }
 
-/** Saves a change: the Audience through its own route, typed fields through the Note's. */
-async function saveChanges(id: string, changes: Partial<NoteRow>): Promise<NoteRow> {
-  if (changes.audience !== undefined) {
-    const accountIds = changes.audience.map((person) => person.id)
-    return readJson(
-      await api.notes.notes[":id"].audience.$put({ param: { id }, json: { accountIds } }),
-    )
-  }
-  return readJson(await api.notes.notes[":id"].$patch({ param: { id }, json: editable(changes) }))
-}
-
 const notesCollection = defineRestCollection<NoteRow>({
   id: "notes-notes",
   queryKey: ["notes", "notes"],
@@ -44,7 +33,9 @@ const notesCollection = defineRestCollection<NoteRow>({
     if (kind !== "text") throw new Error("Only Text notes can be made")
     return readJson(await api.notes.notes.$post({ json: { id, kind, title, body: body ?? "" } }))
   },
-  update: saveChanges,
+  // Only typed fields go through here; the Audience has its own action, `shareNote`.
+  update: async (id, changes) =>
+    readJson(await api.notes.notes[":id"].$patch({ param: { id }, json: editable(changes) })),
   remove: async (id) => readJson(await api.notes.notes[":id"].$delete({ param: { id } })),
   // A Note deleted elsewhere, or no longer visible, leaves the list on the failed write.
   dropOnNotFound: true,
@@ -103,15 +94,39 @@ export function deleteNote(id: string) {
 }
 
 /**
- * Replaces who a Note is shared with (Creator only). Shown at once; rolled back with a toast if
- * the server refuses. True once the server stored it.
+ * Replacing the Audience: its own route, not a field write, so it is an action of its own. The
+ * new Audience shows at once; a refusal rolls it back with a toast, and a Note that is gone (404)
+ * leaves the list.
  */
-export function shareNote(id: string, audience: readonly NotePerson[]) {
-  return settled(
+const replaceAudience = createOptimisticAction<{ id: string; audience: readonly NotePerson[] }>({
+  onMutate: ({ id, audience }) => {
     notesCollection().update(id, (draft) => {
       draft.audience = [...audience]
-    }),
-  )
+    })
+  },
+  mutationFn: async ({ id, audience }) => {
+    const notes = notesCollection()
+    try {
+      const accountIds = audience.map((person) => person.id)
+      const row = await readJson(
+        await api.notes.notes[":id"].audience.$put({ param: { id }, json: { accountIds } }),
+      )
+      await notes.utils.writeUpsert(row)
+    } catch (error) {
+      reportError(error, "Sharing")
+      if (error instanceof ApiRequestError && error.status === 404)
+        await notes.utils.writeDelete(id)
+      throw error
+    }
+  },
+})
+
+/**
+ * Replaces who a Note is shared with (Creator only). True once the server stored it; false after
+ * a refusal, which is rolled back and reported.
+ */
+export function shareNote(id: string, audience: readonly NotePerson[]) {
+  return settled(replaceAudience({ id, audience }))
 }
 
 /**

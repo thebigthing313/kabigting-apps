@@ -76,3 +76,51 @@ export function ShareSheet({ open, onOpenChange, audience, people, onShare }: Sh
     </Sheet>
   )
 }
+
+export type AudienceSheetProps = {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  creator: NotePerson
+  audience: readonly NotePerson[]
+  /** The signed-in Account, listed as "You". */
+  viewerId: string
+}
+
+/**
+ * A member's read-only view of who can see a Note: its Creator, then everyone in its Audience.
+ * Only the Creator changes it, from the Share sheet.
+ */
+export function AudienceSheet({
+  open,
+  onOpenChange,
+  creator,
+  audience,
+  viewerId,
+}: AudienceSheetProps) {
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent side="bottom" className="mx-auto max-w-lg rounded-t-xl">
+        <SheetHeader>
+          <SheetTitle>Who can see this note</SheetTitle>
+          <SheetDescription>Everyone here can read and edit it.</SheetDescription>
+        </SheetHeader>
+        <ul className="flex max-h-[50vh] flex-col overflow-y-auto px-4">
+          {[creator, ...audience].map((person) => (
+            <li key={person.id} className="flex items-center gap-3 py-2.5 text-base">
+              <Avatar person={person} className="size-8 text-sm" />
+              <span className="flex-1">{person.id === viewerId ? "You" : person.name}</span>
+              {person.id === creator.id && (
+                <span className="text-sm text-muted-foreground">Creator</span>
+              )}
+            </li>
+          ))}
+        </ul>
+        <SheetFooter>
+          <Button size="lg" onClick={() => onOpenChange(false)}>
+            Done
+          </Button>
+        </SheetFooter>
+      </SheetContent>
+    </Sheet>
+  )
+}
