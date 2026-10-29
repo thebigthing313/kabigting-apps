@@ -3,7 +3,7 @@ import { createTypedTextSaver, useTypedTextLifecycle } from "@/apps/notes/typed-
 import type { ItemChanges, NewItem, NoteFields, SaveOptions, SaveOutcome } from "@/data/notes"
 import { nowInstant } from "@shared/dates"
 import { newId } from "@shared/ids"
-import { bottomOfUnchecked } from "@shared/notes/items"
+import { bottomOfUnchecked, dropPosition } from "@shared/notes/items"
 import { isBlankItem, isEmptyNote } from "@shared/notes/notes"
 
 type Field = keyof NoteFields
@@ -249,15 +249,16 @@ function createAutosave(
     saver.saveNow(itemKey(id))
   }
 
+  /** Changes one Item, leaving the rest as they are. */
+  function patchItem(id: string, changes: Partial<DraftItem>) {
+    setItems(latest.items.map((each) => (each.id === id ? { ...each, ...changes } : each)))
+  }
+
   /** Takes the server's tick time for an Item that is still checked here. */
   function takeTickTime(id: string, stored: StoredItem) {
     const item = findItem(id)
     if (!item?.checked || stored.checkedAt === null || stored.checkedAt === item.checkedAt) return
-    setItems(
-      latest.items.map((each) =>
-        each.id === id ? { ...each, checkedAt: stored.checkedAt } : each,
-      ),
-    )
+    patchItem(id, { checkedAt: stored.checkedAt })
     onChanged(latest)
   }
 
@@ -294,7 +295,7 @@ function createAutosave(
 
     /** Takes an Item's new text and saves it once typing pauses; blank text never saves. */
     changeItem(id: string, text: string): NoteDraft {
-      setItems(latest.items.map((item) => (item.id === id ? { ...item, text } : item)))
+      patchItem(id, { text })
       saver.changed(itemKey(id))
       return latest
     },
@@ -308,19 +309,9 @@ function createAutosave(
       if (!item || item.checked === checked || isBlankItem(item)) return latest
       const position = bottomOfUnchecked(latest.items)
       // Shown at once with this device's time, then the server's, which orders checked Items.
-      setItems(
-        latest.items.map((each) =>
-          each.id !== id
-            ? each
-            : checked
-              ? { ...each, checked, checkedAt: nowInstant() }
-              : {
-                  ...each,
-                  checked,
-                  checkedAt: null,
-                  position,
-                },
-        ),
+      patchItem(
+        id,
+        checked ? { checked, checkedAt: nowInstant() } : { checked, checkedAt: null, position },
       )
       // Text still waiting to save goes first, so the Item exists to be ticked.
       settleItemText(id)
@@ -333,6 +324,33 @@ function createAutosave(
         } finally {
           ticking.delete(id)
         }
+      })
+      return latest
+    },
+
+    /**
+     * Moves an unchecked Item to `toIndex` among the unchecked Items, saving at once. Only its
+     * position is written, so someone else's move of another Item stands. A refused move is
+     * undone, unless the Item has moved again since.
+     */
+    moveItem(id: string, toIndex: number): NoteDraft {
+      const position = dropPosition(latest.items, id, toIndex)
+      const before = findItem(id)?.position
+      if (position === null || before === undefined) return latest
+      patchItem(id, { position })
+      // Text still waiting to save goes first, so the Item exists to be moved.
+      settleItemText(id)
+      saver.run(itemKey(id), async () => {
+        // An Item not stored yet takes its position with it when its add lands.
+        await addingItems.get(id)
+        if (!storedItems.has(id)) return
+        const moved = await new Promise<StoredItem | null>((resolve) =>
+          resolve(handlers.onUpdateItem(id, { position })),
+        ).catch(() => null)
+        if (moved) return
+        if (findItem(id)?.position !== position) return
+        patchItem(id, { position: before })
+        onChanged(latest)
       })
       return latest
     },
@@ -383,8 +401,8 @@ function createAutosave(
 
 /**
  * The editor's own copy of a Note, saved on its own. Each typed field, and each Item's text,
- * saves about a second after typing pauses, independently of the others; adding, ticking and
- * deleting an Item save at once. A new Note is created by its first save with content, so one
+ * saves about a second after typing pauses, independently of the others; adding, ticking, moving
+ * and deleting an Item save at once. A new Note is created by its first save with content, so one
  * left empty, or with only blank Items, is never stored; a saved Note stays even when emptied.
  * Text that can't reach the server keeps its place, is listed in `notSaved` and is retried.
  * Hiding or leaving the page, or unmounting, sends what is not yet saved at once.
@@ -415,6 +433,7 @@ export function useNoteDraft({ initial, saved, ...handlers }: NoteDraftOptions) 
     addItem: () => setDraft(autosave.addItem(newId())),
     changeItem: (id: string, text: string) => setDraft(autosave.changeItem(id, text)),
     toggleItem: (id: string, checked: boolean) => setDraft(autosave.toggleItem(id, checked)),
+    moveItem: (id: string, toIndex: number) => setDraft(autosave.moveItem(id, toIndex)),
     deleteItem: (id: string) => setDraft(autosave.deleteItem(id)),
     leaveItem: (id: string) => setDraft(autosave.leaveItem(id)),
     discard: () => autosave.discard(),

@@ -18,7 +18,7 @@ import {
   useNotes,
 } from "@/data/notes"
 import { orderNotes } from "@shared/notes/notes"
-import { updateNote as notePatch } from "@shared/notes/schemas"
+import { updateItem as itemPatch, updateNote as notePatch } from "@shared/notes/schemas"
 
 const CHECKLIST = "0190f5d2-0000-7000-8000-000000000001"
 const TEXT_NOTE = "0190f5d2-0000-7000-8000-000000000002"
@@ -74,6 +74,8 @@ let delay = 0
 let sent: { body: unknown; keepalive: boolean }[] = []
 /** The Item deletes sent, by path. */
 let deleted: string[] = []
+/** The bodies of the Item ticks and moves sent, in order. */
+let itemPatches: unknown[] = []
 
 async function saveTypedText(body: unknown, store: () => unknown, keepalive: boolean) {
   sent.push({ body, keepalive })
@@ -105,17 +107,20 @@ async function serve(path: string, method: string, init: RequestInit | undefined
     return saveTypedText(patch, () => ({ ...NOTES[2], ...patch }), keepalive)
   }
   if (path === `/api/notes/items/${MILK}` && method === "PATCH") {
-    if (typeof body === "object" && body !== null && "text" in body) {
+    const patch = itemPatch.parse(body)
+    if (patch.text !== undefined) {
+      const { text } = patch
       return saveTypedText(
-        body,
-        () => ({ item: { ...ITEMS[0], text: body.text }, noteEditedAt: SERVER_TICK }),
+        patch,
+        () => ({ item: { ...ITEMS[0], text }, noteEditedAt: SERVER_TICK }),
         keepalive,
       )
     }
-    return Response.json({
-      item: { ...ITEMS[0], checked: true, checkedAt: SERVER_TICK },
-      noteEditedAt: SERVER_TICK,
-    })
+    // A tick or a move.
+    itemPatches.push(patch)
+    const tick = patch.checked === true ? { checked: true, checkedAt: SERVER_TICK } : {}
+    const move = patch.position === undefined ? {} : { position: patch.position }
+    return Response.json({ item: { ...ITEMS[0], ...tick, ...move }, noteEditedAt: SERVER_TICK })
   }
   if (path.startsWith("/api/notes/items/") && method === "DELETE") {
     deleted.push(path)
@@ -132,6 +137,7 @@ beforeEach(() => {
   delay = 0
   sent = []
   deleted = []
+  itemPatches = []
   vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = new URL(input instanceof Request ? input.url : String(input), location.origin)
     const method = (input instanceof Request ? input.method : init?.method) ?? "GET"
@@ -302,4 +308,13 @@ describe("a save whose earlier try was stored without an answer", () => {
     await pause(300)
     await expect.element(screen.getByText("Deleting failed")).not.toBeInTheDocument()
   })
+})
+
+test("moving an Item sends only its new position and keeps it", async () => {
+  const screen = await render(<ListHarness />)
+  await vi.waitFor(() => expect(screen.getByRole("listitem").elements()).toHaveLength(3))
+
+  const stored = await updateItem(MILK, { position: "a" })
+  expect(stored).toMatchObject({ position: "a" })
+  expect(itemPatches).toEqual([{ position: "a" }])
 })

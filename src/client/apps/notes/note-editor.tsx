@@ -146,6 +146,7 @@ export function NoteEditor({
           onAddItem={checklist.addItem}
           onChangeItem={checklist.changeItem}
           onToggleItem={checklist.toggleItem}
+          onMoveItem={checklist.moveItem}
           onDeleteItem={checklist.deleteItem}
           onLeaveItem={checklist.leaveItem}
           isNotSaved={(id) => isNotSaved({ item: id })}

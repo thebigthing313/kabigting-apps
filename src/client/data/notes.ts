@@ -30,8 +30,11 @@ export type NoteFields = { title: string; body: string }
 /** What an Item is made with; it starts unchecked. */
 export type NewItem = { id: string; text: string; position: string }
 
-/** A tick or untick of an Item, saved at once. Its text saves as typed text. */
-export type ItemChanges = { checked?: boolean }
+/**
+ * A tick, untick or move of an Item, each written on its own and saved at once. Its text saves
+ * as typed text, through `updateItemText`.
+ */
+export type ItemChanges = { checked?: boolean; position?: string }
 
 /** How a save of typed text is sent: with keepalive while the page is being left. */
 export type SaveOptions = Pick<WriteOptions, "keepalive">
@@ -92,10 +95,11 @@ async function bumpNoteThenItem({ item, noteEditedAt }: ItemWrite): Promise<Item
 }
 
 function itemChanges(changes: Partial<ItemRow>): UpdateItem {
-  const { text, checked } = changes
+  const { text, checked, position } = changes
   return {
     ...(text === undefined ? {} : { text }),
     ...(checked === undefined ? {} : { checked }),
+    ...(position === undefined ? {} : { position }),
   }
 }
 
@@ -245,12 +249,15 @@ export function updateItemText(
 }
 
 /**
- * Ticks or unticks an Item; its text saves through `updateItemText`. A tick shows at once and
+ * Writes only the parts given; its text saves through `updateItemText`. A tick shows at once and
  * the server stamps its own time; an untick returns the Item to the bottom of the unchecked
- * Items. Resolves to the Item as the server stored it, tick time included, or null after a
- * refusal (rolled back and reported).
+ * Items; a position moves it among them. Resolves to the Item as the server stored it, tick time
+ * included, or null after a refusal (rolled back and reported).
  */
-export async function updateItem(id: string, { checked }: ItemChanges): Promise<Item | null> {
+export async function updateItem(
+  id: string,
+  { checked, position }: ItemChanges,
+): Promise<Item | null> {
   const items = itemsCollection()
   const stored = await settled(
     items.update(id, (draft) => {
@@ -263,6 +270,7 @@ export async function updateItem(id: string, { checked }: ItemChanges): Promise<
         draft.checkedAt = null
         draft.position = bottomOfUnchecked(checklist)
       }
+      if (position !== undefined) draft.position = position
     }),
   )
   return stored ? (items.get(id) ?? null) : null
