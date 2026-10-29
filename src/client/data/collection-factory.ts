@@ -7,18 +7,42 @@
 import { BasicIndex, createCollection } from "@tanstack/db"
 import { type QueryCollectionConfig, queryCollectionOptions } from "@tanstack/query-db-collection"
 import type { QueryClient, QueryFunctionContext, QueryKey } from "@tanstack/react-query"
-import { ApiRequestError, reportError } from "@/data/error-handler"
+import { ApiRequestError, isNetworkError, reportError } from "@/data/error-handler"
 import { toOnDemandQueries } from "@/data/on-demand-query"
 import { queryClient } from "@/data/query-client"
 import type { OnDemandQuery } from "@shared/finances/schemas"
+
+/**
+ * What a write asks of its request, given as the mutation's metadata:
+ * `collection.update(id, { metadata: options }, (draft) => ...)`.
+ */
+export type WriteOptions = {
+  /** Send the request with `keepalive`, so it outlives a page that is closing. */
+  keepalive?: boolean
+  /**
+   * The caller shows a write that never reached the server itself (typed text's "Not saved"),
+   * so a network failure needs no toast. Refusals are still reported.
+   */
+  quietWhenUnreached?: boolean
+}
+
+function writeOptions(metadata: unknown): WriteOptions {
+  if (typeof metadata !== "object" || metadata === null) return {}
+  return {
+    ...("keepalive" in metadata && metadata.keepalive === true ? { keepalive: true } : {}),
+    ...("quietWhenUnreached" in metadata && metadata.quietWhenUnreached === true
+      ? { quietWhenUnreached: true }
+      : {}),
+  }
+}
 
 type RestWrites<Row extends { id: string }> = {
   /** Unique across the app, e.g. "finances-wallets". */
   id: string
   queryKey: readonly string[]
   /** Each write returns the full row as the server stored it. */
-  create: (row: Row) => Promise<Row>
-  update: (id: string, changes: Partial<Row>) => Promise<Row>
+  create: (row: Row, options: WriteOptions) => Promise<Row>
+  update: (id: string, changes: Partial<Row>, options: WriteOptions) => Promise<Row>
   remove: (id: string) => Promise<Row>
   /**
    * When a write answers 404, also drop the row: the server says it is gone (or no longer
@@ -42,39 +66,52 @@ function isNotFound(error: unknown): boolean {
   return error instanceof ApiRequestError && error.status === 404
 }
 
+/** Reports a failed write, unless the caller shows it. */
+function report(error: unknown, action: string, options: WriteOptions) {
+  if (options.quietWhenUnreached && isNetworkError(error)) return
+  reportError(error, action)
+}
+
 function writeHandlers<Row extends { id: string }>(spec: RestWrites<Row>) {
   /** Reports a failed write and, when the row is gone and the spec asks, drops it too. */
   async function failed(
     error: unknown,
     action: string,
+    options: WriteOptions,
     key: string | undefined,
     drop: (key: string) => Promise<void> | void,
   ): Promise<never> {
-    reportError(error, action)
+    report(error, action, options)
     if (spec.dropOnNotFound && key !== undefined && isNotFound(error)) await drop(key)
     throw error
   }
   return {
     onInsert: async ({ transaction, collection }) => {
+      let options: WriteOptions = {}
       try {
         for (const mutation of transaction.mutations) {
-          await collection.utils.writeUpsert(await spec.create(mutation.modified))
+          options = writeOptions(mutation.metadata)
+          await collection.utils.writeUpsert(await spec.create(mutation.modified, options))
         }
       } catch (error) {
-        reportError(error, "Saving")
+        report(error, "Saving", options)
         throw error
       }
       return { refetch: false }
     },
     onUpdate: async ({ transaction, collection }) => {
       let key: string | undefined
+      let options: WriteOptions = {}
       try {
         for (const mutation of transaction.mutations) {
           key = mutation.key
-          await collection.utils.writeUpsert(await spec.update(mutation.key, mutation.changes))
+          options = writeOptions(mutation.metadata)
+          await collection.utils.writeUpsert(
+            await spec.update(mutation.key, mutation.changes, options),
+          )
         }
       } catch (error) {
-        return failed(error, "Saving", key, (gone) => collection.utils.writeDelete(gone))
+        return failed(error, "Saving", options, key, (gone) => collection.utils.writeDelete(gone))
       }
       return { refetch: false }
     },
@@ -87,7 +124,7 @@ function writeHandlers<Row extends { id: string }>(spec: RestWrites<Row>) {
           await collection.utils.writeDelete(mutation.key)
         }
       } catch (error) {
-        return failed(error, "Deleting", key, (gone) => collection.utils.writeDelete(gone))
+        return failed(error, "Deleting", {}, key, (gone) => collection.utils.writeDelete(gone))
       }
       return { refetch: false }
     },

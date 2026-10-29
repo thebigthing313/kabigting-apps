@@ -2,10 +2,10 @@
 // Account. Each refetch returns the complete visible set, so a Note that stops being visible
 // drops out without extra code; refetches follow the Shell's focus and reconnect defaults.
 import { eq, useLiveQuery } from "@tanstack/react-db"
-import { api } from "@/data/api"
-import { defineRestCollection } from "@/data/collection-factory"
+import { api, sendOptions } from "@/data/api"
+import { defineRestCollection, type WriteOptions } from "@/data/collection-factory"
 import { readJson } from "@/data/error-handler"
-import { settled } from "@/data/settled"
+import { type SaveOptions, saveOutcome, settled } from "@/data/settled"
 import { nowInstant } from "@shared/dates"
 import { titleOrNull } from "@shared/notes/notes"
 import type { NotePerson, NoteRow, UpdateNote } from "@shared/notes/schemas"
@@ -27,12 +27,17 @@ const notesCollection = defineRestCollection<NoteRow>({
   id: "notes-notes",
   queryKey: ["notes", "notes"],
   fetchRows: async () => (await readJson(await api.notes.notes.$get())).rows,
-  create: async ({ id, kind, title, body }) => {
+  create: async ({ id, kind, title, body }, options) => {
     if (kind !== "text") throw new Error("Only Text notes can be made")
-    return readJson(await api.notes.notes.$post({ json: { id, kind, title, body: body ?? "" } }))
+    const json = { id, kind, title, body: body ?? "" }
+    return readJson(await api.notes.notes.$post({ json }, sendOptions(options, json)))
   },
-  update: async (id, changes) =>
-    readJson(await api.notes.notes[":id"].$patch({ param: { id }, json: editable(changes) })),
+  update: async (id, changes, options) => {
+    const json = editable(changes)
+    return readJson(
+      await api.notes.notes[":id"].$patch({ param: { id }, json }, sendOptions(options, json)),
+    )
+  },
   remove: async (id) => readJson(await api.notes.notes[":id"].$delete({ param: { id } })),
   // A Note deleted elsewhere, or no longer visible, leaves the list on the failed write.
   dropOnNotFound: true,
@@ -55,28 +60,44 @@ export function useNote(id: string) {
 }
 
 /**
- * Saves a Note that so far existed only on this device. True once the server stored it; false
- * after a refusal, which is rolled back and reported.
+ * A save of typed text: sent with keepalive when asked, and a network failure is shown by the
+ * field as "Not saved" rather than by a toast.
  */
-export function createTextNote(id: string, creator: NotePerson, fields: NoteFields) {
+function typedText({ keepalive }: SaveOptions): { metadata: WriteOptions } {
+  return { metadata: { keepalive, quietWhenUnreached: true } }
+}
+
+/**
+ * Saves a Note that so far existed only on this device, as its typed text first saves. A refusal
+ * is rolled back and reported; a save that never reached the server is retried by the editor.
+ */
+export function createTextNote(
+  id: string,
+  creator: NotePerson,
+  fields: NoteFields,
+  options: SaveOptions,
+) {
   const now = nowInstant()
-  return settled(
-    notesCollection().insert({
-      id,
-      kind: "text",
-      title: titleOrNull(fields.title),
-      body: fields.body,
-      creator,
-      createdAt: now,
-      editedAt: now,
-    }),
+  return saveOutcome(
+    notesCollection().insert(
+      {
+        id,
+        kind: "text",
+        title: titleOrNull(fields.title),
+        body: fields.body,
+        creator,
+        createdAt: now,
+        editedAt: now,
+      },
+      typedText(options),
+    ),
   )
 }
 
-/** Writes only the fields given, each on its own. True once the server stored them. */
-export function updateNote(id: string, changes: Partial<NoteFields>) {
-  return settled(
-    notesCollection().update(id, (draft) => {
+/** Writes only the typed fields given, each on its own; outcomes as for `createTextNote`. */
+export function updateNote(id: string, changes: Partial<NoteFields>, options: SaveOptions) {
+  return saveOutcome(
+    notesCollection().update(id, typedText(options), (draft) => {
       if (changes.title !== undefined) draft.title = titleOrNull(changes.title)
       if (changes.body !== undefined) draft.body = changes.body
     }),

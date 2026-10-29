@@ -1,5 +1,5 @@
-import { ArrowLeftIcon, MoreVerticalIcon } from "lucide-react"
-import { useState } from "react"
+import { ArrowLeftIcon, CloudOffIcon, MoreVerticalIcon } from "lucide-react"
+import { useId, useState } from "react"
 import { useNow } from "@/apps/notes/note-parts"
 import { useNoteDraft, type NoteDraftOptions } from "@/apps/notes/use-note-draft"
 import {
@@ -34,11 +34,24 @@ export type NoteEditorProps = Pick<NoteDraftOptions, "saved" | "onCreate" | "onU
 }
 
 /**
+ * Marks a field whose text never reached the server. The text stays as typed and is retried on
+ * the next keystroke, on returning to the app or on reconnecting.
+ */
+function NotSaved({ id }: { id: string }) {
+  return (
+    <p className="flex items-center gap-1 text-xs text-destructive">
+      <CloudOffIcon aria-hidden className="size-3.5" />
+      <span id={id}>Not saved</span>
+    </p>
+  )
+}
+
+/**
  * A Note as its own page: a back arrow and the ⋯ menu, a large title, the plain-text body exactly
  * as typed, and when it was last edited. Typing saves on its own; there is no Save button.
  */
 export function NoteEditor({ note, saved, onCreate, onUpdate, onDelete, onBack }: NoteEditorProps) {
-  const { fields, change, discard } = useNoteDraft({
+  const { fields, notSaved, change, discard } = useNoteDraft({
     initial: { title: note.title ?? "", body: note.body ?? "" },
     saved,
     onCreate,
@@ -46,6 +59,8 @@ export function NoteEditor({ note, saved, onCreate, onUpdate, onDelete, onBack }
   })
   const [confirming, setConfirming] = useState(false)
   const now = useNow()
+  const titleNotSaved = useId()
+  const bodyNotSaved = useId()
 
   return (
     <div className="mx-auto flex max-w-2xl flex-col gap-3">
@@ -71,17 +86,21 @@ export function NoteEditor({ note, saved, onCreate, onUpdate, onDelete, onBack }
         onChange={(event) => change("title", event.target.value)}
         placeholder="Title"
         maxLength={200}
+        aria-describedby={notSaved.has("title") ? titleNotSaved : undefined}
         className="bg-transparent text-2xl font-semibold outline-none placeholder:text-muted-foreground/60"
       />
+      {notSaved.has("title") && <NotSaved id={titleNotSaved} />}
       {/* A plain textarea: the body is shown exactly as typed, never as Markdown or links. */}
       <textarea
         aria-label="Note"
+        aria-describedby={notSaved.has("body") ? bodyNotSaved : undefined}
         value={fields.body}
         onChange={(event) => change("body", event.target.value)}
         placeholder="Note"
         autoFocus={!saved}
         className="min-h-[50vh] resize-none bg-transparent text-base leading-relaxed whitespace-pre-wrap outline-none placeholder:text-muted-foreground/60"
       />
+      {notSaved.has("body") && <NotSaved id={bodyNotSaved} />}
       {note.editedAt !== null && (
         <p className="text-xs text-muted-foreground">Edited {timeAgo(note.editedAt, now)}</p>
       )}

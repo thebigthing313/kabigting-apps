@@ -1,17 +1,20 @@
 import { useEffect, useState } from "react"
+import {
+  createTypedTextSaver,
+  type SaveOptions,
+  type SaveOutcome,
+  useTypedTextLifecycle,
+} from "@/apps/notes/typed-text"
 import type { NoteFields } from "@/data/notes"
 import { isEmptyNote } from "@shared/notes/notes"
-
-/** How long typing must pause before a field saves. */
-export const SAVE_DELAY_MS = 1_000
 
 type Field = keyof NoteFields
 
 type Handlers = {
-  /** Stores a new Note with everything typed so far; resolves true once stored. */
-  onCreate: (fields: NoteFields) => Promise<boolean>
-  /** Stores one field's latest text; resolves true once stored. */
-  onUpdate: (changes: Partial<NoteFields>) => Promise<boolean>
+  /** Stores a new Note with everything typed so far. */
+  onCreate: (fields: NoteFields, options: SaveOptions) => Promise<SaveOutcome>
+  /** Stores one field's latest text. */
+  onUpdate: (changes: Partial<NoteFields>, options: SaveOptions) => Promise<SaveOutcome>
 }
 
 export type NoteDraftOptions = Handlers & {
@@ -20,42 +23,33 @@ export type NoteDraftOptions = Handlers & {
   saved: boolean
 }
 
-/**
- * The saving behind an editor, outside React so it outlives the page: pending saves still run
- * after the editor unmounts.
- */
-function createAutosave(initial: NoteFields, saved: boolean, first: Handlers) {
+/** A Note's typed fields and their saving, outside React so pending saves outlive the editor. */
+function createNoteDraft(
+  initial: NoteFields,
+  saved: boolean,
+  first: Handlers,
+  onNotSaved: (fields: ReadonlySet<Field>) => void,
+) {
   let latest = initial
   let exists = saved
-  let discarded = false
   let handlers = first
-  const timers = new Map<Field, ReturnType<typeof setTimeout>>()
-  // Saves run one at a time, so a field's update never overtakes the create, and a delete can
-  // wait for the save in flight.
-  let queue: Promise<unknown> = Promise.resolve()
 
-  function save(field: Field) {
-    queue = queue
-      .then(async () => {
-        // A save queued before the Note was deleted must not land after the delete.
-        if (discarded) return
-        if (exists) {
-          await handlers.onUpdate({ [field]: latest[field] })
-        } else if (!isEmptyNote(latest)) {
-          // The create carries every field typed so far.
-          exists = await handlers.onCreate({ ...latest })
-        }
-      })
-      // A failed save is reported where it failed; the saves behind it still run.
-      .catch(() => {})
-  }
-
-  function dropPending() {
-    for (const timer of timers.values()) clearTimeout(timer)
-    timers.clear()
-  }
+  const saver = createTypedTextSaver<Field>({
+    onNotSaved,
+    save: async (field, options) => {
+      if (exists) return handlers.onUpdate({ [field]: latest[field] }, options)
+      // An empty new Note is never stored.
+      if (isEmptyNote(latest)) return "saved"
+      // The create carries every field typed so far.
+      const outcome = await handlers.onCreate({ ...latest }, options)
+      exists = outcome === "saved"
+      return outcome
+    },
+  })
 
   return {
+    saver,
+
     setHandlers(next: Handlers) {
       handlers = next
     },
@@ -63,24 +57,8 @@ function createAutosave(initial: NoteFields, saved: boolean, first: Handlers) {
     /** Takes a field's new text and saves it once typing pauses. Returns every field. */
     change(field: Field, value: string): NoteFields {
       latest = { ...latest, [field]: value }
-      clearTimeout(timers.get(field))
-      timers.set(
-        field,
-        setTimeout(() => {
-          timers.delete(field)
-          save(field)
-        }, SAVE_DELAY_MS),
-      )
+      saver.changed(field)
       return latest
-    },
-
-    /** Saves every field still waiting for its pause, now. */
-    flush() {
-      for (const [field, timer] of timers) {
-        clearTimeout(timer)
-        save(field)
-      }
-      timers.clear()
     },
 
     /**
@@ -89,9 +67,7 @@ function createAutosave(initial: NoteFields, saved: boolean, first: Handlers) {
      * is on the server, so a create that lands mid-delete is deleted too.
      */
     discard(): Promise<boolean> {
-      discarded = true
-      dropPending()
-      return queue.then(() => exists)
+      return saver.stop().then(() => exists)
     },
   }
 }
@@ -99,22 +75,27 @@ function createAutosave(initial: NoteFields, saved: boolean, first: Handlers) {
 /**
  * The editor's own copy of a Note's typed fields, saved on its own: each field about a second
  * after typing pauses, independently of the other. A new Note is created by its first save with
- * content, so one left empty is never stored; a saved Note stays even when emptied. Leaving
- * flushes what is pending.
+ * content, so one left empty is never stored; a saved Note stays even when emptied. A field whose
+ * save can't reach the server keeps its text and is listed in `notSaved` until a retry lands.
+ * Hiding or leaving the page, or unmounting, sends what is pending at once.
  */
 export function useNoteDraft({ initial, saved, onCreate, onUpdate }: NoteDraftOptions) {
   const [fields, setFields] = useState(initial)
-  const [autosave] = useState(() => createAutosave(initial, saved, { onCreate, onUpdate }))
+  const [notSaved, setNotSaved] = useState<ReadonlySet<Field>>(() => new Set())
+  const [draft] = useState(() =>
+    createNoteDraft(initial, saved, { onCreate, onUpdate }, setNotSaved),
+  )
 
   // Later saves use the latest render's callbacks.
   useEffect(() => {
-    autosave.setHandlers({ onCreate, onUpdate })
+    draft.setHandlers({ onCreate, onUpdate })
   })
-  useEffect(() => () => autosave.flush(), [autosave])
+  useTypedTextLifecycle(draft.saver)
 
   return {
     fields,
-    change: (field: Field, value: string) => setFields(autosave.change(field, value)),
-    discard: () => autosave.discard(),
+    notSaved,
+    change: (field: Field, value: string) => setFields(draft.change(field, value)),
+    discard: () => draft.discard(),
   }
 }

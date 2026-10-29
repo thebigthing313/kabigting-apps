@@ -42,8 +42,8 @@ export function NotePage({
       key={noteId}
       note={note ?? { kind: newKind ?? "text", title: null, body: "", editedAt: null }}
       saved={note !== undefined}
-      onCreate={(fields) => createTextNote(noteId, creator, fields)}
-      onUpdate={(changes) => updateNote(noteId, changes)}
+      onCreate={(fields, options) => createTextNote(noteId, creator, fields, options)}
+      onUpdate={(changes, options) => updateNote(noteId, changes, options)}
       onDelete={(onServer) => {
         back()
         // Once any save in flight lands, delete the Note if it reached the server; one that
