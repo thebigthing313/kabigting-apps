@@ -239,11 +239,13 @@ describe("a save that can't reach the server", () => {
     )
   })
 
-  test("a save the server refused is neither marked Not saved nor retried", async () => {
+  test("a save the server refused is rolled back, neither marked Not saved nor retried", async () => {
     const { screen, onUpdate } = await renderEditor({ note: packing, saved: true })
     onUpdate.mockResolvedValueOnce("refused")
     await userEvent.fill(screen.getByLabelText("Title"), "Trip")
     await vi.waitFor(() => expect(onUpdate).toHaveBeenCalledTimes(1), SAVED_WITHIN)
+    // The field shows what the server holds again, as the refusal's toast says.
+    await expect.element(screen.getByLabelText("Title")).toHaveValue("Packing")
     window.dispatchEvent(new Event("online"))
     await pause(300)
     expect(onUpdate).toHaveBeenCalledTimes(1)

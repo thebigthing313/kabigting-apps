@@ -29,6 +29,8 @@ type ItemHandlers = {
   onToggleItem: (id: string, checked: boolean) => void
   onDeleteItem: (id: string) => void
   /** The Item lost focus: a blank one is dropped. */
+  /** An Item took focus. */
+  onFocusItem?: (id: string) => void
   onBlurItem: (id: string) => void
   /** Whether an Item's text is "Not saved". */
   isNotSaved?: (id: string) => boolean
@@ -57,6 +59,7 @@ function EditableItem({
   onChangeItem,
   onToggleItem,
   onDeleteItem,
+  onFocusItem = () => {},
   onBlurItem,
   isNotSaved = () => false,
   handle,
@@ -94,6 +97,7 @@ function EditableItem({
         aria-label="Item"
         value={item.text}
         onChange={(event) => onChangeItem(item.id, event.target.value)}
+        onFocus={() => onFocusItem(item.id)}
         onBlur={() => onBlurItem(item.id)}
         onKeyDown={(event) => {
           if (event.key === "Enter") {

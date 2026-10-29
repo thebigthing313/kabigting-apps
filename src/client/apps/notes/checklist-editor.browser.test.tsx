@@ -399,6 +399,28 @@ describe("Item text that can't reach the server", () => {
     await vi.waitFor(() => expect(onDeleteItem).toHaveBeenCalledTimes(1), AT_ONCE)
   })
 
+  test("an add the server refuses is undone, and not tried again", async () => {
+    const { screen, listed, onAddItem } = await renderSaved([item("Milk", "c")])
+    onAddItem.mockResolvedValueOnce("refused")
+    await userEvent.type(screen.getByRole("textbox", { name: "Add item" }), "Jam{Enter}")
+    await vi.waitFor(() => expect(listed("To do")).toEqual(["Milk"]), AT_ONCE)
+    window.dispatchEvent(new Event("online"))
+    expect(onAddItem).toHaveBeenCalledTimes(1)
+  })
+
+  test("an add that can't reach the server keeps the Item, Not saved, and retries it", async () => {
+    const { screen, listed, onAddItem } = await renderSaved([item("Milk", "c")])
+    onAddItem.mockResolvedValueOnce("unreached")
+    await userEvent.type(screen.getByRole("textbox", { name: "Add item" }), "Jam{Enter}")
+    await expect
+      .element(screen.getByRole("textbox", { name: "Item" }).last())
+      .toHaveAccessibleDescription("Not saved")
+    expect(listed("To do")).toEqual(["Milk", "Jam"])
+    window.dispatchEvent(new Event("online"))
+    await vi.waitFor(() => expect(onAddItem).toHaveBeenCalledTimes(2), AT_ONCE)
+    await expect.element(screen.getByText("Not saved")).not.toBeInTheDocument()
+  })
+
   test("leaving the page sends pending Item text and the Add item row at once", async () => {
     const { screen, onUpdateItemText, onAddItem } = await renderSaved([item("Milk", "c")])
     await userEvent.fill(screen.getByRole("textbox", { name: "Item" }), "Oat milk")
@@ -531,7 +553,7 @@ describe("reordering", () => {
       item("Milk", "c"),
       item("Eggs", "i"),
     ])
-    onAddItem.mockImplementationOnce(() => Promise.resolve("refused"))
+    onAddItem.mockImplementationOnce(() => Promise.resolve("unreached"))
     await userEvent.type(screen.getByRole("textbox", { name: "Add item" }), "Bread{Enter}")
     await vi.waitFor(() => expect(onAddItem).toHaveBeenCalledTimes(1), AT_ONCE)
     await keyboardMoveUp(screen.getByRole("button", { name: "Reorder Bread" }).element())
