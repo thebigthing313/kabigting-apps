@@ -18,6 +18,7 @@ function note(overrides: Partial<Note>): Note {
     body: "",
     creator: { id: "me", name: "Someone" },
     audience: [],
+    unopened: false,
     createdAt: minutesAgo(600),
     editedAt: minutesAgo(600),
     ...overrides,
@@ -149,6 +150,39 @@ describe("the list", () => {
       .toHaveTextContent("GroceriesMilk, Bread, Eggs3 to do · 1 done · Only you · 5 minutes ago")
   })
 
+  test("gives an Unopened Note the New badge and puts it first; the viewer's own Notes never are Unopened", async () => {
+    const ben = { id: "ben", name: "Ben" }
+    const me = { id: "me", name: "Me" }
+    const { screen } = await renderList([
+      note({ id: "0190a000-0000-7000-8000-00000000000a", title: "Mine", editedAt: minutesAgo(1) }),
+      note({
+        id: "0190a000-0000-7000-8000-00000000000b",
+        title: "Opened",
+        creator: ben,
+        audience: [me],
+        editedAt: minutesAgo(2),
+      }),
+      note({
+        id: "0190a000-0000-7000-8000-00000000000c",
+        title: "Just shared",
+        creator: ben,
+        audience: [me],
+        unopened: true,
+        editedAt: minutesAgo(300),
+      }),
+    ])
+    const rows = screen.getByRole("listitem")
+    await expect.element(rows.nth(0)).toBeVisible()
+    expect(rows.elements().map((row) => row.textContent)).toEqual([
+      "Just sharedNewBShared by Ben · 5 hours ago",
+      "MineOnly you · 1 minute ago",
+      "OpenedBShared by Ben · 2 minutes ago",
+    ])
+    await expect.element(rows.nth(0).getByText("New", { exact: true })).toBeVisible()
+    expect(rows.nth(1).getByText("New", { exact: true }).elements()).toEqual([])
+    expect(rows.nth(2).getByText("New", { exact: true }).elements()).toEqual([])
+  })
+
   test("with no Notes, says so", async () => {
     const { screen } = await renderList([])
     await expect.element(screen.getByText("No notes yet")).toBeVisible()
@@ -229,5 +263,44 @@ describe("the tabs", () => {
     await screen.getByRole("tab", { name: "Mine" }).click()
     await expect.element(screen.getByText("Nothing of yours yet")).toBeVisible()
     await expect.element(screen.getByText("Wi-Fi")).not.toBeInTheDocument()
+  })
+
+  test("an Unopened Note has the New badge and comes first in All and Shared with me, never in Mine", async () => {
+    const { screen } = await renderList([
+      note({
+        id: "0190a000-0000-7000-8000-00000000000a",
+        title: "Private",
+        editedAt: minutesAgo(30),
+      }),
+      note({
+        id: "0190a000-0000-7000-8000-00000000000c",
+        title: "Wi-Fi",
+        creator: ben,
+        audience: [me],
+        editedAt: minutesAgo(20),
+      }),
+      note({
+        id: "0190a000-0000-7000-8000-00000000000d",
+        title: "Just shared",
+        creator: ben,
+        audience: [me],
+        unopened: true,
+        editedAt: minutesAgo(300),
+      }),
+    ])
+    const justShared = "Just sharedNewBShared by Ben · 5 hours ago"
+    await expect.element(screen.getByText("Just shared")).toBeVisible()
+    expect(rowTexts(screen)).toEqual([justShared, wifi, onlyMine])
+
+    await screen.getByRole("tab", { name: "Shared with me" }).click()
+    await expect.element(screen.getByText("Private")).not.toBeInTheDocument()
+    expect(rowTexts(screen)).toEqual([justShared, wifi])
+    await expect
+      .element(screen.getByRole("listitem").nth(0).getByText("New", { exact: true }))
+      .toBeVisible()
+
+    await screen.getByRole("tab", { name: "Mine" }).click()
+    await expect.element(screen.getByText("Just shared")).not.toBeInTheDocument()
+    expect(rowTexts(screen)).toEqual([onlyMine])
   })
 })

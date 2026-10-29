@@ -26,15 +26,17 @@ function cut(text: string): string {
 }
 
 /**
- * The Notes list order: the newest edit first. Ties go to the newer id (ids are UUIDv7, so they
- * sort by creation). Returns a new array.
+ * The Notes order, in every tab: Unopened Notes first, then the newest edit first. Ties go to the
+ * newer id (ids are UUIDv7, so they sort by creation). Returns a new array.
  */
-export function orderNotes<Note extends { id: string; editedAt: string }>(
+export function orderNotes<Note extends { id: string; editedAt: string; unopened: boolean }>(
   notes: readonly Note[],
 ): Note[] {
   return notes.toSorted(
     (a, b) =>
-      Date.parse(b.editedAt) - Date.parse(a.editedAt) || (a.id < b.id ? 1 : a.id > b.id ? -1 : 0),
+      Number(b.unopened) - Number(a.unopened) ||
+      Date.parse(b.editedAt) - Date.parse(a.editedAt) ||
+      (a.id < b.id ? 1 : a.id > b.id ? -1 : 0),
   )
 }
 

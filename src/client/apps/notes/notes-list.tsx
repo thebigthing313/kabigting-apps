@@ -42,7 +42,7 @@ const EMPTY_TABS: Record<NoteTab, { heading: string; hint: string }> = {
 
 /**
  * Notes home: the New menu, then the All / Mine / Shared with me tabs over the Notes in the
- * picked tab, newest edit first.
+ * picked tab: Unopened ones first and marked with the New badge, then newest edit first.
  */
 export function NotesList({
   notes,
@@ -132,7 +132,15 @@ export function NotesList({
                       className="mt-0.5 size-5 shrink-0 text-muted-foreground"
                     />
                     <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-                      <span className="truncate font-medium">{heading}</span>
+                      <span className="flex items-center gap-2">
+                        <span className="truncate font-medium">{heading}</span>
+                        {/* Unopened: only ever someone else's Note. The PRD names the badge "New". */}
+                        {note.unopened && (
+                          <span className="shrink-0 rounded-full bg-primary px-1.5 py-0.5 text-[0.65rem] leading-none font-semibold text-primary-foreground">
+                            New
+                          </span>
+                        )}
+                      </span>
                       {snippet && (
                         <span className="truncate text-sm text-muted-foreground">{snippet}</span>
                       )}
