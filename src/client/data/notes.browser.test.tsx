@@ -18,6 +18,7 @@ import {
   useNote,
   useNotes,
 } from "@/data/notes"
+import { dismissToasts } from "@/test/toasts"
 import { orderNotes } from "@shared/notes/notes"
 import { updateItem as itemPatch, updateNote as notePatch } from "@shared/notes/schemas"
 
@@ -150,6 +151,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  dismissToasts()
   vi.unstubAllGlobals()
 })
 

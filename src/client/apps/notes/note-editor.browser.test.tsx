@@ -6,7 +6,7 @@ import { NoteEditor, type NoteEditorProps } from "@/apps/notes/note-editor"
 import type { KeptItems, StoredItem } from "@/apps/notes/use-note-draft"
 import type { ItemChanges, NewItem, NoteFields, SaveOptions, SaveOutcome } from "@/data/notes"
 import { instantAt } from "@shared/dates"
-import type { NotePerson } from "@shared/notes/schemas"
+import type { AudienceMember, NotePerson } from "@shared/notes/schemas"
 
 /** Comfortably past the ~1 s pause after which typing saves. */
 const SAVED_WITHIN = { timeout: 2_500 }
@@ -14,6 +14,9 @@ const SAVED_WITHIN = { timeout: 2_500 }
 const me = { id: "me", name: "Mara" }
 const ana = { id: "ana", name: "Ana" }
 const ben = { id: "ben", name: "Ben" }
+
+/** Someone in the Audience who holds App access to Notes. */
+const member = (person: NotePerson): AudienceMember => ({ ...person, hasAccess: true })
 
 const blank = {
   kind: "text",
@@ -72,7 +75,7 @@ function callbacks() {
     onDelete: vi.fn<(onServer: Promise<boolean>) => void>(),
     onLeave: vi.fn<(settled: Promise<unknown>) => void>(),
     onBack: vi.fn<() => void>(),
-    onShare: vi.fn<(audience: NotePerson[]) => void>(),
+    onShare: vi.fn<(audience: AudienceMember[]) => void>(),
   }
 }
 
@@ -598,7 +601,12 @@ describe("the foot and the ⋯ menu", () => {
 
   test("the Creator's ⋯ menu offers Delete, not Leave", async () => {
     const { screen } = await renderEditor({
-      note: { ...blank, title: "Old", editedAt: "2026-10-01T09:00:00.000Z", audience: [ana] },
+      note: {
+        ...blank,
+        title: "Old",
+        editedAt: "2026-10-01T09:00:00.000Z",
+        audience: [member(ana)],
+      },
       saved: true,
     })
     await screen.getByRole("button", { name: "More" }).click()
@@ -619,12 +627,12 @@ describe("the header", () => {
     await expect.element(screen.getByText(SHARE_LINE)).toBeVisible()
     await expect.element(screen.getByRole("checkbox", { name: "Ana" })).not.toBeChecked()
     await screen.getByRole("checkbox", { name: "Ben" }).click()
-    expect(onShare).toHaveBeenLastCalledWith([ben])
+    expect(onShare).toHaveBeenLastCalledWith([member(ben)])
   })
 
   test("a shared Note's Creator sees its Audience on the button, and can remove a member", async () => {
     const { screen, onShare } = await renderEditor({
-      note: { ...saved, audience: [ana, ben] },
+      note: { ...saved, audience: [member(ana), member(ben)] },
       saved: true,
     })
     const button = screen.getByRole("button", { name: /Shared/ })
@@ -634,18 +642,35 @@ describe("the header", () => {
     await button.click()
     await expect.element(screen.getByRole("checkbox", { name: "Ben" })).toBeChecked()
     await screen.getByRole("checkbox", { name: "Ana" }).click()
-    expect(onShare).toHaveBeenLastCalledWith([ben])
+    expect(onShare).toHaveBeenLastCalledWith([member(ben)])
   })
 
-  test("the sheet still lists a member the people list leaves out, so they can be removed", async () => {
-    const cy = { id: "cy", name: "Cy" }
+  test("the sheet marks a member without access to Notes, who can still be removed", async () => {
+    // Cy lost access, so the people list leaves them out.
+    const cy = { id: "cy", name: "Cy", hasAccess: false }
     const { screen, onShare } = await renderEditor({
-      note: { ...saved, audience: [cy] },
+      note: { ...saved, audience: [member(ana), cy] },
       saved: true,
     })
     await screen.getByRole("button", { name: /Shared/ }).click()
-    await screen.getByRole("checkbox", { name: "Cy" }).click()
-    expect(onShare).toHaveBeenLastCalledWith([])
+    const sheet = screen.getByRole("dialog", { name: "Who can see this note" })
+    expect(
+      sheet
+        .getByRole("listitem")
+        .elements()
+        .map((row) => row.textContent),
+    ).toEqual(["AAna", "BBen", "CCyno access"])
+    await expect.element(sheet.getByRole("checkbox", { name: "Cy" })).toBeChecked()
+    // Screen readers hear the marker with the name.
+    await expect
+      .element(sheet.getByRole("checkbox", { name: "Cy" }))
+      .toHaveAccessibleDescription("no access")
+    await expect
+      .element(sheet.getByRole("checkbox", { name: "Ana" }))
+      .not.toHaveAccessibleDescription()
+
+    await sheet.getByRole("checkbox", { name: "Cy" }).click()
+    expect(onShare).toHaveBeenLastCalledWith([member(ana)])
   })
 
   test("the Creator can delete from the ⋯ menu", async () => {
@@ -656,7 +681,7 @@ describe("the header", () => {
 
   test("a member sees who shared it, edits it, and can neither share nor delete it", async () => {
     const { screen, onUpdate } = await renderEditor({
-      note: { ...saved, creator: ana, audience: [me, ben] },
+      note: { ...saved, creator: ana, audience: [member(me), member(ben)] },
       saved: true,
     })
     await expect.element(screen.getByText("Shared by Ana")).toBeVisible()
@@ -677,7 +702,7 @@ describe("the header", () => {
 
   test("a member sees everyone who can see it, and can change none of it", async () => {
     const { screen, onShare } = await renderEditor({
-      note: { ...saved, creator: ana, audience: [me, ben] },
+      note: { ...saved, creator: ana, audience: [member(me), member(ben)] },
       saved: true,
     })
     await screen.getByRole("button", { name: /Shared by Ana/ }).click()

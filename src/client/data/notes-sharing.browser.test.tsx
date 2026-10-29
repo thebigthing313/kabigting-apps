@@ -6,10 +6,11 @@ import { cleanup, render } from "vitest-browser-react"
 import { cleanupCollections } from "@/data/collection-factory"
 import { type Note, shareNote, useNotes } from "@/data/notes"
 import { queryClient } from "@/data/query-client"
+import { dismissToasts } from "@/test/toasts"
 
 const NOTE_ID = "0190f5d2-0000-7000-8000-000000000201"
 const me = { id: "me", name: "Mara" }
-const ben = { id: "ben", name: "Ben" }
+const ben = { id: "ben", name: "Ben", hasAccess: true }
 
 const NOTE: Note = {
   id: NOTE_ID,
@@ -50,6 +51,7 @@ beforeEach(() => {
 })
 
 afterEach(async () => {
+  dismissToasts()
   // Each test starts again from the server's answer, as after signing in again.
   await cleanup()
   await cleanupCollections()

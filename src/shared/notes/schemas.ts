@@ -38,6 +38,12 @@ export const noteParams = z.strictObject({ id })
 /** An Account as Notes shows it. */
 export const notePerson = z.object({ id: z.string(), name: z.string() })
 
+/**
+ * Someone in a Note's Audience. Losing App access to Notes, or becoming a Removed Account, leaves
+ * them in it: `hasAccess` says whether they can open Notes now.
+ */
+export const audienceMember = notePerson.extend({ hasAccess: z.boolean() })
+
 export const noteRow = z.object({
   id,
   kind: noteKind,
@@ -47,7 +53,7 @@ export const noteRow = z.object({
   body: z.string().nullable(),
   creator: notePerson,
   /** The Accounts, besides the Creator, it is shared with; empty when private. */
-  audience: z.array(notePerson),
+  audience: z.array(audienceMember),
   /**
    * The caller is in the Audience and hasn't opened the Note since they were last added to it.
    * Always false for the Creator.
@@ -136,6 +142,7 @@ export type CreateNote = z.infer<typeof createNote>
 export type UpdateNote = z.infer<typeof updateNote>
 export type ReplaceAudience = z.infer<typeof replaceAudience>
 export type NotePerson = z.infer<typeof notePerson>
+export type AudienceMember = z.infer<typeof audienceMember>
 export type NoteRow = z.infer<typeof noteRow>
 export type CreateItem = z.infer<typeof createItem>
 export type UpdateItem = z.infer<typeof updateItem>

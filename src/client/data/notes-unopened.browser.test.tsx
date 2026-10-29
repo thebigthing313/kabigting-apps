@@ -8,7 +8,7 @@ import { queryClient } from "@/data/query-client"
 
 const NOTE_ID = "0190f5d2-0000-7000-8000-000000000301"
 const ben = { id: "ben", name: "Ben" }
-const me = { id: "me", name: "Mara" }
+const me = { id: "me", name: "Mara", hasAccess: true }
 
 const NOTE: Note = {
   id: NOTE_ID,
