@@ -303,12 +303,21 @@ describe("a Note whose Creator loses access", () => {
     const note = await created(creator)
     await setApps(creator, [])
 
-    const impersonating = await server.app.request(
+    // However the path is spelled, impersonation never reaches Better Auth.
+    for (const path of [
       "/api/auth/admin/impersonate-user",
-      json("POST", { userId: creator.id }, admin.headers),
-    )
-    expect(impersonating.status).toBe(404)
-    expect(impersonating.headers.get("set-cookie")).toBeNull()
+      "/api/auth/%61dmin/impersonate-user",
+      "/api/auth/admin/impersonate-user/",
+    ]) {
+      const impersonating = await server.app.request(
+        path,
+        json("POST", { userId: creator.id }, admin.headers),
+      )
+      expect(impersonating.status, path).toBe(404)
+      expect(impersonating.headers.get("set-cookie"), path).toBeNull()
+      // The Shell's own 404, not Better Auth's.
+      expect(await impersonating.json(), path).toMatchObject({ error: { code: "not_found" } })
+    }
     const resetting = await server.app.request(
       "/api/auth/admin/set-user-password",
       json(

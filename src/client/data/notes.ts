@@ -13,11 +13,11 @@ import { nowInstant } from "@shared/dates"
 import { bottomOfUnchecked } from "@shared/notes/items"
 import { titleOrNull } from "@shared/notes/notes"
 import type {
+  AudienceMember,
   ClearedChecked,
   ItemRow,
   ItemWrite,
   NoteKind,
-  AudienceMember,
   NotePerson,
   NoteRow,
   UpdateItem,

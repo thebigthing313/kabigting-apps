@@ -1,3 +1,4 @@
+import { useId } from "react"
 import { Avatar } from "@/apps/notes/note-parts"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -30,6 +31,7 @@ export type ShareSheetProps = {
  * they can't be picked again until their access returns.
  */
 export function ShareSheet({ open, onOpenChange, audience, people, onShare }: ShareSheetProps) {
+  const markerId = useId()
   const members = new Map(audience.map((member) => [member.id, member]))
   const offered = people ?? []
   const offeredIds = new Set(offered.map((person) => person.id))
@@ -57,23 +59,31 @@ export function ShareSheet({ open, onOpenChange, audience, people, onShare }: Sh
           <p className="px-4 text-muted-foreground">Nobody else has access to Notes yet.</p>
         ) : (
           <ul className="flex max-h-[50vh] flex-col overflow-y-auto px-4">
-            {listed.map((person) => (
-              <li key={person.id}>
-                <label className="flex items-center gap-3 py-2.5 text-base">
-                  <Avatar person={person} className="size-8 text-sm" />
-                  <span className="flex-1">{person.name}</span>
-                  {members.get(person.id)?.hasAccess === false && (
-                    <span className="text-sm text-muted-foreground">no access</span>
-                  )}
-                  <Checkbox
-                    aria-label={person.name}
-                    className="size-5"
-                    checked={members.has(person.id)}
-                    onCheckedChange={(checked) => toggle(person, checked)}
-                  />
-                </label>
-              </li>
-            ))}
+            {listed.map((person, index) => {
+              const noAccess = members.get(person.id)?.hasAccess === false
+              // The marker describes the checkbox, whose label is only the name.
+              const noAccessId = `${markerId}-${index}`
+              return (
+                <li key={person.id}>
+                  <label className="flex items-center gap-3 py-2.5 text-base">
+                    <Avatar person={person} className="size-8 text-sm" />
+                    <span className="flex-1">{person.name}</span>
+                    {noAccess && (
+                      <span id={noAccessId} className="text-sm text-muted-foreground">
+                        no access
+                      </span>
+                    )}
+                    <Checkbox
+                      aria-label={person.name}
+                      aria-describedby={noAccess ? noAccessId : undefined}
+                      className="size-5"
+                      checked={members.has(person.id)}
+                      onCheckedChange={(checked) => toggle(person, checked)}
+                    />
+                  </label>
+                </li>
+              )
+            })}
           </ul>
         )}
         <SheetFooter>
@@ -111,7 +121,9 @@ export function AudienceSheet({
       <SheetContent side="bottom" className="mx-auto max-w-lg rounded-t-xl">
         <SheetHeader>
           <SheetTitle>Who can see this note</SheetTitle>
-          <SheetDescription>Everyone here can read and edit it.</SheetDescription>
+          <SheetDescription>
+            Everyone here with access to Notes can read and edit it.
+          </SheetDescription>
         </SheetHeader>
         <ul className="flex max-h-[50vh] flex-col overflow-y-auto px-4">
           {[creator, ...audience].map((person) => (

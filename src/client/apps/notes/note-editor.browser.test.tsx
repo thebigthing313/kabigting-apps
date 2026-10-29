@@ -289,6 +289,13 @@ describe("the header", () => {
         .map((row) => row.textContent),
     ).toEqual(["AAna", "BBen", "CCyno access"])
     await expect.element(sheet.getByRole("checkbox", { name: "Cy" })).toBeChecked()
+    // Screen readers hear the marker with the name.
+    await expect
+      .element(sheet.getByRole("checkbox", { name: "Cy" }))
+      .toHaveAccessibleDescription("no access")
+    await expect
+      .element(sheet.getByRole("checkbox", { name: "Ana" }))
+      .not.toHaveAccessibleDescription()
 
     await sheet.getByRole("checkbox", { name: "Cy" }).click()
     expect(onShare).toHaveBeenLastCalledWith([member(ana)])
