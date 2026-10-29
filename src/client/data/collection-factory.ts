@@ -73,16 +73,17 @@ function report(error: unknown, action: string, options: WriteOptions) {
 }
 
 /**
- * Reports a failed write and, when the server says its target is gone (404), runs `onGone` so the
- * caller can drop what it still holds. Always rethrows, so the optimistic change rolls back.
+ * Reports a failed write as `action` (a null `action` fails quietly) and, when the server says its
+ * target is gone (404), runs `onGone` so the caller can drop what it still holds. Always rethrows,
+ * so the optimistic change rolls back.
  */
 export async function failedWrite(
   error: unknown,
-  action: string,
+  action: string | null,
   onGone?: () => Promise<void> | void,
   options: WriteOptions = {},
 ): Promise<never> {
-  report(error, action, options)
+  if (action !== null) report(error, action, options)
   if (onGone && isNotFound(error)) await onGone()
   throw error
 }

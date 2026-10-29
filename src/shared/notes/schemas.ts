@@ -48,6 +48,11 @@ export const noteRow = z.object({
   creator: notePerson,
   /** The Accounts, besides the Creator, it is shared with; empty when private. */
   audience: z.array(notePerson),
+  /**
+   * The caller is in the Audience and hasn't opened the Note since they were last added to it.
+   * Always false for the Creator.
+   */
+  unopened: z.boolean(),
   createdAt: instant,
   /** Server time of the last change to the Note's content. */
   editedAt: instant,
