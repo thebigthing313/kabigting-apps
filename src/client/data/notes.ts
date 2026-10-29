@@ -6,8 +6,8 @@ import { createOptimisticAction, createTransaction, eq, useLiveQuery } from "@ta
 import { useQuery } from "@tanstack/react-query"
 import { useEffect, useRef } from "react"
 import { api } from "@/data/api"
-import { defineRestCollection, failedWrite } from "@/data/collection-factory"
-import { ApiRequestError, readJson } from "@/data/error-handler"
+import { defineRestCollection, failedWrite, isNotFound } from "@/data/collection-factory"
+import { readJson } from "@/data/error-handler"
 import { settled } from "@/data/settled"
 import { nowInstant } from "@shared/dates"
 import { bottomOfUnchecked } from "@shared/notes/items"
@@ -260,6 +260,20 @@ async function dropItems(ids: Iterable<string>) {
 }
 
 /**
+ * Drops a Note this Account no longer sees, and its Items; what a refetch already dropped is
+ * skipped.
+ */
+async function dropNote(noteId: string) {
+  const ofNote = [...itemsCollection().values()].filter((item) => item.noteId === noteId)
+  await dropItems(ofNote.map((item) => item.id))
+  try {
+    await notesCollection().utils.writeDelete(noteId)
+  } catch {
+    // Already gone.
+  }
+}
+
+/**
  * Sends a clear and writes its outcome into the synced Items: the Items the server kept, as
  * someone unticked them first, return as stored, and the Checklist takes the server's edited at.
  * A Checklist that is gone leaves the list with its Items. Resolves to the Items kept.
@@ -324,7 +338,6 @@ export function shareNote(id: string, audience: readonly NotePerson[]) {
 }
 
 /**
-<<<<<<< HEAD
  * An Audience member Leaving: its own route, so an action of its own. The Note leaves this
  * Account's view at once; a refusal brings it back with a toast. A Note already gone (404) is
  * what Leaving wanted, so it stays gone with nothing reported. Unlike `writeThroughNoteRoute`,
@@ -335,15 +348,12 @@ const leave = createOptimisticAction<string>({
     notesCollection().delete(id)
   },
   mutationFn: async (id) => {
-    const notes = notesCollection()
     try {
       await readJson(await api.notes.notes[":id"].leave.$post({ param: { id } }))
     } catch (error) {
-      if (!(error instanceof ApiRequestError && error.status === 404)) {
-        await failedWrite(error, "Leaving")
-      }
+      if (!isNotFound(error)) await failedWrite(error, "Leaving")
     }
-    await notes.utils.writeDelete(id)
+    await dropNote(id)
   },
 })
 

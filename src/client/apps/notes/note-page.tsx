@@ -83,7 +83,7 @@ export function NotePage({ noteId, newKind }: { noteId: string; newKind?: NoteKi
       }}
       onLeave={(settled) => {
         back()
-        // After any save in flight lands, so it can't put the Note back in view.
+        // Once the typing saved on Leave lands, so no save races the Leave or puts the Note back.
         void settled.then(() => leaveNote(noteId))
       }}
       onBack={back}

@@ -243,7 +243,7 @@ describe("the foot and the ⋯ menu", () => {
   })
 
   test("an Audience member Leaves from the ⋯ menu at once, and can't delete", async () => {
-    const { screen, onLeave, onDelete, onUpdate } = await renderEditor({
+    const { screen, onLeave, onDelete } = await renderEditor({
       note: { ...blank, title: "Old", editedAt: "2026-10-01T09:00:00.000Z", creator: ana },
       saved: true,
     })
@@ -257,11 +257,34 @@ describe("the foot and the ⋯ menu", () => {
     expect(onLeave).toHaveBeenCalledTimes(1)
     await onLeave.mock.calls[0]![0]
     expect(onDelete).not.toHaveBeenCalled()
-    // Typing still waiting to save is dropped: nothing saves to a Note they have left.
+  })
+
+  test("typing still waiting to save when a member Leaves is saved first, and nothing after", async () => {
+    const update = deferredSave()
+    const { screen, onLeave, onUpdate } = await renderEditor({
+      note: { ...blank, title: "Old", editedAt: "2026-10-01T09:00:00.000Z", creator: ana },
+      saved: true,
+    })
+    onUpdate.mockImplementation(() => update.promise)
+    await userEvent.type(screen.getByLabelText("Title"), " news")
+    await screen.getByRole("button", { name: "More" }).click()
+    await screen.getByRole("menuitem", { name: "Leave note" }).click()
+    // Saved at once, not after the usual pause, and the Leave waits for it to land.
+    await vi.waitFor(() => expect(onUpdate).toHaveBeenCalledWith({ title: "Old news" }))
+    let saved = false
+    void onLeave.mock.calls[0]![0].then(() => {
+      saved = true
+    })
+    await pause(100)
+    expect(saved).toBe(false)
+    update.resolve(true)
+    await vi.waitFor(() => expect(saved).toBe(true))
+
+    // Nothing more is saved to a Note they have left, not even on leaving the page.
+    await userEvent.type(screen.getByLabelText("Title"), "!")
     await pause(1_500)
     await screen.unmount()
-    const leftAt = onLeave.mock.invocationCallOrder[0]!
-    expect(onUpdate.mock.invocationCallOrder.filter((order) => order > leftAt)).toEqual([])
+    expect(onUpdate).toHaveBeenCalledTimes(1)
   })
 
   test("the Creator's ⋯ menu offers Delete, not Leave", async () => {

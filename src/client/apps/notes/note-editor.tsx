@@ -48,8 +48,8 @@ export type NoteEditorProps = Omit<NoteDraftOptions, "initial"> & {
    */
   onDelete: (onServer: Promise<boolean>) => void
   /**
-   * Called when an Audience member chooses Leave; from then on nothing more is saved. `settled`
-   * resolves once any save in flight has settled.
+   * Called when an Audience member chooses Leave. Typing still waiting to save is saved at once,
+   * and nothing after; `settled` resolves once those saves have settled.
    */
   onLeave: (settled: Promise<unknown>) => void
   onBack: () => void
@@ -127,8 +127,10 @@ export function NoteEditor({
               </DropdownMenuItem>
             ) : (
               // No confirmation: the Note stays for everyone else, and its Creator can add them
-              // back. Typing not yet saved is dropped, as nothing should save after Leaving.
-              <DropdownMenuItem onClick={() => onLeave(discard())}>Leave note</DropdownMenuItem>
+              // back. Typing not yet saved is saved first, for them; nothing saves after.
+              <DropdownMenuItem onClick={() => onLeave(checklist.saveAndStop())}>
+                Leave note
+              </DropdownMenuItem>
             )}
           </DropdownMenuContent>
         </DropdownMenu>
@@ -151,7 +153,7 @@ export function NoteEditor({
           onToggleItem={checklist.toggleItem}
           onMoveItem={checklist.moveItem}
           onDeleteItem={checklist.deleteItem}
-          onLeaveItem={checklist.leaveItem}
+          onBlurItem={checklist.blurItem}
           onClearChecked={checklist.clearChecked}
           autoFocusAdd={!saved}
         />

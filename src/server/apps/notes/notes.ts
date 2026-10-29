@@ -255,7 +255,7 @@ export function noteRoutes(db: Db) {
       const note = await readNote(db, accountId, noteId)
       // The Creator has no Audience membership to give up; they delete the Note instead.
       if (note.creator.id === accountId) {
-        throw new ApiError("forbidden_creator", "The note's creator can't leave it")
+        throw new ApiError("creator_cannot_leave", "The note's creator can't leave it")
       }
       // Only the caller's own Audience membership goes, so only the Creator can add them back,
       // and a fresh one then starts Unopened. Not a content change, so edited at stays. The

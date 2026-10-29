@@ -378,7 +378,7 @@ describe("Leaving a Note", () => {
     await shared(note.id, [member.id])
     const response = await leave(note.id, creator)
     expect(response.status).toBe(403)
-    expect(await response.json()).toMatchObject({ error: { code: "forbidden_creator" } })
+    expect(await response.json()).toMatchObject({ error: { code: "creator_cannot_leave" } })
     expect(await listed(note.id, creator)).toMatchObject({ audience: [{ id: member.id }] })
     expect(await listed(note.id, member)).toBeDefined()
   })

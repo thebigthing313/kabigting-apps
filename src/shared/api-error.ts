@@ -4,11 +4,10 @@ export const API_ERROR_STATUS = {
   password_change_required: 403,
   forbidden_app: 403,
   forbidden_admin: 403,
-  /**
-   * A Note's Audience member tried what only its Creator may do, or its Creator tried to Leave,
-   * which only an Audience member may do.
-   */
+  /** A Note's Audience member tried what only its Creator may do. */
   forbidden_creator: 403,
+  /** A Note's Creator tried to Leave it, which only an Audience member may do. */
+  creator_cannot_leave: 403,
   validation_failed: 400,
   not_found: 404,
   conflict: 409,
