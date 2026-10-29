@@ -97,9 +97,13 @@ export function createTypedTextSaver<Key extends string>({
   }
 
   /** Runs `work` after the field's earlier saves and writes. */
-  function after(key: Key, work: () => Promise<void>) {
-    const next = (chains.get(key) ?? Promise.resolve()).then(work).catch(() => {})
-    chains.set(key, next)
+  /** Runs `work` after the earlier saves and writes of every field given, before their later ones. */
+  function after(keys: Key | readonly Key[], work: () => Promise<void>) {
+    const list = typeof keys === "string" ? [keys] : keys
+    const next = Promise.all(list.map((key) => chains.get(key) ?? Promise.resolve()))
+      .then(work)
+      .catch(() => {})
+    for (const key of list) chains.set(key, next)
     track(next)
   }
 
@@ -165,16 +169,24 @@ export function createTypedTextSaver<Key extends string>({
       return timers.has(key)
     },
 
+    /** Whether the field holds text not yet saved: still pausing, or "Not saved". */
+    hasUnsaved(key: Key) {
+      return timers.has(key) || notSaved.has(key)
+    },
+
     /** Saves the field now, in order, instead of after its pause. */
     saveNow(key: Key) {
       clearPause(key)
       inOrder(key)
     },
 
-    /** Runs a write once the field's earlier saves and writes have settled. */
-    run(key: Key, write: () => Promise<unknown>) {
+    /**
+     * Runs a write once the earlier saves and writes of every field given have settled; their
+     * later saves wait for it.
+     */
+    run(keys: Key | readonly Key[], write: () => Promise<unknown>) {
       if (stopped) return
-      after(key, async () => {
+      after(keys, async () => {
         if (!stopped) await write()
       })
     },

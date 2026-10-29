@@ -66,24 +66,38 @@ function isNotFound(error: unknown): boolean {
   return error instanceof ApiRequestError && error.status === 404
 }
 
-/** Reports a failed write, unless the caller shows it. */
+/** Reports a failed write, unless the caller shows a failure to reach the server itself. */
 function report(error: unknown, action: string, options: WriteOptions) {
   if (options.quietWhenUnreached && isUnreached(error)) return
   reportError(error, action)
 }
 
+/**
+ * Reports a failed write and, when the server says its target is gone (404), runs `onGone` so the
+ * caller can drop what it still holds. Always rethrows, so the optimistic change rolls back.
+ */
+export async function failedWrite(
+  error: unknown,
+  action: string,
+  onGone?: () => Promise<void> | void,
+  options: WriteOptions = {},
+): Promise<never> {
+  report(error, action, options)
+  if (onGone && isNotFound(error)) await onGone()
+  throw error
+}
+
 function writeHandlers<Row extends { id: string }>(spec: RestWrites<Row>) {
   /** Reports a failed write and, when the row is gone and the spec asks, drops it too. */
-  async function failed(
+  function failed(
     error: unknown,
     action: string,
     options: WriteOptions,
     key: string | undefined,
     drop: (key: string) => Promise<void> | void,
   ): Promise<never> {
-    report(error, action, options)
-    if (spec.dropOnNotFound && key !== undefined && isNotFound(error)) await drop(key)
-    throw error
+    const gone = spec.dropOnNotFound && key !== undefined ? () => drop(key) : undefined
+    return failedWrite(error, action, gone, options)
   }
   return {
     onInsert: async ({ transaction, collection }) => {

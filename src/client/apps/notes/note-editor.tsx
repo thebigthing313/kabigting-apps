@@ -149,6 +149,7 @@ export function NoteEditor({
           onMoveItem={checklist.moveItem}
           onDeleteItem={checklist.deleteItem}
           onLeaveItem={checklist.leaveItem}
+          onClearChecked={checklist.clearChecked}
           isNotSaved={(id) => isNotSaved({ item: id })}
           autoFocusAdd={!saved}
         />

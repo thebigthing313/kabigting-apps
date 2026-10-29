@@ -8,9 +8,12 @@ import type { Db } from "#server/db/client.ts"
 import { noteItems, notes } from "#server/db/schema/index.ts"
 import { bottomOfUnchecked } from "#shared/notes/items.ts"
 import {
+  clearChecked,
   createItem,
   itemParams,
+  noteParams,
   updateItem,
+  type ClearedChecked,
   type ItemRow,
   type ItemWrite,
 } from "#shared/notes/schemas.ts"
@@ -33,17 +36,32 @@ function toItemRow(item: typeof noteItems.$inferSelect): ItemRow {
 }
 
 /**
- * The Item, if `accountId` may see its Checklist, locked with the Checklist until the write
- * commits, so writes to one Checklist's Items take turns.
+ * The Checklist, if `accountId` may see it, locked until the write commits. Every write to a
+ * Checklist's Items locks the Checklist before any Item, so they queue on it in one order and
+ * never deadlock.
+ */
+async function lockChecklist(tx: Tx, accountId: string, noteId: string) {
+  const [note] = await tx
+    .select({ kind: notes.kind, editedAt: notes.editedAt })
+    .from(notes)
+    .where(and(eq(notes.id, noteId), visibleTo(accountId)))
+    .for("update")
+  return note
+}
+
+/**
+ * The Item, if `accountId` may see its Checklist, locked after the Checklist (see
+ * `lockChecklist`) until the write commits. An Item never moves to another Checklist.
  */
 async function lockItem(tx: Tx, accountId: string, itemId: string) {
-  const [row] = await tx
-    .select({ item: noteItems, noteEditedAt: notes.editedAt })
+  const [found] = await tx
+    .select({ noteId: noteItems.noteId })
     .from(noteItems)
-    .innerJoin(notes, eq(notes.id, noteItems.noteId))
-    .where(and(eq(noteItems.id, itemId), visibleTo(accountId)))
-    .for("update")
-  return row ?? notFound()
+    .where(eq(noteItems.id, itemId))
+  const note = found && (await lockChecklist(tx, accountId, found.noteId))
+  if (!found || !note) notFound()
+  const [item] = await tx.select().from(noteItems).where(eq(noteItems.id, itemId)).for("update")
+  return item ? { item, noteEditedAt: note.editedAt } : notFound()
 }
 
 /** Where an Item goes to join the bottom of its Checklist's unchecked Items. */
@@ -168,4 +186,46 @@ export function itemRoutes(db: Db) {
       })
       return c.json(written)
     })
+}
+
+/**
+ * Clear checked, mounted under `/notes` as `POST /notes/:id/clear-checked`: deletes the Items the
+ * clearer saw checked, but only those still checked, so an Item someone unticked first survives.
+ * Like every Item write it passes `visibleTo`, so anyone who can see the Checklist may clear it
+ * and anyone else gets 404. Ids of Items in another Checklist, or of Items already gone, are
+ * ignored.
+ */
+export function clearCheckedRoutes(db: Db) {
+  return new Hono<AppEnv>().post(
+    "/:id/clear-checked",
+    validate("param", noteParams),
+    validate("json", clearChecked),
+    async (c) => {
+      const noteId = c.req.valid("param").id
+      const { itemIds } = c.req.valid("json")
+      const accountId = c.get("account").id
+      const result = await db.transaction(async (tx): Promise<ClearedChecked> => {
+        // Holding the Checklist, the clear takes its turn with every other Item write to it, so a
+        // tick or untick lands wholly before or after it.
+        const note = await lockChecklist(tx, accountId, noteId)
+        if (!note) throw new ApiError("not_found", "No such Note")
+        if (note.kind !== "checklist") {
+          throw new ApiError("validation_failed", "Only a Checklist has Items")
+        }
+        const sent = and(eq(noteItems.noteId, noteId), inArray(noteItems.id, itemIds))
+        const deleted = await tx
+          .delete(noteItems)
+          .where(and(sent, eq(noteItems.checked, true)))
+          .returning({ id: noteItems.id })
+        const kept = await tx.select().from(noteItems).where(sent)
+        return {
+          cleared: deleted.map((item) => item.id),
+          kept: kept.map(toItemRow),
+          // Clearing nothing is no edit: the Checklist keeps its place in the list.
+          noteEditedAt: deleted.length > 0 ? await touch(tx, noteId) : note.editedAt.toISOString(),
+        }
+      })
+      return c.json(result)
+    },
+  )
 }
