@@ -4,6 +4,7 @@
 // follow the Shell's focus and reconnect defaults.
 import { createOptimisticAction, eq, useLiveQuery } from "@tanstack/react-db"
 import { useQuery } from "@tanstack/react-query"
+import { useEffect, useRef } from "react"
 import { api } from "@/data/api"
 import { defineRestCollection } from "@/data/collection-factory"
 import { ApiRequestError, readJson, reportError } from "@/data/error-handler"
@@ -204,6 +205,26 @@ export function deleteItem(id: string) {
 }
 
 /**
+ * Sends a request on one Note's own route, then takes the Note as the server answers it. A Note
+ * that is gone (404) leaves the list. A failure is rethrown so the action rolls back, after
+ * `report` (if given) has had its say.
+ */
+async function writeThroughNoteRoute(
+  id: string,
+  request: () => Promise<Response & { json(): Promise<NoteRow> }>,
+  report?: (error: unknown) => void,
+) {
+  const notes = notesCollection()
+  try {
+    await notes.utils.writeUpsert(await readJson(await request()))
+  } catch (error) {
+    report?.(error)
+    if (error instanceof ApiRequestError && error.status === 404) await notes.utils.writeDelete(id)
+    throw error
+  }
+}
+
+/**
  * Replacing the Audience: its own route, not a field write, so it is an action of its own. The
  * new Audience shows at once; a refusal rolls it back with a toast, and a Note that is gone (404)
  * leaves the list.
@@ -215,19 +236,12 @@ const replaceAudience = createOptimisticAction<{ id: string; audience: readonly 
     })
   },
   mutationFn: async ({ id, audience }) => {
-    const notes = notesCollection()
-    try {
-      const accountIds = audience.map((person) => person.id)
-      const row = await readJson(
-        await api.notes.notes[":id"].audience.$put({ param: { id }, json: { accountIds } }),
-      )
-      await notes.utils.writeUpsert(row)
-    } catch (error) {
-      reportError(error, "Sharing")
-      if (error instanceof ApiRequestError && error.status === 404)
-        await notes.utils.writeDelete(id)
-      throw error
-    }
+    const accountIds = audience.map((person) => person.id)
+    await writeThroughNoteRoute(
+      id,
+      () => api.notes.notes[":id"].audience.$put({ param: { id }, json: { accountIds } }),
+      (error) => reportError(error, "Sharing"),
+    )
   },
 })
 
@@ -241,8 +255,8 @@ export function shareNote(id: string, audience: readonly NotePerson[]) {
 
 /**
  * Opening a Note: its own route, so an action of its own. The Note stops being Unopened at once.
- * A failure undoes that without a toast, as the viewer did nothing to report on, and the next open
- * tries again; a Note that is gone (404) leaves the list.
+ * A failure undoes that without a toast, as the viewer did nothing to report on, and the next
+ * visit tries again; a Note that is gone (404) leaves the list.
  */
 const markOpened = createOptimisticAction<string>({
   onMutate: (id) => {
@@ -251,24 +265,30 @@ const markOpened = createOptimisticAction<string>({
     })
   },
   mutationFn: async (id) => {
-    const notes = notesCollection()
-    try {
-      const row = await readJson(await api.notes.notes[":id"].open.$post({ param: { id } }))
-      await notes.utils.writeUpsert(row)
-    } catch (error) {
-      if (error instanceof ApiRequestError && error.status === 404)
-        await notes.utils.writeDelete(id)
-      throw error
-    }
+    await writeThroughNoteRoute(id, () => api.notes.notes[":id"].open.$post({ param: { id } }))
   },
 })
 
 /**
- * Tells the server the viewer opened a saved Note, so it is no longer Unopened for them. A no-op
- * for its Creator. True once the server stored it.
+ * Tells the server the viewer opened a Note, so it is no longer Unopened for them. True once the
+ * server stored it.
  */
 export function openNote(id: string) {
   return settled(markOpened(id))
+}
+
+/**
+ * A visit to a Note's page clears Unopened: when the Note shows as Unopened, the open route is
+ * called once for this visit, even if a failed open brings Unopened back. A Note that isn't
+ * Unopened (the Creator's own, or one already opened) sends nothing.
+ */
+export function useOpenOnVisit(id: string, unopened: boolean) {
+  const opened = useRef<string | null>(null)
+  useEffect(() => {
+    if (!unopened || opened.current === id) return
+    opened.current = id
+    void openNote(id)
+  }, [id, unopened])
 }
 
 /**

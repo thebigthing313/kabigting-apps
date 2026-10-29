@@ -1,5 +1,4 @@
 import { getRouteApi, Link, useNavigate } from "@tanstack/react-router"
-import { useEffect } from "react"
 import { NoteEditor } from "@/apps/notes/note-editor"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
@@ -7,13 +6,13 @@ import {
   createNote,
   deleteItem,
   deleteNote,
-  openNote,
   shareNote,
   updateItem,
   updateNote,
   useNote,
   useNoteItems,
   useNotePeople,
+  useOpenOnVisit,
 } from "@/data/notes"
 import type { NoteKind } from "@shared/notes/schemas"
 
@@ -31,12 +30,8 @@ export function NotePage({ noteId, newKind }: { noteId: string; newKind?: NoteKi
   const { data: items, isLoading: itemsLoading } = useNoteItems(noteId)
   const navigate = useNavigate()
   const back = () => void navigate({ to: "/notes" })
-  // Opening a Note someone shared clears its New marker: once per visit to the page, as soon as
-  // the Note is here. The Creator's own Notes are never Unopened, so there's nothing to send.
-  const inAudience = note !== undefined && note.creator.id !== session.user.id
-  useEffect(() => {
-    if (inAudience) void openNote(noteId)
-  }, [inAudience, noteId])
+  // Visiting a Note's page clears Unopened, once, as soon as the Note is here.
+  useOpenOnVisit(noteId, note?.unopened ?? false)
 
   if (isLoading || itemsLoading) return <Skeleton className="mx-auto h-64 w-full max-w-2xl" />
   if (!note && newKind === undefined) {

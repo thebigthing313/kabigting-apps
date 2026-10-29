@@ -4,17 +4,17 @@ import { isEmptyNote, notePreview, orderNotes, sharingLine, titleOrNull } from "
 describe("orderNotes", () => {
   test("puts the newest edit first", () => {
     const notes = [
-      { id: "a", editedAt: "2026-10-01T09:00:00.000Z" },
-      { id: "b", editedAt: "2026-10-03T09:00:00.000Z" },
-      { id: "c", editedAt: "2026-10-02T09:00:00.000Z" },
+      { id: "a", unopened: false, editedAt: "2026-10-01T09:00:00.000Z" },
+      { id: "b", unopened: false, editedAt: "2026-10-03T09:00:00.000Z" },
+      { id: "c", unopened: false, editedAt: "2026-10-02T09:00:00.000Z" },
     ]
     expect(orderNotes(notes).map((note) => note.id)).toEqual(["b", "c", "a"])
   })
 
   test("compares instants, not their spelling", () => {
     const notes = [
-      { id: "earlier", editedAt: "2026-10-01T09:00:00Z" },
-      { id: "later", editedAt: "2026-10-01T09:00:00.500Z" },
+      { id: "earlier", unopened: false, editedAt: "2026-10-01T09:00:00Z" },
+      { id: "later", unopened: false, editedAt: "2026-10-01T09:00:00.500Z" },
     ]
     expect(orderNotes(notes).map((note) => note.id)).toEqual(["later", "earlier"])
   })
@@ -22,8 +22,8 @@ describe("orderNotes", () => {
   test("breaks a tie by the newer id, and leaves its input alone", () => {
     const at = "2026-10-01T09:00:00.000Z"
     const notes = [
-      { id: "0190a000-0000-7000-8000-000000000001", editedAt: at },
-      { id: "0190a000-0000-7000-8000-000000000002", editedAt: at },
+      { id: "0190a000-0000-7000-8000-000000000001", unopened: false, editedAt: at },
+      { id: "0190a000-0000-7000-8000-000000000002", unopened: false, editedAt: at },
     ]
     expect(orderNotes(notes).map((note) => note.id.slice(-1))).toEqual(["2", "1"])
     expect(notes[0]!.id.slice(-1)).toBe("1")

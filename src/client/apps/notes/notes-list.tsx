@@ -17,7 +17,7 @@ const NO_ITEMS: readonly Item[] = []
 
 /**
  * Notes home: the New menu over one list of every Note the viewer can see, Unopened ones first and
- * marked New, then newest edit first.
+ * marked with the New badge, then newest edit first.
  */
 export function NotesList({
   notes,
@@ -84,7 +84,7 @@ export function NotesList({
                   <span className="flex min-w-0 flex-1 flex-col gap-0.5">
                     <span className="flex items-center gap-2">
                       <span className="truncate font-medium">{heading}</span>
-                      {/* Shared with the viewer and not opened since: only ever someone else's. */}
+                      {/* Unopened: only ever someone else's Note. The PRD names the badge "New". */}
                       {note.unopened && (
                         <span className="shrink-0 rounded-full bg-primary px-1.5 py-0.5 text-[0.65rem] leading-none font-semibold text-primary-foreground">
                           New

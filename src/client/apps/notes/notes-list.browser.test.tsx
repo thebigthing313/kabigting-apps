@@ -128,7 +128,7 @@ describe("the list", () => {
       .toHaveTextContent("GroceriesMilk, Bread, Eggs3 to do · 1 done · Only you · 5 minutes ago")
   })
 
-  test("marks an Unopened Note New and puts it first; the viewer's own Notes never are", async () => {
+  test("gives an Unopened Note the New badge and puts it first; the viewer's own Notes never are Unopened", async () => {
     const ben = { id: "ben", name: "Ben" }
     const me = { id: "me", name: "Me" }
     const { screen } = await renderList([
