@@ -5,11 +5,26 @@ import { render } from "vitest-browser-react"
 import { NoteEditor, type NoteEditorProps } from "@/apps/notes/note-editor"
 import type { NoteFields } from "@/data/notes"
 import { instantAt } from "@shared/dates"
+import type { NotePerson } from "@shared/notes/schemas"
 
 /** Comfortably past the ~1 s pause after which typing saves. */
 const SAVED_WITHIN = { timeout: 2_500 }
 
-const blank = { kind: "text", title: null, body: "", editedAt: null } as const
+const me = { id: "me", name: "Mara" }
+const ana = { id: "ana", name: "Ana" }
+const ben = { id: "ben", name: "Ben" }
+
+const blank = {
+  kind: "text",
+  title: null,
+  body: "",
+  editedAt: null,
+  creator: me,
+  audience: [],
+} as const
+
+const SHARE_LINE =
+  "Everyone you pick can read and edit it. Only you can change this or delete the note."
 
 /** A save the test settles by hand, to act while it is in flight. */
 function deferredSave() {
@@ -36,12 +51,22 @@ function callbacks() {
     ),
     onDelete: vi.fn<(onServer: Promise<boolean>) => void>(),
     onBack: vi.fn<() => void>(),
+    onShare: vi.fn<(audience: NotePerson[]) => void>(),
   }
 }
 
 async function renderEditor(props: Partial<NoteEditorProps> = {}) {
   const spies = callbacks()
-  const screen = await render(<NoteEditor note={blank} saved={false} {...spies} {...props} />)
+  const screen = await render(
+    <NoteEditor
+      note={blank}
+      saved={false}
+      viewerId={me.id}
+      people={[ana, ben]}
+      {...spies}
+      {...props}
+    />,
+  )
   return { screen, ...spies }
 }
 
@@ -205,5 +230,72 @@ describe("the foot and the ⋯ menu", () => {
     await confirmDelete(screen)
     create.resolve(false)
     expect(await onDelete.mock.calls[0]![0]).toBe(false)
+  })
+})
+
+describe("the header", () => {
+  const saved = { ...blank, title: "Groceries", editedAt: "2026-10-01T09:00:00.000Z" }
+
+  test("the Creator shares from a sheet of the people with access", async () => {
+    const { screen, onShare } = await renderEditor({ note: saved, saved: true })
+    await expect.element(screen.getByText(/Shared by/)).not.toBeInTheDocument()
+    await screen.getByRole("button", { name: "Share" }).click()
+    await expect.element(screen.getByText(SHARE_LINE)).toBeVisible()
+    await expect.element(screen.getByRole("checkbox", { name: "Ana" })).not.toBeChecked()
+    await screen.getByRole("checkbox", { name: "Ben" }).click()
+    expect(onShare).toHaveBeenLastCalledWith([ben])
+  })
+
+  test("a shared Note's Creator sees its Audience on the button, and can remove a member", async () => {
+    const { screen, onShare } = await renderEditor({
+      note: { ...saved, audience: [ana, ben] },
+      saved: true,
+    })
+    const button = screen.getByRole("button", { name: /Shared/ })
+    await expect.element(button).toBeVisible()
+    await expect.element(button.getByRole("img", { name: "Ana" })).toBeInTheDocument()
+    await expect.element(button.getByRole("img", { name: "Ben" })).toBeInTheDocument()
+    await button.click()
+    await expect.element(screen.getByRole("checkbox", { name: "Ben" })).toBeChecked()
+    await screen.getByRole("checkbox", { name: "Ana" }).click()
+    expect(onShare).toHaveBeenLastCalledWith([ben])
+  })
+
+  test("the sheet still lists a member the people list leaves out, so they can be removed", async () => {
+    const cy = { id: "cy", name: "Cy" }
+    const { screen, onShare } = await renderEditor({
+      note: { ...saved, audience: [cy] },
+      saved: true,
+    })
+    await screen.getByRole("button", { name: /Shared/ }).click()
+    await screen.getByRole("checkbox", { name: "Cy" }).click()
+    expect(onShare).toHaveBeenLastCalledWith([])
+  })
+
+  test("the Creator can delete from the ⋯ menu", async () => {
+    const { screen } = await renderEditor({ note: saved, saved: true })
+    await screen.getByRole("button", { name: "More" }).click()
+    await expect.element(screen.getByRole("menuitem", { name: "Delete note" })).toBeVisible()
+  })
+
+  test("a member sees who shared it, edits it, and can neither share nor delete it", async () => {
+    const { screen, onUpdate } = await renderEditor({
+      note: { ...saved, creator: ana, audience: [me, ben] },
+      saved: true,
+    })
+    await expect.element(screen.getByText("Shared by Ana")).toBeVisible()
+    await expect.element(screen.getByRole("img", { name: "Ana" })).toBeVisible()
+    await expect.element(screen.getByRole("button", { name: /Share/ })).not.toBeInTheDocument()
+    await expect.element(screen.getByRole("button", { name: "More" })).not.toBeInTheDocument()
+    await expect.element(screen.getByText("Delete note")).not.toBeInTheDocument()
+
+    await userEvent.type(screen.getByLabelText("Note"), "Eggs")
+    await vi.waitFor(() => expect(onUpdate).toHaveBeenCalledWith({ body: "Eggs" }), SAVED_WITHIN)
+  })
+
+  test("a new Note can't be shared until it is saved", async () => {
+    const { screen } = await renderEditor()
+    await expect.element(screen.getByLabelText("Title")).toBeVisible()
+    await expect.element(screen.getByRole("button", { name: "Share" })).not.toBeInTheDocument()
   })
 })

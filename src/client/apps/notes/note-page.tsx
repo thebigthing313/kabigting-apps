@@ -1,7 +1,14 @@
 import { getRouteApi, Link, useNavigate } from "@tanstack/react-router"
 import { NoteEditor } from "@/apps/notes/note-editor"
 import { Skeleton } from "@/components/ui/skeleton"
-import { createTextNote, deleteNote, updateNote, useNote } from "@/data/notes"
+import {
+  createTextNote,
+  deleteNote,
+  shareNote,
+  updateNote,
+  useNote,
+  useNotePeople,
+} from "@/data/notes"
 import type { NewNoteKind } from "@shared/notes/schemas"
 
 const appRoute = getRouteApi("/_app")
@@ -19,6 +26,8 @@ export function NotePage({
 }) {
   const { session } = appRoute.useRouteContext()
   const { note, isLoading } = useNote(noteId)
+  // Only the Creator of a saved Note picks who sees it.
+  const people = useNotePeople(note !== undefined && note.creator.id === session.user.id)
   const navigate = useNavigate()
   const back = () => void navigate({ to: "/notes" })
 
@@ -40,8 +49,20 @@ export function NotePage({
     <NoteEditor
       // A fresh editor per Note, so one Note's typing never carries into another.
       key={noteId}
-      note={note ?? { kind: newKind ?? "text", title: null, body: "", editedAt: null }}
+      note={
+        note ?? {
+          kind: newKind ?? "text",
+          title: null,
+          body: "",
+          editedAt: null,
+          creator,
+          audience: [],
+        }
+      }
       saved={note !== undefined}
+      viewerId={session.user.id}
+      people={people.data}
+      onShare={(audience) => void shareNote(noteId, audience)}
       onCreate={(fields) => createTextNote(noteId, creator, fields)}
       onUpdate={(changes) => updateNote(noteId, changes)}
       onDelete={(onServer) => {

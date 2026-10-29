@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest"
-import { isEmptyNote, notePreview, orderNotes, titleOrNull } from "./notes.ts"
+import { isEmptyNote, notePreview, orderNotes, sharingLine, titleOrNull } from "./notes.ts"
 
 describe("orderNotes", () => {
   test("puts the newest edit first", () => {
@@ -88,5 +88,24 @@ describe("titleOrNull", () => {
   test("any other title is kept exactly, spaces included", () => {
     expect(titleOrNull(" Groceries ")).toBe(" Groceries ")
     expect(titleOrNull(" ")).toBe(" ")
+  })
+})
+
+describe("sharingLine", () => {
+  const ana = { id: "ana", name: "Ana" }
+  const ben = { id: "ben", name: "Ben" }
+  const cy = { id: "cy", name: "Cy" }
+
+  test("a Note the viewer made and shared with nobody is theirs alone", () => {
+    expect(sharingLine({ creator: ana, audience: [] }, "ana")).toBe("Only you")
+  })
+
+  test("a Note the viewer made and shared names its Audience", () => {
+    expect(sharingLine({ creator: ana, audience: [ben] }, "ana")).toBe("Shared with Ben")
+    expect(sharingLine({ creator: ana, audience: [ben, cy] }, "ana")).toBe("Shared with Ben, Cy")
+  })
+
+  test("a Note someone else made names its Creator", () => {
+    expect(sharingLine({ creator: ana, audience: [ben, cy] }, "ben")).toBe("Shared by Ana")
   })
 })

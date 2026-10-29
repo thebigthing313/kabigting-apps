@@ -1,6 +1,6 @@
 /**
  * The Notes App's pure rules, shared by the server and the client: how Notes are ordered, how a
- * row previews a Note, and when a Note counts as empty.
+ * row previews a Note, who it reads as shared with, and when a Note counts as empty.
  */
 
 /** The parts of a Note that hold what was typed. A Checklist has no body. */
@@ -63,4 +63,20 @@ export function titleOrNull(title: string | null | undefined): string | null {
 /** A Note with no title and nothing but whitespace in its body is empty. */
 export function isEmptyNote(note: NoteContent): boolean {
   return isBlank(note.title) && isBlank(note.body)
+}
+
+/** Who can see a Note: its Creator and its Audience. */
+export type NoteSharing = {
+  creator: { id: string; name: string }
+  audience: readonly { id: string; name: string }[]
+}
+
+/**
+ * Who a Note is shared with, as one short line from the viewer's side: "Only you", "Shared with …"
+ * naming its Audience, or "Shared by …" naming its Creator.
+ */
+export function sharingLine(note: NoteSharing, viewerId: string): string {
+  if (note.creator.id !== viewerId) return `Shared by ${note.creator.name}`
+  if (note.audience.length === 0) return "Only you"
+  return `Shared with ${note.audience.map((person) => person.name).join(", ")}`
 }

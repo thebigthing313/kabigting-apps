@@ -1,5 +1,5 @@
-import { FileTextIcon, PlusIcon } from "lucide-react"
-import { KindIcon, useNow } from "@/apps/notes/note-parts"
+import { FileTextIcon, PlusIcon, UsersIcon } from "lucide-react"
+import { Avatar, KindIcon, useNow } from "@/apps/notes/note-parts"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
@@ -9,16 +9,19 @@ import {
 } from "@/components/ui/dropdown-menu"
 import type { Note } from "@/data/notes"
 import { timeAgo } from "@shared/dates"
-import { notePreview, orderNotes } from "@shared/notes/notes"
+import { notePreview, orderNotes, sharingLine } from "@shared/notes/notes"
 import type { NewNoteKind } from "@shared/notes/schemas"
 
-/** Notes home: the New menu over one list of Notes, newest edit first. */
+/** Notes home: the New menu over one list of every Note the viewer can see, newest edit first. */
 export function NotesList({
   notes,
+  viewerId,
   onNew,
   onOpen,
 }: {
   notes: readonly Note[]
+  /** The signed-in Account, so each row can say who else sees it. */
+  viewerId: string
   /** Starts a new Note of the kind picked; its kind never changes afterwards. */
   onNew: (kind: NewNoteKind) => void
   onOpen: (id: string) => void
@@ -65,8 +68,15 @@ export function NotesList({
                     {snippet && (
                       <span className="truncate text-sm text-muted-foreground">{snippet}</span>
                     )}
-                    <span className="text-xs text-muted-foreground">
-                      {timeAgo(note.editedAt, now)}
+                    <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                      {note.creator.id !== viewerId ? (
+                        <Avatar person={note.creator} className="size-4 text-[0.55rem] ring-1" />
+                      ) : note.audience.length > 0 ? (
+                        <UsersIcon aria-hidden className="size-3.5" />
+                      ) : null}
+                      <span className="truncate">
+                        {sharingLine(note, viewerId)} · {timeAgo(note.editedAt, now)}
+                      </span>
                     </span>
                   </span>
                 </button>
