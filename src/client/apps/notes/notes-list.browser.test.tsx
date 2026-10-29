@@ -1,9 +1,11 @@
 import "@/styles.css"
+import { useState } from "react"
 import { describe, expect, test, vi } from "vitest"
 import { render } from "vitest-browser-react"
 import { NotesList } from "@/apps/notes/notes-list"
 import type { Item, Note } from "@/data/notes"
 import { instantAt } from "@shared/dates"
+import type { NoteTab } from "@shared/notes/notes"
 import type { NoteKind } from "@shared/notes/schemas"
 
 const minutesAgo = (minutes: number) => instantAt(Date.now() - minutes * 60_000)
@@ -25,10 +27,30 @@ function note(overrides: Partial<Note>): Note {
 async function renderList(notes: Note[], items: Item[] = []) {
   const onNew = vi.fn<(kind: NoteKind) => void>()
   const onOpen = vi.fn<(id: string) => void>()
-  const screen = await render(
-    <NotesList notes={notes} items={items} viewerId="me" onNew={onNew} onOpen={onOpen} />,
-  )
+  // The tab lives in the URL in the App; here it lives in state, as the home wires it.
+  function WithTabs() {
+    const [tab, setTab] = useState<NoteTab>("all")
+    return (
+      <NotesList
+        notes={notes}
+        items={items}
+        viewerId="me"
+        tab={tab}
+        onTab={setTab}
+        onNew={onNew}
+        onOpen={onOpen}
+      />
+    )
+  }
+  const screen = await render(<WithTabs />)
   return { onNew, onOpen, screen }
+}
+
+function rowTexts(screen: Awaited<ReturnType<typeof renderList>>["screen"]) {
+  return screen
+    .getByRole("listitem")
+    .elements()
+    .map((row) => row.textContent)
 }
 
 describe("the New menu", () => {
@@ -130,5 +152,82 @@ describe("the list", () => {
   test("with no Notes, says so", async () => {
     const { screen } = await renderList([])
     await expect.element(screen.getByText("No notes yet")).toBeVisible()
+  })
+})
+
+describe("the tabs", () => {
+  const me = { id: "me", name: "Me" }
+  const ben = { id: "ben", name: "Ben" }
+  const groceries = "GroceriesShared with Ben · 10 minutes ago"
+  const wifi = "Wi-FiBShared by Ben · 20 minutes ago"
+  const onlyMine = "PrivateOnly you · 30 minutes ago"
+
+  test("All, Mine and Shared with me each hold their Notes, newest edit first", async () => {
+    const { screen } = await renderList([
+      note({
+        id: "0190a000-0000-7000-8000-00000000000a",
+        title: "Private",
+        editedAt: minutesAgo(30),
+      }),
+      note({
+        id: "0190a000-0000-7000-8000-00000000000b",
+        title: "Groceries",
+        audience: [ben],
+        editedAt: minutesAgo(10),
+      }),
+      note({
+        id: "0190a000-0000-7000-8000-00000000000c",
+        title: "Wi-Fi",
+        creator: ben,
+        audience: [me],
+        editedAt: minutesAgo(20),
+      }),
+    ])
+    await expect
+      .element(screen.getByRole("tab", { name: "All" }))
+      .toHaveAttribute("aria-selected", "true")
+    await expect.element(screen.getByText("Wi-Fi")).toBeVisible()
+    expect(rowTexts(screen)).toEqual([groceries, wifi, onlyMine])
+
+    await screen.getByRole("tab", { name: "Mine" }).click()
+    await expect
+      .element(screen.getByRole("tab", { name: "Mine" }))
+      .toHaveAttribute("aria-selected", "true")
+    await expect.element(screen.getByText("Wi-Fi")).not.toBeInTheDocument()
+    expect(rowTexts(screen)).toEqual([groceries, onlyMine])
+
+    await screen.getByRole("tab", { name: "Shared with me" }).click()
+    await expect.element(screen.getByText("Private")).not.toBeInTheDocument()
+    expect(rowTexts(screen)).toEqual([wifi])
+
+    await screen.getByRole("tab", { name: "All" }).click()
+    await expect.element(screen.getByText("Private")).toBeVisible()
+    expect(rowTexts(screen)).toEqual([groceries, wifi, onlyMine])
+  })
+
+  test("an empty tab says so in its own words", async () => {
+    const { screen } = await renderList([
+      note({ id: "0190a000-0000-7000-8000-00000000000a", title: "Private" }),
+    ])
+    await screen.getByRole("tab", { name: "Shared with me" }).click()
+    await expect.element(screen.getByText("Nothing shared with you yet")).toBeVisible()
+    await expect.element(screen.getByText("Private")).not.toBeInTheDocument()
+
+    await screen.getByRole("tab", { name: "Mine" }).click()
+    await expect.element(screen.getByText("Private")).toBeVisible()
+  })
+
+  test("Mine with no Notes of the viewer's own says so", async () => {
+    const { screen } = await renderList([
+      note({
+        id: "0190a000-0000-7000-8000-00000000000c",
+        title: "Wi-Fi",
+        creator: ben,
+        audience: [me],
+      }),
+    ])
+    await screen.getByRole("tab", { name: "Mine" }).click()
+    await expect.element(screen.getByText("Nothing of yours yet")).toBeVisible()
+    await expect.element(screen.getByText("Wi-Fi")).not.toBeInTheDocument()
   })
 })

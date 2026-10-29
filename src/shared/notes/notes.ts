@@ -106,3 +106,24 @@ export function sharingLine(note: NoteSharing, viewerId: string): string {
   if (note.audience.length === 0) return "Only you"
   return `Shared with ${note.audience.map((person) => person.name).join(", ")}`
 }
+
+/** The Notes home's tabs: All, Mine and Shared with me. */
+export const NOTE_TABS = ["all", "mine", "shared"] as const
+export type NoteTab = (typeof NOTE_TABS)[number]
+
+/**
+ * The Notes in a tab, from the viewer's side: All holds every one; Mine those the viewer is the
+ * Creator of, shared or not; Shared with me those someone else made with the viewer in the
+ * Audience. Keeps the input's order.
+ */
+export function notesInTab<Note extends NoteSharing>(
+  notes: readonly Note[],
+  tab: NoteTab,
+  viewerId: string,
+): Note[] {
+  return notes.filter((note) => {
+    if (tab === "all") return true
+    if (tab === "mine") return note.creator.id === viewerId
+    return note.creator.id !== viewerId && note.audience.some((person) => person.id === viewerId)
+  })
+}
