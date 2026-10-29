@@ -85,6 +85,13 @@
       "when": 1792294970287,
       "tag": "0011_finances_transfers",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1793281250475,
+      "tag": "0012_notes",
+      "breakpoints": true
     }
   ]
 }

@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm"
 import { Hono } from "hono"
 import { financesRoutes } from "#server/apps/finances/routes.ts"
+import { notesRoutes } from "#server/apps/notes/routes.ts"
 import { accessRoutes } from "#server/core/access-routes.ts"
 import { adminRoutes } from "#server/core/admin-routes.ts"
 import { appVersionHeader, noStore } from "#server/core/cache-headers.ts"
@@ -18,6 +19,7 @@ function apiRoutes(deps: Deps) {
     .route("/access", accessRoutes(deps))
     .route("/admin", adminRoutes(deps))
     .route("/finances", financesRoutes(deps))
+    .route("/notes", notesRoutes(deps))
 }
 
 export type AppType = ReturnType<typeof apiRoutes>

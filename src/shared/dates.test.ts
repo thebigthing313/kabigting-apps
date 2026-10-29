@@ -14,6 +14,7 @@ import {
   monthOfDate,
   nowInstant,
   shiftMonth,
+  timeAgo,
   toPickerDate,
   today,
   weekdayName,
@@ -177,5 +178,21 @@ describe("calendar months", () => {
   test("formatMonth and formatShortMonth name the month", () => {
     expect(formatMonth("2026-09")).toBe("September 2026")
     expect(formatShortMonth("2026-09")).toBe("Sep")
+  })
+})
+
+describe("timeAgo", () => {
+  const now = Date.parse("2026-10-29T15:00:00.000Z")
+
+  test("under a minute is just now, even a moment in the future", () => {
+    expect(timeAgo("2026-10-29T14:59:31.000Z", now)).toBe("just now")
+    expect(timeAgo("2026-10-29T15:00:05.000Z", now)).toBe("just now")
+  })
+
+  test("counts whole minutes, hours and days back", () => {
+    expect(timeAgo("2026-10-29T14:55:00.000Z", now)).toBe("5 minutes ago")
+    expect(timeAgo("2026-10-29T14:59:00.000Z", now)).toBe("1 minute ago")
+    expect(timeAgo("2026-10-29T12:10:00.000Z", now)).toBe("2 hours ago")
+    expect(timeAgo("2026-10-26T15:00:00.000Z", now)).toBe("3 days ago")
   })
 })

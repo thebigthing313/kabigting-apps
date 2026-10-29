@@ -20,6 +20,11 @@ type RestWrites<Row extends { id: string }> = {
   create: (row: Row) => Promise<Row>
   update: (id: string, changes: Partial<Row>) => Promise<Row>
   remove: (id: string) => Promise<Row>
+  /**
+   * When a write answers 404, also drop the row: the server says it is gone (or no longer
+   * visible), so keeping it would only invite more failing writes.
+   */
+  dropOnNotFound?: boolean
 }
 
 export type RestCollectionSpec<Row extends { id: string }> = RestWrites<Row> & {
@@ -33,7 +38,22 @@ export type OnDemandCollectionSpec<Row extends { id: string }> = RestWrites<Row>
   staleTime?: number
 }
 
+function isNotFound(error: unknown): boolean {
+  return error instanceof ApiRequestError && error.status === 404
+}
+
 function writeHandlers<Row extends { id: string }>(spec: RestWrites<Row>) {
+  /** Reports a failed write and, when the row is gone and the spec asks, drops it too. */
+  async function failed(
+    error: unknown,
+    action: string,
+    key: string | undefined,
+    drop: (key: string) => Promise<void> | void,
+  ): Promise<never> {
+    reportError(error, action)
+    if (spec.dropOnNotFound && key !== undefined && isNotFound(error)) await drop(key)
+    throw error
+  }
   return {
     onInsert: async ({ transaction, collection }) => {
       try {
@@ -47,25 +67,27 @@ function writeHandlers<Row extends { id: string }>(spec: RestWrites<Row>) {
       return { refetch: false }
     },
     onUpdate: async ({ transaction, collection }) => {
+      let key: string | undefined
       try {
         for (const mutation of transaction.mutations) {
+          key = mutation.key
           await collection.utils.writeUpsert(await spec.update(mutation.key, mutation.changes))
         }
       } catch (error) {
-        reportError(error, "Saving")
-        throw error
+        return failed(error, "Saving", key, (gone) => collection.utils.writeDelete(gone))
       }
       return { refetch: false }
     },
     onDelete: async ({ transaction, collection }) => {
+      let key: string | undefined
       try {
         for (const mutation of transaction.mutations) {
+          key = mutation.key
           await spec.remove(mutation.key)
           await collection.utils.writeDelete(mutation.key)
         }
       } catch (error) {
-        reportError(error, "Deleting")
-        throw error
+        return failed(error, "Deleting", key, (gone) => collection.utils.writeDelete(gone))
       }
       return { refetch: false }
     },

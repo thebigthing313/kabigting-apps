@@ -1,4 +1,11 @@
-import { ChartColumnIcon, HouseIcon, RepeatIcon, WalletIcon, type LucideIcon } from "lucide-react"
+import {
+  ChartColumnIcon,
+  HouseIcon,
+  NotebookPenIcon,
+  RepeatIcon,
+  WalletIcon,
+  type LucideIcon,
+} from "lucide-react"
 import type { FileRouteTypes } from "@/routeTree.gen"
 import { APPS as SHARED_APPS, type AppKey } from "@shared/apps"
 
@@ -14,8 +21,9 @@ export type AppEntry = {
   title: string
   description: string
   /** The App's home; every page of the App lives under it. */
-  to: "/finances"
+  to: "/finances" | "/notes"
   icon: LucideIcon
+  /** The App's sections; empty when the App's home is its only top-level page. */
   sidebar: readonly SidebarItem[]
 }
 
@@ -31,6 +39,12 @@ const CLIENT_APPS: Record<AppKey, Omit<AppEntry, "key" | "title">> = {
       { title: "Wallets", to: "/finances/wallets", icon: WalletIcon },
       { title: "Summary", to: "/finances/summary", icon: ChartColumnIcon },
     ],
+  },
+  notes: {
+    description: "Jot down short notes",
+    to: "/notes",
+    icon: NotebookPenIcon,
+    sidebar: [],
   },
 }
 
