@@ -1,12 +1,10 @@
 // Saving typed text (a Note's title and body, an Item's text): each field saves about a second
 // after typing pauses. A save that can't reach the server leaves its field "Not saved", keeping
 // the typed text, and is retried in memory on the next keystroke, when the app regains focus or
-// when the network comes back. Leaving the page, hiding it or unmounting the editor sends what is
-// pending at once, with keepalive. Nothing is stored or queued across reloads.
+// when the network comes back. Leaving the page, hiding it or unmounting the editor sends every
+// field not yet saved at once, with keepalive. Nothing is stored or queued across reloads.
 import { useEffect } from "react"
-import type { SaveOptions, SaveOutcome } from "@/data/settled"
-
-export type { SaveOptions, SaveOutcome }
+import type { SaveOptions, SaveOutcome } from "@/data/notes"
 
 /** How long typing must pause before a field saves. */
 const SAVE_DELAY_MS = 1_000
@@ -15,50 +13,94 @@ const NOW: SaveOptions = { keepalive: false }
 const LEAVING: SaveOptions = { keepalive: true }
 
 export type TypedTextSaving<Key extends string> = {
-  /** Saves a field's latest text; it reads the text when it runs. */
-  save: (key: Key, options: SaveOptions) => Promise<SaveOutcome>
+  /** A field's text as typed now. */
+  read: (key: Key) => string
+  /** Saves a field's text. */
+  save: (key: Key, text: string, options: SaveOptions) => Promise<SaveOutcome>
   /** Told whenever the set of "Not saved" fields changes. */
   onNotSaved: (keys: ReadonlySet<Key>) => void
 }
 
 /**
  * The saving behind an editor's typed fields, outside React so it outlives the page: saves still
- * run after the editor unmounts. Saves run one at a time, in order, so a field's update never
- * overtakes the create before it, and a delete can wait for the save in flight.
+ * run after the editor unmounts. A field's ordinary saves go one after another, so they land in
+ * order. Leaving sends at once, beside them: a page being unloaded never runs what waits.
  */
-export function createTypedTextSaver<Key extends string>(first: TypedTextSaving<Key>) {
-  let handlers = first
+export function createTypedTextSaver<Key extends string>({
+  read,
+  save,
+  onNotSaved,
+}: TypedTextSaving<Key>) {
   let stopped = false
   const timers = new Map<Key, ReturnType<typeof setTimeout>>()
-  /** Saves queued but not yet started; a second ask for one only upgrades it to keepalive. */
-  const waiting = new Map<Key, SaveOptions>()
   const notSaved = new Set<Key>()
-  let queue: Promise<unknown> = Promise.resolve()
+  /** Per field, the saves on their way: their text, and whether they outlive the page. */
+  const sending = new Map<Key, { text: string; keepalive: boolean }[]>()
+  /** Per field, its ordinary saves in order; a field in `waiting` has one queued, not started. */
+  const chains = new Map<Key, Promise<void>>()
+  const waiting = new Set<Key>()
+  /** Every save not yet settled, for `stop` to wait on. */
+  const unsettled = new Set<Promise<void>>()
 
   function mark(key: Key, unreached: boolean) {
     if (notSaved.has(key) === unreached) return
     if (unreached) notSaved.add(key)
     else notSaved.delete(key)
-    handlers.onNotSaved(new Set(notSaved))
+    onNotSaved(new Set(notSaved))
   }
 
-  function enqueue(key: Key, options: SaveOptions) {
-    const queued = waiting.get(key)
-    if (queued) {
-      if (options.keepalive) queued.keepalive = true
-      return
+  function track(saving: Promise<void>) {
+    unsettled.add(saving)
+    void saving.then(() => unsettled.delete(saving))
+  }
+
+  async function send(key: Key, options: SaveOptions): Promise<void> {
+    // A save asked for before the editor stopped, as its Note was deleted, must not land after.
+    if (stopped) return
+    const entry = { text: read(key), keepalive: options.keepalive === true }
+    sending.set(key, [...(sending.get(key) ?? []), entry])
+    try {
+      mark(key, (await save(key, entry.text, options)) === "unreached")
+    } catch {
+      // A failed save is reported where it failed.
+    } finally {
+      sending.set(
+        key,
+        (sending.get(key) ?? []).filter((each) => each !== entry),
+      )
     }
-    const asked = { ...options }
-    waiting.set(key, asked)
-    queue = queue
-      .then(async () => {
-        waiting.delete(key)
-        // A save queued before the editor stopped, as its Note was deleted, must not land after.
-        if (stopped) return
-        mark(key, (await handlers.save(key, asked)) === "unreached")
-      })
-      // A failed save is reported where it failed; the saves behind it still run.
-      .catch(() => {})
+  }
+
+  /** Whether a save of the field's current text is on its way (outliving the page, if asked). */
+  function alreadySending(key: Key, outlivingOnly: boolean) {
+    const text = read(key)
+    return (sending.get(key) ?? []).some(
+      (each) => each.text === text && (each.keepalive || !outlivingOnly),
+    )
+  }
+
+  /** An ordinary save, after the field's earlier ones; it reads the text when it runs. */
+  function inOrder(key: Key) {
+    if (stopped || waiting.has(key)) return
+    waiting.add(key)
+    const next = (chains.get(key) ?? Promise.resolve()).then(() => {
+      waiting.delete(key)
+      return send(key, NOW)
+    })
+    chains.set(key, next)
+    track(next)
+  }
+
+  /** Sends a field now, with keepalive, without waiting for its saves on their way. */
+  function leave(key: Key) {
+    if (alreadySending(key, true)) return
+    const text = read(key)
+    // An earlier save with other text may land after this one; once it has, the latest text
+    // goes again so it wins. A queued ordinary save already sends the latest text after it.
+    const overtaken =
+      !waiting.has(key) && (sending.get(key) ?? []).some((each) => each.text !== text)
+    track(send(key, LEAVING))
+    if (overtaken) inOrder(key)
   }
 
   function schedule(key: Key) {
@@ -67,26 +109,12 @@ export function createTypedTextSaver<Key extends string>(first: TypedTextSaving<
       key,
       setTimeout(() => {
         timers.delete(key)
-        enqueue(key, NOW)
+        inOrder(key)
       }, SAVE_DELAY_MS),
     )
   }
 
-  function sendAll(options: SaveOptions) {
-    if (stopped) return
-    for (const [key, timer] of timers) {
-      clearTimeout(timer)
-      enqueue(key, options)
-    }
-    timers.clear()
-    for (const key of notSaved) enqueue(key, options)
-  }
-
   return {
-    setHandlers(next: TypedTextSaving<Key>) {
-      handlers = next
-    },
-
     /** A field's text changed: save it once typing pauses, retrying any "Not saved" field too. */
     changed(key: Key) {
       if (stopped) return
@@ -94,42 +122,50 @@ export function createTypedTextSaver<Key extends string>(first: TypedTextSaving<
       for (const other of notSaved) if (!timers.has(other)) schedule(other)
     },
 
-    /** Tries every "Not saved" field again, now (focus, reconnect). */
+    /** Tries every "Not saved" field again, now (focus, reconnect); once per field. */
     retry() {
-      if (stopped) return
-      for (const key of notSaved) if (!timers.has(key)) enqueue(key, NOW)
+      for (const key of notSaved) {
+        if (!timers.has(key) && !alreadySending(key, false)) inOrder(key)
+      }
     },
 
-    /** Sends everything not yet saved, now, with keepalive (leaving, hiding, unmounting). */
+    /**
+     * Sends every field not yet saved at once, with keepalive (leaving, hiding, unmounting):
+     * typing still pausing, saves queued and "Not saved" fields. Once per field and text.
+     */
     flush() {
-      sendAll(LEAVING)
+      if (stopped) return
+      const keys = new Set([...timers.keys(), ...waiting, ...notSaved])
+      for (const timer of timers.values()) clearTimeout(timer)
+      timers.clear()
+      // A save on its way as an ordinary request may be cancelled with the page.
+      for (const [key, saves] of sending) if (saves.some((each) => !each.keepalive)) keys.add(key)
+      for (const key of keys) leave(key)
     },
 
     /**
      * Stops saving for good: typing not yet saved is dropped and no queued save runs. Resolves
-     * once the save in flight has settled.
+     * once every save on its way has settled.
      */
-    stop(): Promise<unknown> {
+    async stop(): Promise<void> {
       stopped = true
       for (const timer of timers.values()) clearTimeout(timer)
       timers.clear()
       if (notSaved.size > 0) {
         notSaved.clear()
-        handlers.onNotSaved(new Set())
+        onNotSaved(new Set())
       }
-      return queue
+      await Promise.all(unsettled)
     },
   }
 }
 
-export type TypedTextSaver<Key extends string> = ReturnType<typeof createTypedTextSaver<Key>>
-
 /**
  * Ties a saver to the page: retries "Not saved" fields when the app regains focus or the network
- * returns, and sends what is pending at once when the page is hidden, left or the editor
+ * returns, and sends what is not yet saved at once when the page is hidden, left or the editor
  * unmounts. There is deliberately no `beforeunload` prompt.
  */
-export function useTypedTextLifecycle<Key extends string>(saver: TypedTextSaver<Key>) {
+export function useTypedTextLifecycle(saver: { flush: () => void; retry: () => void }) {
   useEffect(() => {
     const onVisibility = () => {
       if (document.visibilityState === "hidden") saver.flush()

@@ -1,11 +1,6 @@
 import { useEffect, useState } from "react"
-import {
-  createTypedTextSaver,
-  type SaveOptions,
-  type SaveOutcome,
-  useTypedTextLifecycle,
-} from "@/apps/notes/typed-text"
-import type { NoteFields } from "@/data/notes"
+import { createTypedTextSaver, useTypedTextLifecycle } from "@/apps/notes/typed-text"
+import type { NoteFields, SaveOptions, SaveOutcome } from "@/data/notes"
 import { isEmptyNote } from "@shared/notes/notes"
 
 type Field = keyof NoteFields
@@ -33,17 +28,44 @@ function createNoteDraft(
   let latest = initial
   let exists = saved
   let handlers = first
+  let discarded = false
+  /** The create on its way, which every field's save waits for; the fields it carries. */
+  let creating: Promise<SaveOutcome> | null = null
+  let created: NoteFields | null = null
+
+  /** Creates the Note with everything typed so far, once for every field asking at once. */
+  function create(options: SaveOptions): Promise<SaveOutcome> {
+    if (creating) return creating
+    const fields = { ...latest }
+    creating = handlers
+      .onCreate(fields, options)
+      .catch((): SaveOutcome => "refused")
+      .then((outcome) => {
+        creating = null
+        if (outcome === "saved") {
+          exists = true
+          created = fields
+        }
+        return outcome
+      })
+    return creating
+  }
 
   const saver = createTypedTextSaver<Field>({
+    read: (field) => latest[field],
     onNotSaved,
-    save: async (field, options) => {
-      if (exists) return handlers.onUpdate({ [field]: latest[field] }, options)
-      // An empty new Note is never stored.
-      if (isEmptyNote(latest)) return "saved"
-      // The create carries every field typed so far.
-      const outcome = await handlers.onCreate({ ...latest }, options)
-      exists = outcome === "saved"
-      return outcome
+    save: async (field, text, options) => {
+      if (!exists) {
+        // An empty new Note is never stored.
+        if (isEmptyNote(latest)) return "saved"
+        // The create carries every field typed so far; a field's update must never reach the
+        // server before it.
+        const outcome = await create(options)
+        if (!exists) return outcome
+        // Nothing more is saved once a delete has begun, nor what the create already carried.
+        if (discarded || created?.[field] === text) return "saved"
+      }
+      return handlers.onUpdate({ [field]: text }, options)
     },
   })
 
@@ -63,11 +85,13 @@ function createNoteDraft(
 
     /**
      * Stops saving for good, as the Note is being deleted: typing not yet saved is dropped and
-     * no queued save runs. Resolves, once the save in flight has settled, to whether the Note
-     * is on the server, so a create that lands mid-delete is deleted too.
+     * no queued save runs. Resolves, once the saves on their way have settled, to whether the
+     * Note is on the server, so a create that lands mid-delete is deleted too.
      */
-    discard(): Promise<boolean> {
-      return saver.stop().then(() => exists)
+    async discard(): Promise<boolean> {
+      discarded = true
+      await saver.stop()
+      return exists
     },
   }
 }
@@ -77,7 +101,7 @@ function createNoteDraft(
  * after typing pauses, independently of the other. A new Note is created by its first save with
  * content, so one left empty is never stored; a saved Note stays even when emptied. A field whose
  * save can't reach the server keeps its text and is listed in `notSaved` until a retry lands.
- * Hiding or leaving the page, or unmounting, sends what is pending at once.
+ * Hiding or leaving the page, or unmounting, sends what is not yet saved at once.
  */
 export function useNoteDraft({ initial, saved, onCreate, onUpdate }: NoteDraftOptions) {
   const [fields, setFields] = useState(initial)

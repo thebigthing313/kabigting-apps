@@ -8,14 +8,29 @@ import type { AppType } from "../../server/app.ts"
 export const api = hc<AppType>("/", { fetch: apiFetch }).api
 
 /**
- * Browsers refuse a `keepalive` request once the bodies of those in flight pass 64 KiB in all, so
- * stay well under it; a larger body goes as an ordinary request.
+ * Browsers refuse a `keepalive` request once the bodies of all those in flight pass 64 KiB, so
+ * keep the total under it, with room to spare.
  */
-const KEEPALIVE_BODY_LIMIT = 32 * 1024
+const KEEPALIVE_BUDGET = 60 * 1024
+let keepaliveInFlight = 0
 
-/** The request options for a write whose JSON body is `json`, sent with keepalive when asked. */
-export function sendOptions(options: WriteOptions, json: unknown) {
-  if (!options.keepalive) return undefined
+/**
+ * Sends a write whose JSON body is `json`, with keepalive when asked and while the bodies of the
+ * keepalive requests in flight, this one included, fit the browser's budget; otherwise as an
+ * ordinary request.
+ */
+export async function sendWrite<T>(
+  options: WriteOptions,
+  json: unknown,
+  request: (init: { init: RequestInit } | undefined) => Promise<T>,
+): Promise<T> {
+  if (!options.keepalive) return request(undefined)
   const size = new TextEncoder().encode(JSON.stringify(json)).byteLength
-  return size <= KEEPALIVE_BODY_LIMIT ? { init: { keepalive: true } } : undefined
+  if (keepaliveInFlight + size > KEEPALIVE_BUDGET) return request(undefined)
+  keepaliveInFlight += size
+  try {
+    return await request({ init: { keepalive: true } })
+  } finally {
+    keepaliveInFlight -= size
+  }
 }

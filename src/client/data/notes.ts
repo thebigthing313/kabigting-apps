@@ -2,10 +2,10 @@
 // Account. Each refetch returns the complete visible set, so a Note that stops being visible
 // drops out without extra code; refetches follow the Shell's focus and reconnect defaults.
 import { eq, useLiveQuery } from "@tanstack/react-db"
-import { api, sendOptions } from "@/data/api"
+import { api, sendWrite } from "@/data/api"
 import { defineRestCollection, type WriteOptions } from "@/data/collection-factory"
 import { readJson } from "@/data/error-handler"
-import { type SaveOptions, saveOutcome, settled } from "@/data/settled"
+import { settled, type WriteOutcome, writeOutcome } from "@/data/settled"
 import { nowInstant } from "@shared/dates"
 import { titleOrNull } from "@shared/notes/notes"
 import type { NotePerson, NoteRow, UpdateNote } from "@shared/notes/schemas"
@@ -30,12 +30,14 @@ const notesCollection = defineRestCollection<NoteRow>({
   create: async ({ id, kind, title, body }, options) => {
     if (kind !== "text") throw new Error("Only Text notes can be made")
     const json = { id, kind, title, body: body ?? "" }
-    return readJson(await api.notes.notes.$post({ json }, sendOptions(options, json)))
+    return readJson(await sendWrite(options, json, (init) => api.notes.notes.$post({ json }, init)))
   },
   update: async (id, changes, options) => {
     const json = editable(changes)
     return readJson(
-      await api.notes.notes[":id"].$patch({ param: { id }, json }, sendOptions(options, json)),
+      await sendWrite(options, json, (init) =>
+        api.notes.notes[":id"].$patch({ param: { id }, json }, init),
+      ),
     )
   },
   remove: async (id) => readJson(await api.notes.notes[":id"].$delete({ param: { id } })),
@@ -59,12 +61,18 @@ export function useNote(id: string) {
   return { note: data[0], isLoading }
 }
 
+/** How a save of typed text is sent: with keepalive while the page is being left. */
+export type SaveOptions = Pick<WriteOptions, "keepalive">
+
 /**
- * A save of typed text: sent with keepalive when asked, and a network failure is shown by the
- * field as "Not saved" rather than by a toast.
+ * How a save of typed text ended. "unreached" (no network, or a gateway failure) is shown by its
+ * field as "Not saved" and tried again; a refusal is rolled back and reported.
  */
-function typedText({ keepalive }: SaveOptions): { metadata: WriteOptions } {
-  return { metadata: { keepalive, quietWhenUnreached: true } }
+export type SaveOutcome = WriteOutcome
+
+/** A save of typed text: a failure to reach the server shows as "Not saved", not as a toast. */
+function typedText(options: SaveOptions): { metadata: WriteOptions } {
+  return { metadata: { ...options, quietWhenUnreached: true } }
 }
 
 /**
@@ -78,7 +86,7 @@ export function createTextNote(
   options: SaveOptions,
 ) {
   const now = nowInstant()
-  return saveOutcome(
+  return writeOutcome(
     notesCollection().insert(
       {
         id,
@@ -96,7 +104,7 @@ export function createTextNote(
 
 /** Writes only the typed fields given, each on its own; outcomes as for `createTextNote`. */
 export function updateNote(id: string, changes: Partial<NoteFields>, options: SaveOptions) {
-  return saveOutcome(
+  return writeOutcome(
     notesCollection().update(id, typedText(options), (draft) => {
       if (changes.title !== undefined) draft.title = titleOrNull(changes.title)
       if (changes.body !== undefined) draft.body = changes.body

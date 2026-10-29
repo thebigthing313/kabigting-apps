@@ -7,7 +7,7 @@
 import { BasicIndex, createCollection } from "@tanstack/db"
 import { type QueryCollectionConfig, queryCollectionOptions } from "@tanstack/query-db-collection"
 import type { QueryClient, QueryFunctionContext, QueryKey } from "@tanstack/react-query"
-import { ApiRequestError, isNetworkError, reportError } from "@/data/error-handler"
+import { ApiRequestError, isUnreached, reportError } from "@/data/error-handler"
 import { toOnDemandQueries } from "@/data/on-demand-query"
 import { queryClient } from "@/data/query-client"
 import type { OnDemandQuery } from "@shared/finances/schemas"
@@ -20,8 +20,8 @@ export type WriteOptions = {
   /** Send the request with `keepalive`, so it outlives a page that is closing. */
   keepalive?: boolean
   /**
-   * The caller shows a write that never reached the server itself (typed text's "Not saved"),
-   * so a network failure needs no toast. Refusals are still reported.
+   * The caller shows a write that never reached the server itself and tries it again, so that
+   * failure needs no toast. Refusals are still reported.
    */
   quietWhenUnreached?: boolean
 }
@@ -68,7 +68,7 @@ function isNotFound(error: unknown): boolean {
 
 /** Reports a failed write, unless the caller shows it. */
 function report(error: unknown, action: string, options: WriteOptions) {
-  if (options.quietWhenUnreached && isNetworkError(error)) return
+  if (options.quietWhenUnreached && isUnreached(error)) return
   reportError(error, action)
 }
 

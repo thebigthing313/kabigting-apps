@@ -19,11 +19,14 @@ const STORED: NoteRow = {
 }
 
 /** How the fake server answers the next save. */
-let answer: "store" | "unreachable" | "refuse" = "store"
+let answer: "store" | "unreachable" | "refuse" | "gateway" | "crash" = "store"
+/** How long the fake server takes to answer a save. */
+let delay = 0
 let sent: { body: unknown; keepalive: boolean }[] = []
 
 beforeEach(() => {
   answer = "store"
+  delay = 0
   sent = []
   vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = input instanceof Request ? input.url : String(input)
@@ -34,6 +37,14 @@ beforeEach(() => {
     const body = patch.parse(typeof init?.body === "string" ? JSON.parse(init.body) : null)
     sent.push({ body, keepalive: init?.keepalive === true })
     if (answer === "unreachable") throw new TypeError("Failed to fetch")
+    await new Promise((resolve) => setTimeout(resolve, delay))
+    if (answer === "gateway") return new Response("Bad gateway", { status: 502 })
+    if (answer === "crash") {
+      return Response.json(
+        { error: { code: "internal", message: "Something went wrong" } },
+        { status: 500 },
+      )
+    }
     if (answer === "refuse") {
       return Response.json(
         { error: { code: "validation_failed", message: "This note is too long" } },
@@ -86,6 +97,21 @@ describe("a save of typed text", () => {
     await expect.element(screen.getByText("Saving failed")).toBeVisible()
   })
 
+  test("that a gateway fails ends unreached, with no toast, as the network does", async () => {
+    const screen = await renderNote()
+    answer = "gateway"
+    expect(await updateNote(ID, { body: "Socks, shoes" }, { keepalive: false })).toBe("unreached")
+    await new Promise((resolve) => setTimeout(resolve, 300))
+    await expect.element(screen.getByText("Saving failed")).not.toBeInTheDocument()
+  })
+
+  test("that fails on the server ends refused, with a toast", async () => {
+    const screen = await renderNote()
+    answer = "crash"
+    expect(await updateNote(ID, { body: "Socks, shoes" }, { keepalive: false })).toBe("refused")
+    await expect.element(screen.getByText("Saving failed")).toBeVisible()
+  })
+
   test("sent while leaving outlives the page", async () => {
     await renderNote()
     expect(await updateNote(ID, { body: "Socks and shoes" }, { keepalive: true })).toBe("saved")
@@ -97,5 +123,18 @@ describe("a save of typed text", () => {
     const long = "x".repeat(80_000)
     expect(await updateNote(ID, { body: long }, { keepalive: true })).toBe("saved")
     expect(sent).toEqual([{ body: { body: long }, keepalive: false }])
+  })
+
+  test("sent together while leaving outlive the page only while their bodies fit, together", async () => {
+    await renderNote()
+    delay = 200
+    const half = "x".repeat(40_000)
+    const outcomes = await Promise.all([
+      updateNote(ID, { title: "Trip" }, { keepalive: true }),
+      updateNote(ID, { body: half }, { keepalive: true }),
+      updateNote(ID, { body: `${half}y` }, { keepalive: true }),
+    ])
+    expect(outcomes).toEqual(["saved", "saved", "saved"])
+    expect(sent.map((each) => each.keepalive)).toEqual([true, true, false])
   })
 })
