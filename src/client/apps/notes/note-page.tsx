@@ -14,6 +14,7 @@ import {
   useNote,
   useNoteItems,
   useNotePeople,
+  useOpenOnVisit,
 } from "@/data/notes"
 import type { NoteKind } from "@shared/notes/schemas"
 
@@ -31,6 +32,8 @@ export function NotePage({ noteId, newKind }: { noteId: string; newKind?: NoteKi
   const { data: items, isLoading: itemsLoading } = useNoteItems(noteId)
   const navigate = useNavigate()
   const back = () => void navigate({ to: "/notes" })
+  // Visiting a Note's page clears Unopened, once, as soon as the Note is here.
+  useOpenOnVisit(noteId, note?.unopened ?? false)
 
   if (isLoading || itemsLoading) return <Skeleton className="mx-auto h-64 w-full max-w-2xl" />
   if (!note && newKind === undefined) {

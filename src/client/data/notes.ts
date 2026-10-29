@@ -4,6 +4,7 @@
 // follow the Shell's focus and reconnect defaults.
 import { createOptimisticAction, createTransaction, eq, useLiveQuery } from "@tanstack/react-db"
 import { useQuery } from "@tanstack/react-query"
+import { useEffect, useRef } from "react"
 import { api } from "@/data/api"
 import { defineRestCollection, failedWrite } from "@/data/collection-factory"
 import { ApiRequestError, readJson } from "@/data/error-handler"
@@ -144,6 +145,7 @@ export function createNote(id: string, kind: NoteKind, creator: NotePerson, fiel
       creator,
       // A new Note is private until its Creator shares it.
       audience: [],
+      unopened: false,
       createdAt: now,
       editedAt: now,
     }),
@@ -207,6 +209,24 @@ export function deleteItem(id: string) {
 }
 
 /**
+ * Sends a request on one Note's own route, then takes the Note as the server answers it. A failure
+ * goes through `failedWrite`: reported as `action` (quietly when null), a Note that is gone (404)
+ * leaves the list, and the error is rethrown so the action rolls back.
+ */
+async function writeThroughNoteRoute(
+  id: string,
+  request: () => Promise<Response & { json(): Promise<NoteRow> }>,
+  action: string | null,
+) {
+  const notes = notesCollection()
+  try {
+    await notes.utils.writeUpsert(await readJson(await request()))
+  } catch (error) {
+    await failedWrite(error, action, () => notes.utils.writeDelete(id))
+  }
+}
+
+/**
  * Replacing the Audience: its own route, not a field write, so it is an action of its own. The
  * new Audience shows at once; a refusal rolls it back with a toast, and a Note that is gone (404)
  * leaves the list.
@@ -218,16 +238,12 @@ const replaceAudience = createOptimisticAction<{ id: string; audience: readonly 
     })
   },
   mutationFn: async ({ id, audience }) => {
-    const notes = notesCollection()
-    try {
-      const accountIds = audience.map((person) => person.id)
-      const row = await readJson(
-        await api.notes.notes[":id"].audience.$put({ param: { id }, json: { accountIds } }),
-      )
-      await notes.utils.writeUpsert(row)
-    } catch (error) {
-      await failedWrite(error, "Sharing", () => notes.utils.writeDelete(id))
-    }
+    const accountIds = audience.map((person) => person.id)
+    await writeThroughNoteRoute(
+      id,
+      () => api.notes.notes[":id"].audience.$put({ param: { id }, json: { accountIds } }),
+      "Sharing",
+    )
   },
 })
 
@@ -308,9 +324,11 @@ export function shareNote(id: string, audience: readonly NotePerson[]) {
 }
 
 /**
+<<<<<<< HEAD
  * An Audience member Leaving: its own route, so an action of its own. The Note leaves this
  * Account's view at once; a refusal brings it back with a toast. A Note already gone (404) is
- * what Leaving wanted, so it stays gone with nothing reported.
+ * what Leaving wanted, so it stays gone with nothing reported. Unlike `writeThroughNoteRoute`,
+ * there is no Note to take back from the server.
  */
 const leave = createOptimisticAction<string>({
   onMutate: (id) => {
@@ -335,6 +353,48 @@ const leave = createOptimisticAction<string>({
  */
 export function leaveNote(id: string) {
   return settled(leave(id))
+}
+
+/**
+ * Opening a Note: its own route, so an action of its own. The Note stops being Unopened at once.
+ * A failure undoes that without a toast, as the viewer did nothing to report on, and the next
+ * visit tries again; a Note that is gone (404) leaves the list.
+ */
+const markOpened = createOptimisticAction<string>({
+  onMutate: (id) => {
+    notesCollection().update(id, (draft) => {
+      draft.unopened = false
+    })
+  },
+  mutationFn: async (id) => {
+    await writeThroughNoteRoute(
+      id,
+      () => api.notes.notes[":id"].open.$post({ param: { id } }),
+      null,
+    )
+  },
+})
+
+/**
+ * Tells the server the viewer opened a Note, so it is no longer Unopened for them. True once the
+ * server stored it.
+ */
+export function openNote(id: string) {
+  return settled(markOpened(id))
+}
+
+/**
+ * A visit to a Note's page clears Unopened: when the Note shows as Unopened, the open route is
+ * called once for this visit, even if a failed open brings Unopened back. A Note that isn't
+ * Unopened (the Creator's own, or one already opened) sends nothing.
+ */
+export function useOpenOnVisit(id: string, unopened: boolean) {
+  const opened = useRef<string | null>(null)
+  useEffect(() => {
+    if (!unopened || opened.current === id) return
+    opened.current = id
+    void openNote(id)
+  }, [id, unopened])
 }
 
 /**

@@ -358,6 +358,21 @@ describe("Leaving a Note", () => {
     expect(await listed(note.id, member)).toMatchObject({ title: "Shared" })
   })
 
+  test("a member who Left and is added back finds the Note Unopened again", async () => {
+    const note = await created()
+    await shared(note.id, [member.id])
+    const opening = await server.app.request(
+      `/api/notes/notes/${note.id}/open`,
+      json("POST", {}, member.headers),
+    )
+    expect(opening.status).toBe(200)
+    expect(await listed(note.id, member)).toMatchObject({ unopened: false })
+
+    expect((await leave(note.id, member)).status).toBe(200)
+    await shared(note.id, [member.id])
+    expect(await listed(note.id, member)).toMatchObject({ unopened: true })
+  })
+
   test("the Creator can't Leave their own Note, and nothing changes", async () => {
     const note = await created()
     await shared(note.id, [member.id])
