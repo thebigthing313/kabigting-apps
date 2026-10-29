@@ -1,4 +1,4 @@
-import { FileTextIcon, PlusIcon } from "lucide-react"
+import { FileTextIcon, ListChecksIcon, PlusIcon } from "lucide-react"
 import { KindIcon, useNow } from "@/apps/notes/note-parts"
 import { Button } from "@/components/ui/button"
 import {
@@ -7,24 +7,34 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import type { Note } from "@/data/notes"
+import type { Item, Note } from "@/data/notes"
 import { timeAgo } from "@shared/dates"
+import { checklistCounts } from "@shared/notes/items"
 import { notePreview, orderNotes } from "@shared/notes/notes"
-import type { NewNoteKind } from "@shared/notes/schemas"
+import type { NoteKind } from "@shared/notes/schemas"
+
+const NO_ITEMS: readonly Item[] = []
 
 /** Notes home: the New menu over one list of Notes, newest edit first. */
 export function NotesList({
   notes,
+  items,
   onNew,
   onOpen,
 }: {
   notes: readonly Note[]
+  /** Every Checklist's Items, for the rows' previews and counts. */
+  items: readonly Item[]
   /** Starts a new Note of the kind picked; its kind never changes afterwards. */
-  onNew: (kind: NewNoteKind) => void
+  onNew: (kind: NoteKind) => void
   onOpen: (id: string) => void
 }) {
   const now = useNow()
   const ordered = orderNotes(notes)
+  const itemsByNote = new Map<string, Item[]>()
+  for (const item of items) {
+    itemsByNote.set(item.noteId, [...(itemsByNote.get(item.noteId) ?? []), item])
+  }
   return (
     <div className="mx-auto flex max-w-2xl flex-col gap-4">
       <div className="flex items-center gap-2">
@@ -37,6 +47,9 @@ export function NotesList({
             <DropdownMenuItem onClick={() => onNew("text")}>
               <FileTextIcon /> Text note
             </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => onNew("checklist")}>
+              <ListChecksIcon /> Checklist
+            </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
@@ -48,7 +61,9 @@ export function NotesList({
       ) : (
         <ul className="divide-y rounded-xl border">
           {ordered.map((note) => {
-            const { heading, snippet } = notePreview(note)
+            const noteItems = itemsByNote.get(note.id) ?? NO_ITEMS
+            const { heading, snippet } = notePreview(note, noteItems)
+            const counts = note.kind === "checklist" ? checklistCounts(noteItems) : null
             return (
               <li key={note.id}>
                 <button
@@ -66,6 +81,7 @@ export function NotesList({
                       <span className="truncate text-sm text-muted-foreground">{snippet}</span>
                     )}
                     <span className="text-xs text-muted-foreground">
+                      {counts && `${counts.unchecked} to do · ${counts.checked} done · `}
                       {timeAgo(note.editedAt, now)}
                     </span>
                   </span>

@@ -1,17 +1,19 @@
 import { useNavigate } from "@tanstack/react-router"
 import { NotesList } from "@/apps/notes/notes-list"
 import { Skeleton } from "@/components/ui/skeleton"
-import { useNotes } from "@/data/notes"
+import { useItems, useNotes } from "@/data/notes"
 import { newId } from "@shared/ids"
 
 /** The Notes App's home: every Note the Account can see. */
 export function NotesHome() {
   const { data: notes, isLoading } = useNotes()
+  const { data: items, isLoading: itemsLoading } = useItems()
   const navigate = useNavigate()
-  if (isLoading) return <Skeleton className="mx-auto h-64 w-full max-w-2xl" />
+  if (isLoading || itemsLoading) return <Skeleton className="mx-auto h-64 w-full max-w-2xl" />
   return (
     <NotesList
       notes={notes}
+      items={items}
       // A new Note gets its id now but exists only on this device until it has content.
       onNew={(kind) =>
         void navigate({ to: "/notes/$noteId", params: { noteId: newId() }, search: { new: kind } })

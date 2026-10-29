@@ -3,7 +3,8 @@ import { afterEach, describe, expect, test, vi } from "vitest"
 import { userEvent } from "vitest/browser"
 import { render } from "vitest-browser-react"
 import { NoteEditor, type NoteEditorProps } from "@/apps/notes/note-editor"
-import type { NoteFields, SaveOptions, SaveOutcome } from "@/data/notes"
+import type { StoredItem } from "@/apps/notes/use-note-draft"
+import type { ItemChanges, NewItem, NoteFields, SaveOptions, SaveOutcome } from "@/data/notes"
 import { instantAt } from "@shared/dates"
 
 /** Comfortably past the ~1 s pause after which typing saves. */
@@ -40,6 +41,16 @@ function callbacks() {
     onUpdate: vi.fn<(changes: Partial<NoteFields>, options: SaveOptions) => Promise<SaveOutcome>>(
       () => Promise.resolve("saved"),
     ),
+    onAddItem: vi.fn<(item: NewItem, options: SaveOptions) => Promise<SaveOutcome>>(() =>
+      Promise.resolve("saved"),
+    ),
+    onUpdateItemText: vi.fn<
+      (id: string, text: string, options: SaveOptions) => Promise<SaveOutcome>
+    >(() => Promise.resolve("saved")),
+    onUpdateItem: vi.fn<(id: string, changes: ItemChanges) => Promise<StoredItem | null>>(() =>
+      Promise.resolve(null),
+    ),
+    onDeleteItem: vi.fn<(id: string) => Promise<boolean>>(() => Promise.resolve(true)),
     onDelete: vi.fn<(onServer: Promise<boolean>) => void>(),
     onBack: vi.fn<() => void>(),
   }

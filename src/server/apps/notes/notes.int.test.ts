@@ -130,8 +130,8 @@ describe("create", () => {
     expect((await create({ id: newId(), kind: "text", title: "One\nTwo" })).status).toBe(400)
   })
 
-  test("only Text notes can be made for now", async () => {
-    expect((await create({ id: newId(), kind: "checklist", title: "Later" })).status).toBe(400)
+  test("an unknown kind is refused", async () => {
+    expect((await create({ id: newId(), kind: "memo", title: "Nope" })).status).toBe(400)
   })
 
   test("a retried create succeeds with the stored Note, unchanged", async () => {

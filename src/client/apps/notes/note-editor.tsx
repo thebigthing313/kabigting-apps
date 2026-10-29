@@ -1,7 +1,8 @@
-import { ArrowLeftIcon, CloudOffIcon, MoreVerticalIcon } from "lucide-react"
+import { ArrowLeftIcon, MoreVerticalIcon } from "lucide-react"
 import { useId, useState } from "react"
-import { useNow } from "@/apps/notes/note-parts"
-import { useNoteDraft, type NoteDraftOptions } from "@/apps/notes/use-note-draft"
+import { ChecklistItems } from "@/apps/notes/checklist-items"
+import { NotSaved, useNow } from "@/apps/notes/note-parts"
+import { useNoteDraft, type DraftItem, type NoteDraftOptions } from "@/apps/notes/use-note-draft"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -22,9 +23,11 @@ import {
 import { timeAgo } from "@shared/dates"
 import type { NoteKind } from "@shared/notes/schemas"
 
-export type NoteEditorProps = Pick<NoteDraftOptions, "saved" | "onCreate" | "onUpdate"> & {
+export type NoteEditorProps = Omit<NoteDraftOptions, "initial"> & {
   /** The Note as last loaded; `editedAt` is null until it is first saved. */
   note: { kind: NoteKind; title: string | null; body: string | null; editedAt: string | null }
+  /** A Checklist's Items as last loaded. */
+  items?: readonly DraftItem[]
   /**
    * Called once the Creator confirms a delete; from then on nothing more is saved. `onServer`
    * resolves, after any save in flight settles, to whether the Note is on the server to delete.
@@ -34,28 +37,28 @@ export type NoteEditorProps = Pick<NoteDraftOptions, "saved" | "onCreate" | "onU
 }
 
 /**
- * Marks a field whose text never reached the server. The text stays as typed and is retried on
- * the next keystroke, on returning to the app or on reconnecting.
+ * A Note as its own page: a back arrow and the ⋯ menu, a large title, then the plain-text body
+ * exactly as typed or the Checklist's Items, and when it was last edited. Typing saves on its
+ * own; there is no Save button.
  */
-function NotSaved({ id }: { id: string }) {
-  return (
-    <p className="flex items-center gap-1 text-xs text-destructive">
-      <CloudOffIcon aria-hidden className="size-3.5" />
-      <span id={id}>Not saved</span>
-    </p>
-  )
-}
-
-/**
- * A Note as its own page: a back arrow and the ⋯ menu, a large title, the plain-text body exactly
- * as typed, and when it was last edited. Typing saves on its own; there is no Save button.
- */
-export function NoteEditor({ note, saved, onCreate, onUpdate, onDelete, onBack }: NoteEditorProps) {
-  const { fields, notSaved, change, discard } = useNoteDraft({
-    initial: { title: note.title ?? "", body: note.body ?? "" },
+export function NoteEditor({
+  note,
+  items = [],
+  saved,
+  onDelete,
+  onBack,
+  ...handlers
+}: NoteEditorProps) {
+  const {
+    draft: { fields, items: draftItems, newItemText },
+    isNotSaved,
+    change,
+    discard,
+    ...checklist
+  } = useNoteDraft({
+    initial: { fields: { title: note.title ?? "", body: note.body ?? "" }, items: [...items] },
     saved,
-    onCreate,
-    onUpdate,
+    ...handlers,
   })
   const [confirming, setConfirming] = useState(false)
   const now = useNow()
@@ -86,21 +89,38 @@ export function NoteEditor({ note, saved, onCreate, onUpdate, onDelete, onBack }
         onChange={(event) => change("title", event.target.value)}
         placeholder="Title"
         maxLength={200}
-        aria-describedby={notSaved.has("title") ? titleNotSaved : undefined}
+        aria-describedby={isNotSaved("title") ? titleNotSaved : undefined}
         className="bg-transparent text-2xl font-semibold outline-none placeholder:text-muted-foreground/60"
       />
-      {notSaved.has("title") && <NotSaved id={titleNotSaved} />}
-      {/* A plain textarea: the body is shown exactly as typed, never as Markdown or links. */}
-      <textarea
-        aria-label="Note"
-        aria-describedby={notSaved.has("body") ? bodyNotSaved : undefined}
-        value={fields.body}
-        onChange={(event) => change("body", event.target.value)}
-        placeholder="Note"
-        autoFocus={!saved}
-        className="min-h-[50vh] resize-none bg-transparent text-base leading-relaxed whitespace-pre-wrap outline-none placeholder:text-muted-foreground/60"
-      />
-      {notSaved.has("body") && <NotSaved id={bodyNotSaved} />}
+      {isNotSaved("title") && <NotSaved id={titleNotSaved} />}
+      {note.kind === "checklist" ? (
+        <ChecklistItems
+          items={draftItems}
+          newItemText={newItemText}
+          onTypeNewItem={checklist.typeNewItem}
+          onAddItem={checklist.addItem}
+          onChangeItem={checklist.changeItem}
+          onToggleItem={checklist.toggleItem}
+          onDeleteItem={checklist.deleteItem}
+          onLeaveItem={checklist.leaveItem}
+          isNotSaved={(id) => isNotSaved({ item: id })}
+          autoFocusAdd={!saved}
+        />
+      ) : (
+        <>
+          {/* A plain textarea: the body is shown exactly as typed, never as Markdown or links. */}
+          <textarea
+            aria-label="Note"
+            aria-describedby={isNotSaved("body") ? bodyNotSaved : undefined}
+            value={fields.body}
+            onChange={(event) => change("body", event.target.value)}
+            placeholder="Note"
+            autoFocus={!saved}
+            className="min-h-[50vh] resize-none bg-transparent text-base leading-relaxed whitespace-pre-wrap outline-none placeholder:text-muted-foreground/60"
+          />
+          {isNotSaved("body") && <NotSaved id={bodyNotSaved} />}
+        </>
+      )}
       {note.editedAt !== null && (
         <p className="text-xs text-muted-foreground">Edited {timeAgo(note.editedAt, now)}</p>
       )}
