@@ -6,10 +6,12 @@ import {
   createNote,
   deleteItem,
   deleteNote,
+  shareNote,
   updateItem,
   updateNote,
   useNote,
   useNoteItems,
+  useNotePeople,
 } from "@/data/notes"
 import type { NoteKind } from "@shared/notes/schemas"
 
@@ -22,6 +24,8 @@ const appRoute = getRouteApi("/_app")
 export function NotePage({ noteId, newKind }: { noteId: string; newKind?: NoteKind | undefined }) {
   const { session } = appRoute.useRouteContext()
   const { note, isLoading } = useNote(noteId)
+  // Only the Creator of a saved Note picks who sees it.
+  const people = useNotePeople(note !== undefined && note.creator.id === session.user.id)
   const { data: items, isLoading: itemsLoading } = useNoteItems(noteId)
   const navigate = useNavigate()
   const back = () => void navigate({ to: "/notes" })
@@ -30,8 +34,8 @@ export function NotePage({ noteId, newKind }: { noteId: string; newKind?: NoteKi
   if (!note && newKind === undefined) {
     return (
       <div className="mx-auto flex max-w-2xl flex-col gap-2 text-muted-foreground">
-        <p className="font-medium text-foreground">This note isn't here</p>
-        <p>It may have been deleted.</p>
+        {/* Deleted, or no longer shared with this Account: either way, nothing is announced. */}
+        <p className="font-medium text-foreground">This note isn't available</p>
         <Link to="/notes" className="text-primary underline-offset-4 hover:underline">
           Back to notes
         </Link>
@@ -45,9 +49,21 @@ export function NotePage({ noteId, newKind }: { noteId: string; newKind?: NoteKi
     <NoteEditor
       // A fresh editor per Note, so one Note's typing never carries into another.
       key={noteId}
-      note={note ?? { kind, title: null, body: kind === "text" ? "" : null, editedAt: null }}
+      note={
+        note ?? {
+          kind,
+          title: null,
+          body: kind === "text" ? "" : null,
+          editedAt: null,
+          creator,
+          audience: [],
+        }
+      }
       items={items}
       saved={note !== undefined}
+      viewerId={session.user.id}
+      people={people.data}
+      onShare={(audience) => void shareNote(noteId, audience)}
       onCreate={(fields) => createNote(noteId, kind, creator, fields)}
       onUpdate={(changes) => updateNote(noteId, changes)}
       onAddItem={(item) => addItem(noteId, item)}

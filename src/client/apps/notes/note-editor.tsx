@@ -1,7 +1,8 @@
-import { ArrowLeftIcon, MoreVerticalIcon } from "lucide-react"
+import { ArrowLeftIcon, MoreVerticalIcon, UsersIcon } from "lucide-react"
 import { useState } from "react"
 import { ChecklistItems } from "@/apps/notes/checklist-items"
-import { useNow } from "@/apps/notes/note-parts"
+import { Avatar, AvatarStack, useNow } from "@/apps/notes/note-parts"
+import { AudienceSheet, ShareSheet } from "@/apps/notes/share-sheet"
 import { useNoteDraft, type DraftItem, type NoteDraftOptions } from "@/apps/notes/use-note-draft"
 import {
   AlertDialog,
@@ -21,13 +22,26 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { timeAgo } from "@shared/dates"
-import type { NoteKind } from "@shared/notes/schemas"
+import type { NoteKind, NotePerson } from "@shared/notes/schemas"
 
 export type NoteEditorProps = Omit<NoteDraftOptions, "initial"> & {
   /** The Note as last loaded; `editedAt` is null until it is first saved. */
-  note: { kind: NoteKind; title: string | null; body: string | null; editedAt: string | null }
+  note: {
+    kind: NoteKind
+    title: string | null
+    body: string | null
+    editedAt: string | null
+    creator: NotePerson
+    audience: readonly NotePerson[]
+  }
   /** A Checklist's Items as last loaded. */
   items?: readonly DraftItem[]
+  /** The signed-in Account: the Creator gets Share and Delete, everyone else neither. */
+  viewerId: string
+  /** Who the Creator can share with; undefined while loading. */
+  people: readonly NotePerson[] | undefined
+  /** The Creator's new Audience, saved at once. */
+  onShare: (audience: NotePerson[]) => void
   /**
    * Called once the Creator confirms a delete; from then on nothing more is saved. `onServer`
    * resolves, after any save in flight settles, to whether the Note is on the server to delete.
@@ -37,14 +51,18 @@ export type NoteEditorProps = Omit<NoteDraftOptions, "initial"> & {
 }
 
 /**
- * A Note as its own page: a back arrow and the ⋯ menu, a large title, then the plain-text body
- * exactly as typed or the Checklist's Items, and when it was last edited. Typing saves on its
- * own; there is no Save button.
+ * A Note as its own page: a back arrow, who it is shared with, the ⋯ menu, a large title, then
+ * the plain-text body exactly as typed or the Checklist's Items, and when it was last edited.
+ * Typing saves on its own; there is no Save button. Everyone who sees it edits it; only its
+ * Creator shares or deletes it.
  */
 export function NoteEditor({
   note,
   items = [],
   saved,
+  viewerId,
+  people,
+  onShare,
   onDelete,
   onBack,
   ...handlers
@@ -60,7 +78,10 @@ export function NoteEditor({
     ...handlers,
   })
   const [confirming, setConfirming] = useState(false)
+  const [sharing, setSharing] = useState(false)
   const now = useNow()
+  const isCreator = note.creator.id === viewerId
+  const isShared = note.audience.length > 0
 
   return (
     <div className="mx-auto flex max-w-2xl flex-col gap-3">
@@ -69,16 +90,40 @@ export function NoteEditor({
           <ArrowLeftIcon />
         </Button>
         <span className="flex-1" />
-        <DropdownMenu>
-          <DropdownMenuTrigger render={<Button variant="ghost" size="icon-lg" aria-label="More" />}>
-            <MoreVerticalIcon />
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem variant="destructive" onClick={() => setConfirming(true)}>
-              Delete note
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        {!isCreator ? (
+          // Opens who else can see it, read-only.
+          <Button
+            variant="ghost"
+            size="lg"
+            className="text-muted-foreground"
+            onClick={() => setSharing(true)}
+          >
+            <Avatar person={note.creator} />
+            <span>Shared by {note.creator.name}</span>
+          </Button>
+        ) : (
+          // A new Note can be shared once it is saved.
+          saved && (
+            <Button variant="outline" size="lg" onClick={() => setSharing(true)}>
+              {isShared ? <AvatarStack people={note.audience} /> : <UsersIcon />}
+              {isShared ? "Shared" : "Share"}
+            </Button>
+          )
+        )}
+        {isCreator && (
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              render={<Button variant="ghost" size="icon-lg" aria-label="More" />}
+            >
+              <MoreVerticalIcon />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem variant="destructive" onClick={() => setConfirming(true)}>
+                Delete note
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
       </div>
       <input
         aria-label="Title"
@@ -113,6 +158,24 @@ export function NoteEditor({
       )}
       {note.editedAt !== null && (
         <p className="text-xs text-muted-foreground">Edited {timeAgo(note.editedAt, now)}</p>
+      )}
+      {!isCreator && (
+        <AudienceSheet
+          open={sharing}
+          onOpenChange={setSharing}
+          creator={note.creator}
+          audience={note.audience}
+          viewerId={viewerId}
+        />
+      )}
+      {isCreator && saved && (
+        <ShareSheet
+          open={sharing}
+          onOpenChange={setSharing}
+          audience={note.audience}
+          people={people}
+          onShare={onShare}
+        />
       )}
       <AlertDialog open={confirming} onOpenChange={setConfirming}>
         <AlertDialogContent>
