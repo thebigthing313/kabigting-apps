@@ -18,11 +18,20 @@ _Avoid_: Plain note, text
 A Note holding a flat, ordered set of Items and nothing else besides its title.
 _Avoid_: List, to-do, task list
 
+**Creator**:
+The Account that made a Note. It never changes.
+_Avoid_: Owner, author
+
 **Audience**:
 The Accounts, besides its creator, that a Note is shared with; any of them can read and edit it, and
 only the creator changes who is in it. Losing App access to Notes, or becoming a Removed Account,
 leaves an Account in its Audiences, so their Notes return with the access.
 _Avoid_: Sharers, collaborators, members
+
+**Unopened**:
+A Note an Account in its Audience has not opened since it was last added to that Audience. Unopened
+Notes come first in that Account's list. Its creator never sees a Note as Unopened.
+_Avoid_: Unread, new, unseen
 
 **Item**:
 One line of plain text in a Checklist, either checked or unchecked. Items never nest. Checked Items
