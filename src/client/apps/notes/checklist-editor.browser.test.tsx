@@ -44,6 +44,7 @@ function callbacks() {
     ),
     onDeleteItem: vi.fn<(id: string) => Promise<boolean>>(() => Promise.resolve(true)),
     onDelete: vi.fn<(onServer: Promise<boolean>) => void>(),
+    onLeave: vi.fn(),
     onBack: vi.fn<() => void>(),
     onShare: vi.fn(),
   }

@@ -6,6 +6,7 @@ import {
   createNote,
   deleteItem,
   deleteNote,
+  leaveNote,
   shareNote,
   updateItem,
   updateNote,
@@ -74,6 +75,11 @@ export function NotePage({ noteId, newKind }: { noteId: string; newKind?: NoteKi
         // Once any save in flight lands, delete the Note if it reached the server; one that
         // never did has nothing to delete.
         void onServer.then((stored) => stored && deleteNote(noteId))
+      }}
+      onLeave={(settled) => {
+        back()
+        // After any save in flight lands, so it can't put the Note back in view.
+        void settled.then(() => leaveNote(noteId))
       }}
       onBack={back}
     />

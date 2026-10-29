@@ -36,7 +36,7 @@ export type NoteEditorProps = Omit<NoteDraftOptions, "initial"> & {
   }
   /** A Checklist's Items as last loaded. */
   items?: readonly DraftItem[]
-  /** The signed-in Account: the Creator gets Share and Delete, everyone else neither. */
+  /** The signed-in Account: the Creator gets Share and Delete, everyone else Leave. */
   viewerId: string
   /** Who the Creator can share with; undefined while loading. */
   people: readonly NotePerson[] | undefined
@@ -47,6 +47,11 @@ export type NoteEditorProps = Omit<NoteDraftOptions, "initial"> & {
    * resolves, after any save in flight settles, to whether the Note is on the server to delete.
    */
   onDelete: (onServer: Promise<boolean>) => void
+  /**
+   * Called when an Audience member chooses Leave; from then on nothing more is saved. `settled`
+   * resolves once any save in flight has settled.
+   */
+  onLeave: (settled: Promise<unknown>) => void
   onBack: () => void
 }
 
@@ -54,7 +59,7 @@ export type NoteEditorProps = Omit<NoteDraftOptions, "initial"> & {
  * A Note as its own page: a back arrow, who it is shared with, the ⋯ menu, a large title, then
  * the plain-text body exactly as typed or the Checklist's Items, and when it was last edited.
  * Typing saves on its own; there is no Save button. Everyone who sees it edits it; only its
- * Creator shares or deletes it.
+ * Creator shares or deletes it, and only an Audience member Leaves it.
  */
 export function NoteEditor({
   note,
@@ -64,6 +69,7 @@ export function NoteEditor({
   people,
   onShare,
   onDelete,
+  onLeave,
   onBack,
   ...handlers
 }: NoteEditorProps) {
@@ -110,20 +116,22 @@ export function NoteEditor({
             </Button>
           )
         )}
-        {isCreator && (
-          <DropdownMenu>
-            <DropdownMenuTrigger
-              render={<Button variant="ghost" size="icon-lg" aria-label="More" />}
-            >
-              <MoreVerticalIcon />
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
+        <DropdownMenu>
+          <DropdownMenuTrigger render={<Button variant="ghost" size="icon-lg" aria-label="More" />}>
+            <MoreVerticalIcon />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            {isCreator ? (
               <DropdownMenuItem variant="destructive" onClick={() => setConfirming(true)}>
                 Delete note
               </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        )}
+            ) : (
+              // No confirmation: the Note stays for everyone else, and its Creator can add them
+              // back. Typing not yet saved is dropped, as nothing should save after Leaving.
+              <DropdownMenuItem onClick={() => onLeave(discard())}>Leave note</DropdownMenuItem>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
       <input
         aria-label="Title"

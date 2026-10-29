@@ -242,6 +242,37 @@ export function shareNote(id: string, audience: readonly NotePerson[]) {
 }
 
 /**
+ * An Audience member Leaving: its own route, so an action of its own. The Note leaves this
+ * Account's view at once; a refusal brings it back with a toast. A Note already gone (404) is
+ * what Leaving wanted, so it stays gone with nothing reported.
+ */
+const leave = createOptimisticAction<string>({
+  onMutate: (id) => {
+    notesCollection().delete(id)
+  },
+  mutationFn: async (id) => {
+    const notes = notesCollection()
+    try {
+      await readJson(await api.notes.notes[":id"].leave.$post({ param: { id } }))
+    } catch (error) {
+      if (!(error instanceof ApiRequestError && error.status === 404)) {
+        reportError(error, "Leaving")
+        throw error
+      }
+    }
+    await notes.utils.writeDelete(id)
+  },
+})
+
+/**
+ * Takes the signed-in Account out of a Note's Audience (never its Creator). True once the server
+ * agreed; false after a refusal, which is rolled back and reported.
+ */
+export function leaveNote(id: string) {
+  return settled(leave(id))
+}
+
+/**
  * The Accounts the Creator can add to an Audience: everyone else holding App access to Notes.
  * Fetched only while `enabled`.
  */

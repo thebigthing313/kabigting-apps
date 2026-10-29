@@ -73,7 +73,8 @@ async function readNote(db: Db, accountId: string, noteId: string): Promise<Note
 
 /**
  * Notes: each visible only as `visibleTo` allows, and editable by everyone it is visible to. The
- * Creator alone deletes it or changes its Audience; anyone else it is visible to gets 403.
+ * Creator alone deletes it or changes its Audience; anyone else it is visible to gets 403. An
+ * Audience member alone Leaves it.
  */
 export function noteRoutes(db: Db) {
   return new Hono<AppEnv>()
@@ -202,4 +203,22 @@ export function noteRoutes(db: Db) {
         return c.json(await readNote(db, accountId, noteId))
       },
     )
+    .post("/:id/leave", validate("param", noteParams), async (c) => {
+      const noteId = c.req.valid("param").id
+      const accountId = c.get("account").id
+      const note = await readNote(db, accountId, noteId)
+      // The Creator has no Audience membership to give up; they delete the Note instead.
+      if (note.creator.id === accountId) {
+        throw new ApiError("forbidden_creator", "The note's creator can't leave it")
+      }
+      // Only the caller's own Audience membership goes, so only the Creator can add them back,
+      // and a fresh one then starts Unopened. Not a content change, so edited at stays. The
+      // Creator's App access is never checked: a member can always step away.
+      const [left] = await db
+        .delete(noteAudience)
+        .where(and(eq(noteAudience.noteId, noteId), eq(noteAudience.accountId, accountId)))
+        .returning({ noteId: noteAudience.noteId })
+      if (!left) notFound()
+      return c.json({ id: noteId })
+    })
 }

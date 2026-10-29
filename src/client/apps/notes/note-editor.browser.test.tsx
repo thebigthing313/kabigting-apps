@@ -56,6 +56,7 @@ function callbacks() {
     ),
     onDeleteItem: vi.fn<(id: string) => Promise<boolean>>(() => Promise.resolve(true)),
     onDelete: vi.fn<(onServer: Promise<boolean>) => void>(),
+    onLeave: vi.fn<(settled: Promise<unknown>) => void>(),
     onBack: vi.fn<() => void>(),
     onShare: vi.fn<(audience: NotePerson[]) => void>(),
   }
@@ -237,6 +238,43 @@ describe("the foot and the ⋯ menu", () => {
     create.resolve(false)
     expect(await onDelete.mock.calls[0]![0]).toBe(false)
   })
+
+  test("an Audience member Leaves from the ⋯ menu at once, and can't delete", async () => {
+    const { screen, onLeave, onDelete, onUpdate } = await renderEditor({
+      note: { ...blank, title: "Old", editedAt: "2026-10-01T09:00:00.000Z", creator: ana },
+      saved: true,
+    })
+    await screen.getByRole("button", { name: "More" }).click()
+    await expect
+      .element(screen.getByRole("menuitem", { name: "Delete note" }))
+      .not.toBeInTheDocument()
+    await userEvent.keyboard("{Escape}")
+
+    await userEvent.type(screen.getByLabelText("Title"), " news")
+    await screen.getByRole("button", { name: "More" }).click()
+    await screen.getByRole("menuitem", { name: "Leave note" }).click()
+    // Nothing to confirm: the Note stays for everyone else, and its Creator can add them back.
+    expect(onLeave).toHaveBeenCalledTimes(1)
+    await onLeave.mock.calls[0]![0]
+    expect(onDelete).not.toHaveBeenCalled()
+    // Typing still waiting to save is dropped: nothing saves to a Note they have left.
+    await pause(1_500)
+    await screen.unmount()
+    const leftAt = onLeave.mock.invocationCallOrder[0]!
+    expect(onUpdate.mock.invocationCallOrder.filter((order) => order > leftAt)).toEqual([])
+  })
+
+  test("the Creator's ⋯ menu offers Delete, not Leave", async () => {
+    const { screen } = await renderEditor({
+      note: { ...blank, title: "Old", editedAt: "2026-10-01T09:00:00.000Z", audience: [ana] },
+      saved: true,
+    })
+    await screen.getByRole("button", { name: "More" }).click()
+    await expect.element(screen.getByRole("menuitem", { name: "Delete note" })).toBeVisible()
+    await expect
+      .element(screen.getByRole("menuitem", { name: "Leave note" }))
+      .not.toBeInTheDocument()
+  })
 })
 
 describe("the header", () => {
@@ -294,8 +332,10 @@ describe("the header", () => {
     await expect
       .element(screen.getByRole("button", { name: "Share", exact: true }))
       .not.toBeInTheDocument()
-    await expect.element(screen.getByRole("button", { name: "More" })).not.toBeInTheDocument()
+    await screen.getByRole("button", { name: "More" }).click()
+    await expect.element(screen.getByRole("menuitem", { name: "Leave note" })).toBeVisible()
     await expect.element(screen.getByText("Delete note")).not.toBeInTheDocument()
+    await userEvent.keyboard("{Escape}")
 
     await userEvent.type(screen.getByLabelText("Note"), "Eggs")
     await vi.waitFor(() => expect(onUpdate).toHaveBeenCalledWith({ body: "Eggs" }), SAVED_WITHIN)
