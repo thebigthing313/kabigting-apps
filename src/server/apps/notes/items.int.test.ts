@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "vitest"
 import { newId } from "#shared/ids.ts"
-import { orderItems } from "#shared/notes/items.ts"
+import { dropPosition, orderItems, positionBetween } from "#shared/notes/items.ts"
 import {
   itemRows,
   itemWrite,
@@ -259,6 +259,81 @@ describe("ticking", () => {
     const milk = await added(note.id, "Milk")
     await added(note.id, "Eggs")
     await patched(milk.item.id, { checked: false })
+    expect(texts((await itemsOf(note.id)).unchecked)).toEqual(["Milk", "Eggs"])
+  })
+})
+
+describe("moving Items", () => {
+  test("a move writes only the moved Item's position, and the order holds when read again", async () => {
+    const note = await checklist()
+    const milk = await added(note.id, "Milk")
+    const eggs = await added(note.id, "Eggs")
+    const bread = await added(note.id, "Bread")
+    const all = [milk.item, eggs.item, bread.item]
+    const position = dropPosition(all, bread.item.id, 0)!
+    const { item: moved } = await patched(bread.item.id, { position })
+    expect(moved).toEqual({ ...bread.item, position })
+    const { unchecked } = await itemsOf(note.id)
+    expect(texts(unchecked)).toEqual(["Bread", "Milk", "Eggs"])
+    // The Items not moved keep their keys.
+    expect(unchecked.slice(1)).toEqual([milk.item, eggs.item])
+  })
+
+  test("two people moving different Items both keep their moves", async () => {
+    const note = await checklist()
+    const [milk, eggs, bread, jam] = [
+      await added(note.id, "Milk"),
+      await added(note.id, "Eggs"),
+      await added(note.id, "Bread"),
+      await added(note.id, "Jam"),
+    ].map((write) => write.item)
+    // Both work from the same view: Milk, Eggs, Bread, Jam. Jam goes to the top; Milk goes
+    // below Bread.
+    const seen = [milk!, eggs!, bread!, jam!]
+    await Promise.all([
+      patched(jam!.id, { position: dropPosition(seen, jam!.id, 0)! }),
+      patched(milk!.id, { position: dropPosition(seen, milk!.id, 2)! }),
+    ])
+    expect(texts((await itemsOf(note.id)).unchecked)).toEqual(["Jam", "Eggs", "Bread", "Milk"])
+  })
+
+  test("a move is an edit to the Checklist; moving to where it is already is not", async () => {
+    const note = await checklist()
+    const milk = await added(note.id, "Milk")
+    const eggs = await added(note.id, "Eggs")
+    const moved = await patched(eggs.item.id, {
+      position: positionBetween(null, milk.item.position),
+    })
+    expect(Date.parse(moved.noteEditedAt)).toBeGreaterThan(Date.parse(eggs.noteEditedAt))
+    const again = await patched(eggs.item.id, { position: moved.item.position })
+    expect(again.noteEditedAt).toBe(moved.noteEditedAt)
+  })
+
+  test("a move of an Item checked meanwhile is ignored, and is no edit", async () => {
+    const note = await checklist()
+    const milk = await added(note.id, "Milk")
+    await added(note.id, "Eggs")
+    const ticked = await patched(milk.item.id, { checked: true })
+    const moved = await patched(milk.item.id, { position: "z" })
+    expect(moved.item).toEqual(ticked.item)
+    expect(moved.noteEditedAt).toBe(ticked.noteEditedAt)
+    expect(await listedNote(note.id)).toMatchObject({ editedAt: ticked.noteEditedAt })
+  })
+
+  test("a position must be a key of base-36 digits not ending in 0", async () => {
+    const note = await checklist()
+    const { item, noteEditedAt } = await added(note.id, "Milk")
+    for (const position of ["", "a0", "A", "a b", "a".repeat(1_001)]) {
+      expect((await patchItem(item.id, { position })).status).toBe(400)
+    }
+    expect(await listedNote(note.id)).toMatchObject({ editedAt: noteEditedAt })
+  })
+
+  test("someone who can't see the Checklist can't move its Items", async () => {
+    const note = await checklist()
+    const milk = await added(note.id, "Milk")
+    await added(note.id, "Eggs")
+    expect((await patchItem(milk.item.id, { position: "z" }, someoneElse)).status).toBe(404)
     expect(texts((await itemsOf(note.id)).unchecked)).toEqual(["Milk", "Eggs"])
   })
 })
