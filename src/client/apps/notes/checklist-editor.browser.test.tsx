@@ -267,3 +267,98 @@ describe("ticking", () => {
     ])
   })
 })
+
+/** Drags an element by `dy` pixels as a finger would: down, a few moves, then up. */
+async function touchDrag(handle: Element, dy: number) {
+  const box = handle.getBoundingClientRect()
+  const x = box.left + box.width / 2
+  const y = box.top + box.height / 2
+  const at = (type: string, clientY: number) =>
+    new PointerEvent(type, {
+      bubbles: true,
+      cancelable: true,
+      isPrimary: true,
+      pointerId: 7,
+      pointerType: "touch",
+      button: 0,
+      clientX: x,
+      clientY,
+    })
+  handle.dispatchEvent(at("pointerdown", y))
+  for (let step = 1; step <= 8; step += 1) {
+    document.dispatchEvent(at("pointermove", y + (dy * step) / 8))
+    await pause(16)
+  }
+  document.dispatchEvent(at("pointerup", y + dy))
+  await pause(16)
+}
+
+/** Picks an Item up by its handle with the keyboard, moves it one place down and drops it. */
+async function keyboardMoveDown(handle: Element) {
+  if (handle instanceof HTMLElement) handle.focus()
+  await userEvent.keyboard(" ")
+  await pause(50)
+  await userEvent.keyboard("{ArrowDown}")
+  await pause(50)
+  await userEvent.keyboard(" ")
+}
+
+/** Three unchecked Items and a checked one. */
+const shopping = () => [
+  item("Milk", "c"),
+  item("Eggs", "i"),
+  item("Bread", "s"),
+  item("Jam", "a", "2026-10-01T09:05:00.000Z"),
+]
+
+describe("reordering", () => {
+  test("dragging an Item's handle by touch moves it, writing only its position", async () => {
+    const { screen, listed, onUpdateItem } = await renderSaved(shopping())
+    const rows = screen.getByRole("list", { name: "To do" }).getByRole("listitem")
+    const rowHeight = rows.first().element().getBoundingClientRect().height
+    await touchDrag(screen.getByRole("button", { name: "Reorder Bread" }).element(), -2 * rowHeight)
+    await vi.waitFor(() => expect(listed("To do")).toEqual(["Bread", "Milk", "Eggs"]), AT_ONCE)
+    await vi.waitFor(() => expect(onUpdateItem).toHaveBeenCalledTimes(1), AT_ONCE)
+    const [id, changes] = onUpdateItem.mock.calls[0]!
+    expect(id).toBe("id-Bread")
+    expect(Object.keys(changes)).toEqual(["position"])
+    expect(changes.position! < "c").toBe(true)
+    expect(listed("Checked")).toEqual(["Jam"])
+  })
+
+  test("the handle moves an Item with the keyboard too", async () => {
+    const { screen, listed, onUpdateItem } = await renderSaved(shopping())
+    await keyboardMoveDown(screen.getByRole("button", { name: "Reorder Milk" }).element())
+    await vi.waitFor(() => expect(listed("To do")).toEqual(["Eggs", "Milk", "Bread"]), AT_ONCE)
+    await vi.waitFor(() => expect(onUpdateItem).toHaveBeenCalledTimes(1), AT_ONCE)
+    const [id, changes] = onUpdateItem.mock.calls[0]!
+    expect(id).toBe("id-Milk")
+    expect(changes.position! > "i" && changes.position! < "s").toBe(true)
+  })
+
+  test("a drop back where it started writes nothing", async () => {
+    const { screen, listed, onUpdateItem } = await renderSaved(shopping())
+    await touchDrag(screen.getByRole("button", { name: "Reorder Eggs" }).element(), 6)
+    await pause(100)
+    expect(listed("To do")).toEqual(["Milk", "Eggs", "Bread"])
+    expect(onUpdateItem).not.toHaveBeenCalled()
+  })
+
+  test("a move the server refuses is undone", async () => {
+    const { screen, listed, onUpdateItem } = await renderSaved(shopping())
+    onUpdateItem.mockImplementation(() => Promise.resolve(null))
+    await keyboardMoveDown(screen.getByRole("button", { name: "Reorder Milk" }).element())
+    await vi.waitFor(() => expect(onUpdateItem).toHaveBeenCalledTimes(1), AT_ONCE)
+    await vi.waitFor(() => expect(listed("To do")).toEqual(["Milk", "Eggs", "Bread"]), AT_ONCE)
+  })
+
+  test("checked Items have no handle", async () => {
+    const { screen } = await renderSaved(shopping())
+    await expect.element(screen.getByRole("button", { name: "Reorder Milk" })).toBeVisible()
+    await expect
+      .element(
+        screen.getByRole("list", { name: "Checked" }).getByRole("button", { name: /Reorder/ }),
+      )
+      .not.toBeInTheDocument()
+  })
+})

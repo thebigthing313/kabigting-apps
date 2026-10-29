@@ -112,7 +112,7 @@ export function itemRoutes(db: Db) {
       return c.json(written, 201)
     })
     .patch("/:id", validate("param", itemParams), validate("json", updateItem), async (c) => {
-      const { text, checked } = c.req.valid("json")
+      const { text, checked, position } = c.req.valid("json")
       const itemId = c.req.valid("param").id
       const accountId = c.get("account").id
       const written = await db.transaction(async (tx): Promise<ItemWrite> => {
@@ -129,7 +129,13 @@ export function itemRoutes(db: Db) {
                   position: await bottomPosition(tx, item.noteId),
                 }
               : {}
-        const changes = { ...(text === undefined || text === item.text ? {} : { text }), ...tick }
+        // A move sets only this Item's key, so moves of different Items never undo each other.
+        const move = position === undefined || position === item.position ? {} : { position }
+        const changes = {
+          ...(text === undefined || text === item.text ? {} : { text }),
+          ...tick,
+          ...move,
+        }
         // A write that changes nothing, such as a second tick, is no edit: the Checklist keeps
         // its place in the list.
         if (Object.keys(changes).length === 0) {

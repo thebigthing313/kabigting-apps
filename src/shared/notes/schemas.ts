@@ -61,12 +61,19 @@ const itemText = z
 /** An Item joins the bottom of its Checklist's unchecked Items; the server places it. */
 export const createItem = z.strictObject({ id, noteId: id, text: itemText })
 
+/** A sortable key of base-36 digits that never ends in "0" (see `positionBetween`). */
+const itemPosition = z
+  .string()
+  .max(1_000, "Keep a position under 1,000 characters")
+  .regex(/^[0-9a-z]*[1-9a-z]$/, "A position is base-36 digits, not ending in 0")
+
 /**
  * Each field is written on its own; send only what changed. Ticking stamps the server's time;
- * unticking returns the Item to the bottom of the unchecked Items.
+ * unticking returns the Item to the bottom of the unchecked Items. A position moves the Item
+ * among the unchecked Items, rewriting only its own key.
  */
 export const updateItem = z
-  .strictObject({ text: itemText, checked: z.boolean() })
+  .strictObject({ text: itemText, checked: z.boolean(), position: itemPosition })
   .partial()
   .refine((patch) => Object.keys(patch).length > 0, "Change at least one field")
 

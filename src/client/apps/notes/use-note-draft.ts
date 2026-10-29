@@ -2,7 +2,7 @@ import { useEffect, useState } from "react"
 import type { ItemChanges, NewItem, NoteFields } from "@/data/notes"
 import { nowInstant } from "@shared/dates"
 import { newId } from "@shared/ids"
-import { bottomOfUnchecked } from "@shared/notes/items"
+import { bottomOfUnchecked, dropPosition } from "@shared/notes/items"
 import { isBlankItem, isEmptyNote } from "@shared/notes/notes"
 
 /** How long typing must pause before a field saves. */
@@ -171,6 +171,10 @@ function createAutosave(initial: NoteDraft, saved: boolean, first: Handlers) {
     saveItemText(id)
   }
 
+  function placeItem(id: string, position: string) {
+    setItems(latest.items.map((each) => (each.id === id ? { ...each, position } : each)))
+  }
+
   /** Takes the server's tick time for an Item that is still checked here. */
   function takeTickTime(id: string, stored: StoredItem) {
     const item = findItem(id)
@@ -254,6 +258,28 @@ function createAutosave(initial: NoteDraft, saved: boolean, first: Handlers) {
       return latest
     },
 
+    /**
+     * Moves an unchecked Item to `toIndex` among the unchecked Items, saving at once. Only its
+     * position is written, so someone else's move of another Item stands. A refused move is
+     * undone, unless the Item has moved again since.
+     */
+    moveItem(id: string, toIndex: number): NoteDraft {
+      const position = dropPosition(latest.items, id, toIndex)
+      const before = findItem(id)?.position
+      if (position === null || before === undefined) return latest
+      placeItem(id, position)
+      // Text still waiting to save goes first, so the Item exists to be moved.
+      settleItemText(id)
+      enqueue(async () => {
+        if (!storedItems.has(id)) return
+        if (await handlers.onUpdateItem(id, { position })) return
+        if (findItem(id)?.position !== position) return
+        placeItem(id, before)
+        onSaved(latest)
+      })
+      return latest
+    },
+
     /** Deletes an Item at once. */
     deleteItem(id: string): NoteDraft {
       removeItem(id)
@@ -293,8 +319,8 @@ function createAutosave(initial: NoteDraft, saved: boolean, first: Handlers) {
 
 /**
  * The editor's own copy of a Note, saved on its own. Each typed field, and each Item's text,
- * saves about a second after typing pauses, independently of the others; adding, ticking and
- * deleting an Item save at once. A new Note is created by its first save with content, so one
+ * saves about a second after typing pauses, independently of the others; adding, ticking, moving
+ * and deleting an Item save at once. A new Note is created by its first save with content, so one
  * left empty, or with only blank Items, is never stored; a saved Note stays even when emptied.
  * Leaving flushes what is pending.
  */
@@ -322,6 +348,7 @@ export function useNoteDraft({ initial, saved, ...handlers }: NoteDraftOptions) 
     addItem: () => setDraft(autosave.addItem(newId())),
     changeItem: (id: string, text: string) => setDraft(autosave.changeItem(id, text)),
     toggleItem: (id: string, checked: boolean) => setDraft(autosave.toggleItem(id, checked)),
+    moveItem: (id: string, toIndex: number) => setDraft(autosave.moveItem(id, toIndex)),
     deleteItem: (id: string) => setDraft(autosave.deleteItem(id)),
     leaveItem: (id: string) => setDraft(autosave.leaveItem(id)),
     discard: () => autosave.discard(),
