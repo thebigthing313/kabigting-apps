@@ -3,6 +3,7 @@ import { NoteEditor } from "@/apps/notes/note-editor"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
   addItem,
+  clearChecked,
   createNote,
   deleteItem,
   deleteNote,
@@ -69,6 +70,7 @@ export function NotePage({ noteId, newKind }: { noteId: string; newKind?: NoteKi
       onAddItem={(item) => addItem(noteId, item)}
       onUpdateItem={updateItem}
       onDeleteItem={deleteItem}
+      onClearChecked={(ids) => clearChecked(noteId, ids)}
       onDelete={(onServer) => {
         back()
         // Once any save in flight lands, delete the Note if it reached the server; one that
