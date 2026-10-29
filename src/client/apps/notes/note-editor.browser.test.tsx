@@ -247,14 +247,11 @@ describe("the foot and the ⋯ menu", () => {
       note: { ...blank, title: "Old", editedAt: "2026-10-01T09:00:00.000Z", creator: ana },
       saved: true,
     })
+    await userEvent.type(screen.getByLabelText("Title"), " news")
     await screen.getByRole("button", { name: "More" }).click()
     await expect
       .element(screen.getByRole("menuitem", { name: "Delete note" }))
       .not.toBeInTheDocument()
-    await userEvent.keyboard("{Escape}")
-
-    await userEvent.type(screen.getByLabelText("Title"), " news")
-    await screen.getByRole("button", { name: "More" }).click()
     await screen.getByRole("menuitem", { name: "Leave note" }).click()
     // Nothing to confirm: the Note stays for everyone else, and its Creator can add them back.
     expect(onLeave).toHaveBeenCalledTimes(1)
@@ -335,13 +332,12 @@ describe("the header", () => {
     await expect
       .element(screen.getByRole("button", { name: "Share", exact: true }))
       .not.toBeInTheDocument()
+    await userEvent.type(screen.getByLabelText("Note"), "Eggs")
+    await vi.waitFor(() => expect(onUpdate).toHaveBeenCalledWith({ body: "Eggs" }), SAVED_WITHIN)
+
     await screen.getByRole("button", { name: "More" }).click()
     await expect.element(screen.getByRole("menuitem", { name: "Leave note" })).toBeVisible()
     await expect.element(screen.getByText("Delete note")).not.toBeInTheDocument()
-    await userEvent.keyboard("{Escape}")
-
-    await userEvent.type(screen.getByLabelText("Note"), "Eggs")
-    await vi.waitFor(() => expect(onUpdate).toHaveBeenCalledWith({ body: "Eggs" }), SAVED_WITHIN)
   })
 
   test("a member sees everyone who can see it, and can change none of it", async () => {
