@@ -8,6 +8,7 @@ test-results
 playwright-report
 blob-report
 .vite
+.vitest/
 *.tsbuildinfo
 
 # environment (only .env.example is committed)
