@@ -218,6 +218,20 @@ describe("a save that can't reach the server", () => {
     expect(onUpdate).toHaveBeenCalledTimes(2)
   })
 
+  test("a create that throws leaves the Note to be created by the next save", async () => {
+    const { screen, onCreate } = await renderEditor()
+    onCreate.mockImplementationOnce(() => {
+      throw new Error("Already in the collection")
+    })
+    await userEvent.fill(screen.getByLabelText("Title"), "Groceries")
+    await vi.waitFor(() => expect(onCreate).toHaveBeenCalledTimes(1), SAVED_WITHIN)
+    await userEvent.fill(screen.getByLabelText("Note"), "Milk")
+    await vi.waitFor(
+      () => expect(onCreate).toHaveBeenLastCalledWith({ title: "Groceries", body: "Milk" }, NOW),
+      SAVED_WITHIN,
+    )
+  })
+
   test("a save the server refused is neither marked Not saved nor retried", async () => {
     const { screen, onUpdate } = await renderEditor({ note: packing, saved: true })
     onUpdate.mockResolvedValueOnce("refused")
@@ -321,6 +335,45 @@ describe("leaving the page", () => {
     await pause(300)
     expect(onCreate).toHaveBeenCalledTimes(1)
     expect(onUpdate).not.toHaveBeenCalled()
+  })
+
+  test("a save after returning waits for the send made on leaving", async () => {
+    const leaving = deferredSave()
+    const { screen, onUpdate } = await renderEditor({ note: packing, saved: true })
+    onUpdate.mockImplementationOnce(() => leaving.promise)
+    await userEvent.fill(screen.getByLabelText("Title"), "Trip")
+    hidePage()
+    await vi.waitFor(() => expect(onUpdate).toHaveBeenCalledWith({ title: "Trip" }, LEAVING))
+
+    // Back again, typing more: it saves only once the earlier send has landed.
+    vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible")
+    await userEvent.fill(screen.getByLabelText("Title"), "Trip to the coast")
+    await pause(1_500)
+    expect(onUpdate).toHaveBeenCalledTimes(1)
+    leaving.resolve("saved")
+    await vi.waitFor(() =>
+      expect(onUpdate).toHaveBeenLastCalledWith({ title: "Trip to the coast" }, NOW),
+    )
+  })
+
+  test("typing back to the saved text saves it again while other text is on its way", async () => {
+    const leaving = deferredSave()
+    const { screen, onUpdate } = await renderEditor({ note: packing, saved: true })
+    await userEvent.fill(screen.getByLabelText("Title"), "Trip")
+    await vi.waitFor(
+      () => expect(onUpdate).toHaveBeenCalledWith({ title: "Trip" }, NOW),
+      SAVED_WITHIN,
+    )
+    onUpdate.mockImplementationOnce(() => leaving.promise)
+    await userEvent.fill(screen.getByLabelText("Title"), "Trip to the coast")
+    hidePage()
+    await vi.waitFor(() => expect(onUpdate).toHaveBeenCalledTimes(2))
+
+    vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible")
+    await userEvent.fill(screen.getByLabelText("Title"), "Trip")
+    leaving.resolve("saved")
+    await vi.waitFor(() => expect(onUpdate).toHaveBeenCalledTimes(3), SAVED_WITHIN)
+    expect(onUpdate).toHaveBeenLastCalledWith({ title: "Trip" }, NOW)
   })
 
   test("hiding and then unloading the page sends each field once", async () => {

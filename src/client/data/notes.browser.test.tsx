@@ -5,6 +5,9 @@ import { Toaster } from "sonner"
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest"
 import { render } from "vitest-browser-react"
 import {
+  addItem,
+  createNote,
+  deleteItem,
   type Item,
   type Note,
   updateItem,
@@ -69,6 +72,8 @@ let saving: "store" | "unreachable" | "refuse" | "gateway" | "crash" = "store"
 let delay = 0
 /** The saves of typed text sent, in order. */
 let sent: { body: unknown; keepalive: boolean }[] = []
+/** The Item deletes sent, by path. */
+let deleted: string[] = []
 
 async function saveTypedText(body: unknown, store: () => unknown, keepalive: boolean) {
   sent.push({ body, keepalive })
@@ -112,6 +117,13 @@ async function serve(path: string, method: string, init: RequestInit | undefined
       noteEditedAt: SERVER_TICK,
     })
   }
+  if (path.startsWith("/api/notes/items/") && method === "DELETE") {
+    deleted.push(path)
+    return Response.json(
+      { error: { code: "not_found", message: "This item isn't here" } },
+      { status: 404 },
+    )
+  }
   return Response.json({ rows: [] })
 }
 
@@ -119,6 +131,7 @@ beforeEach(() => {
   saving = "store"
   delay = 0
   sent = []
+  deleted = []
   vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = new URL(input instanceof Request ? input.url : String(input), location.origin)
     const method = (input instanceof Request ? input.method : init?.method) ?? "GET"
@@ -159,8 +172,8 @@ test("ticking an Item moves its Checklist to the top of the list, with the serve
 
 function Loaded() {
   const { note } = useNote(PACKING)
-  useItems()
-  return <p>{note ? "Loaded" : "Loading"}</p>
+  const { data: items } = useItems()
+  return <p>{note && items.length > 0 ? "Loaded" : "Loading"}</p>
 }
 
 async function renderNote() {
@@ -259,5 +272,34 @@ describe("a save of typed text", () => {
     ])
     expect(outcomes).toEqual(["saved", "saved", "saved"])
     expect(sent.map((each) => each.keepalive)).toEqual([true, true, false])
+  })
+})
+
+describe("a save whose earlier try was stored without an answer", () => {
+  test("creating a Note already here writes its fields instead", async () => {
+    await renderNote()
+    const fields = { title: "Trip", body: "Socks" }
+    expect(await createNote(PACKING, "text", creator, fields, { keepalive: false })).toBe("saved")
+    expect(sent).toEqual([{ body: fields, keepalive: false }])
+  })
+
+  test("adding an Item already here writes its text instead", async () => {
+    await renderNote()
+    const added = await addItem(
+      CHECKLIST,
+      { id: MILK, text: "Whole milk", position: "i" },
+      { keepalive: false },
+    )
+    expect(added).toBe("saved")
+    expect(sent).toEqual([{ body: { text: "Whole milk" }, keepalive: false }])
+  })
+
+  test("deleting an Item not here deletes it on the server, and already gone counts", async () => {
+    const screen = await renderNote()
+    const ghost = "0190f5d2-0000-7000-8000-000000000199"
+    expect(await deleteItem(ghost)).toBe(true)
+    expect(deleted).toEqual([`/api/notes/items/${ghost}`])
+    await pause(300)
+    await expect.element(screen.getByText("Deleting failed")).not.toBeInTheDocument()
   })
 })

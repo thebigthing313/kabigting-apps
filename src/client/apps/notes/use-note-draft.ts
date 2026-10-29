@@ -50,6 +50,11 @@ export type NoteDraftOptions = Handlers & {
 /** Where changes go while no editor listens. */
 function unheard(): void {}
 
+/** Runs a save, counting one that throws, at once or later, as refused (reported where it failed). */
+function attempt(save: () => Promise<SaveOutcome>): Promise<SaveOutcome> {
+  return new Promise<SaveOutcome>((resolve) => resolve(save())).catch((): SaveOutcome => "refused")
+}
+
 /** A saving key: a field, or one Item's text. */
 type SaveKey = Field | `item:${string}`
 
@@ -77,6 +82,10 @@ function createAutosave(
   /** Items whose add is on its way, and the text each add carried. */
   const addingItems = new Map<string, Promise<SaveOutcome>>()
   const addedText = new Map<string, string>()
+  /** Items whose last add got no answer: the server may hold them, so a delete still goes. */
+  const unsureItems = new Set<string>()
+  /** Items with a tick or untick queued, which sends once their add lands. */
+  const ticking = new Set<string>()
   /** Told of changes made outside a keystroke, such as an Item's tick time from the server. */
   let onChanged: (draft: NoteDraft) => void = unheard
   let discarded = false
@@ -84,26 +93,31 @@ function createAutosave(
 
   const findItem = (id: string) => latest.items.find((item) => item.id === id)
 
-  /** Creates the Note with everything typed so far, once for every save asking at once. */
+  /**
+   * Creates the Note with everything typed so far, once for every save asking at once. Saves,
+   * leaving's included, wait for a create on its way: nothing may reach the server before it, so
+   * leaving during one can lose up to about a second of typing.
+   */
   function ensureNote(options: SaveOptions): Promise<SaveOutcome> {
     if (exists) return Promise.resolve("saved")
     if (creating) return creating
     const fields = { ...latest.fields }
-    creating = handlers
-      .onCreate(fields, options)
-      .catch((): SaveOutcome => "refused")
-      .then((outcome) => {
-        creating = null
-        if (outcome === "saved") {
-          exists = true
-          created = fields
-        }
-        return outcome
-      })
+    creating = attempt(() => handlers.onCreate(fields, options)).then((outcome) => {
+      creating = null
+      if (outcome === "saved") {
+        exists = true
+        created = fields
+      }
+      return outcome
+    })
     return creating
   }
 
-  /** Adds an Item with its text so far, after the Note exists; once for every save asking. */
+  /**
+   * Adds an Item with its text so far, after the Note exists; once for every save asking. Like
+   * the create, saves of the Item wait for an add on its way. A tick made before the add landed
+   * is sent once it has.
+   */
   function addItemOnce(id: string, options: SaveOptions): Promise<SaveOutcome> {
     const adding = addingItems.get(id)
     if (adding) return adding
@@ -114,18 +128,32 @@ function createAutosave(
       // Deleted or emptied meanwhile, or the Note is being deleted: nothing to add.
       if (discarded || !item || isBlankItem(item)) return "saved"
       const { text, position } = item
-      const outcome = await handlers
-        .onAddItem({ id, text, position }, options)
-        .catch((): SaveOutcome => "refused")
+      const outcome = await attempt(() => handlers.onAddItem({ id, text, position }, options))
+      // An add that never got an answer may still have been stored.
+      if (outcome === "unreached") unsureItems.add(id)
+      else unsureItems.delete(id)
       if (outcome === "saved") {
         storedItems.add(id)
         addedText.set(id, text)
+        // An Item is added unchecked; a tick made before, and not already waiting, follows.
+        if (findItem(id)?.checked && !ticking.has(id)) {
+          saver.run(itemKey(id), () => tick(id, true))
+        }
       }
       return outcome
     })()
     addingItems.set(id, add)
     void add.then(() => addingItems.delete(id))
     return add
+  }
+
+  /** Sends a tick or untick of a stored Item; a refused one is undone here too. */
+  async function tick(id: string, checked: boolean) {
+    const stored = await new Promise<StoredItem | null>((resolve) =>
+      resolve(handlers.onUpdateItem(id, { checked })),
+    ).catch(() => null)
+    if (stored) takeTickTime(id, stored)
+    else undoTick(id, checked)
   }
 
   async function saveField(field: Field, text: string, options: SaveOptions) {
@@ -184,10 +212,32 @@ function createAutosave(
     saver.forget(key)
     setItems(latest.items.filter((item) => item.id !== id))
     saver.run(key, async () => {
-      // An add on its way lands first, so the Item it stores is deleted too.
+      // An add on its way lands first, so the Item it stores is deleted too. One whose add got
+      // no answer may be stored all the same: the delete goes anyway, and "already gone" is fine.
       await addingItems.get(id)
-      if (storedItems.has(id) && (await handlers.onDeleteItem(id))) storedItems.delete(id)
+      if (!storedItems.has(id) && !unsureItems.has(id)) return
+      const deleted = await new Promise<boolean>((resolve) =>
+        resolve(handlers.onDeleteItem(id)),
+      ).catch(() => false)
+      if (deleted) {
+        storedItems.delete(id)
+        unsureItems.delete(id)
+      }
     })
+  }
+
+  /** Undoes a tick or untick the server refused, as its toast says. */
+  function undoTick(id: string, checked: boolean) {
+    const item = findItem(id)
+    if (item?.checked !== checked) return
+    setItems(
+      latest.items.map((each) =>
+        each.id === id
+          ? { ...each, checked: !checked, checkedAt: checked ? null : each.checkedAt }
+          : each,
+      ),
+    )
+    onChanged(latest)
   }
 
   function addTyped(id: string) {
@@ -274,11 +324,15 @@ function createAutosave(
       )
       // Text still waiting to save goes first, so the Item exists to be ticked.
       settleItemText(id)
+      ticking.add(id)
       saver.run(itemKey(id), async () => {
-        await addingItems.get(id)
-        if (!storedItems.has(id)) return
-        const stored = await handlers.onUpdateItem(id, { checked })
-        if (stored) takeTickTime(id, stored)
+        try {
+          await addingItems.get(id)
+          // An Item not stored yet is ticked once its add lands, retried or not.
+          if (storedItems.has(id)) await tick(id, checked)
+        } finally {
+          ticking.delete(id)
+        }
       })
       return latest
     },

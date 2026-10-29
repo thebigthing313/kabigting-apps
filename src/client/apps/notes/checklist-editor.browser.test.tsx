@@ -338,6 +338,63 @@ describe("Item text that can't reach the server", () => {
     await expect.element(milk).not.toHaveAccessibleDescription()
   })
 
+  test("a tick on an Item whose add can't reach the server is sent once the retry adds it", async () => {
+    const { screen, onAddItem, onUpdateItem } = await renderSaved([])
+    // The add, and the add the tick tries again, can't reach the server.
+    onAddItem.mockResolvedValueOnce("unreached").mockResolvedValueOnce("unreached")
+    await userEvent.type(screen.getByRole("textbox", { name: "Add item" }), "Milk{Enter}")
+    await expect
+      .element(screen.getByRole("textbox", { name: "Item" }))
+      .toHaveAccessibleDescription("Not saved")
+    await screen.getByRole("checkbox", { name: "Milk" }).click()
+    await vi.waitFor(() => expect(onAddItem).toHaveBeenCalledTimes(2), AT_ONCE)
+    await pause(200)
+    expect(onUpdateItem).not.toHaveBeenCalled()
+
+    window.dispatchEvent(new Event("online"))
+    await vi.waitFor(() => expect(onUpdateItem).toHaveBeenCalledTimes(1), AT_ONCE)
+    expect(onAddItem).toHaveBeenCalledTimes(3)
+    expect(onUpdateItem).toHaveBeenCalledWith(expect.any(String), { checked: true })
+    expect(onAddItem.mock.invocationCallOrder[2]).toBeLessThan(
+      onUpdateItem.mock.invocationCallOrder[0]!,
+    )
+  })
+
+  test("a tick the server refuses is undone", async () => {
+    const { screen, listed, onUpdateItem } = await renderSaved([item("Milk", "c")])
+    onUpdateItem.mockResolvedValueOnce(null)
+    await screen.getByRole("checkbox", { name: "Milk" }).click()
+    await vi.waitFor(() => expect(listed("To do")).toEqual(["Milk"]), AT_ONCE)
+    await expect.element(screen.getByRole("checkbox", { name: "Milk" })).not.toBeChecked()
+  })
+
+  test("an Item whose add got no answer is still deleted on the server", async () => {
+    const { screen, onAddItem, onDeleteItem } = await renderSaved([])
+    onAddItem.mockResolvedValueOnce("unreached")
+    await userEvent.type(screen.getByRole("textbox", { name: "Add item" }), "Milk{Enter}")
+    await vi.waitFor(() => expect(onAddItem).toHaveBeenCalledTimes(1), AT_ONCE)
+    await screen.getByRole("button", { name: "Delete item" }).click()
+    await vi.waitFor(() => expect(onDeleteItem).toHaveBeenCalledTimes(1), AT_ONCE)
+    await pause(200)
+    expect(onAddItem).toHaveBeenCalledTimes(1)
+  })
+
+  test("an add that throws leaves the Item to be added, ticked and deleted later", async () => {
+    const { screen, onAddItem, onUpdateItem, onDeleteItem } = await renderSaved([])
+    onAddItem.mockImplementationOnce(() => {
+      throw new Error("Already in the collection")
+    })
+    await userEvent.type(screen.getByRole("textbox", { name: "Add item" }), "Milk{Enter}")
+    await vi.waitFor(() => expect(onAddItem).toHaveBeenCalledTimes(1), AT_ONCE)
+
+    // Ticking adds it again, then ticks it; deleting then deletes it.
+    await screen.getByRole("checkbox", { name: "Milk" }).click()
+    await vi.waitFor(() => expect(onUpdateItem).toHaveBeenCalledTimes(1), AT_ONCE)
+    expect(onAddItem).toHaveBeenCalledTimes(2)
+    await screen.getByRole("button", { name: "Delete item" }).click()
+    await vi.waitFor(() => expect(onDeleteItem).toHaveBeenCalledTimes(1), AT_ONCE)
+  })
+
   test("leaving the page sends pending Item text and the Add item row at once", async () => {
     const { screen, onUpdateItemText, onAddItem } = await renderSaved([item("Milk", "c")])
     await userEvent.fill(screen.getByRole("textbox", { name: "Item" }), "Oat milk")

@@ -161,14 +161,19 @@ export function useNoteItems(noteId: string) {
 /**
  * Saves a Note that so far existed only on this device, as its typed text first saves. A refusal
  * is rolled back and reported; a save that never reached the server is retried by the editor.
+ * A Note already here was stored by an earlier try whose answer was lost (a refetch brought it
+ * in), so its fields are written instead.
  */
-export function createNote(
+export async function createNote(
   id: string,
   kind: NoteKind,
   creator: NotePerson,
   fields: NoteFields,
   options: SaveOptions,
 ): Promise<SaveOutcome> {
+  if (notesCollection().has(id)) {
+    return updateNote(id, kind === "text" ? fields : { title: fields.title }, options)
+  }
   const now = nowInstant()
   return writeOutcome(
     notesCollection().insert(
@@ -209,13 +214,15 @@ export function deleteNote(id: string) {
 
 /**
  * Adds an Item to the bottom of a saved Checklist's unchecked Items, as its typed text first
- * saves; the server has the last word on where. Outcomes as for `createNote`.
+ * saves; the server has the last word on where. Outcomes as for `createNote`, and an Item
+ * already here, stored by an earlier try whose answer was lost, has its text written instead.
  */
-export function addItem(
+export async function addItem(
   noteId: string,
   { id, text, position }: NewItem,
   options: SaveOptions,
 ): Promise<SaveOutcome> {
+  if (itemsCollection().has(id)) return updateItemText(id, text, options)
   return writeOutcome(
     itemsCollection().insert(
       { id, noteId, text, checked: false, checkedAt: null, position },
@@ -261,9 +268,21 @@ export async function updateItem(id: string, { checked }: ItemChanges): Promise<
   return stored ? (items.get(id) ?? null) : null
 }
 
-/** Deletes one Item. True once the server deleted it. */
-export function deleteItem(id: string) {
-  return settled(itemsCollection().delete(id))
+/**
+ * Deletes one Item. True once the server deleted it. An Item not here, whose add may still have
+ * reached the server, is deleted there too; one already gone (404) counts as deleted.
+ */
+export async function deleteItem(id: string) {
+  const items = itemsCollection()
+  if (items.has(id)) return settled(items.delete(id))
+  try {
+    await readJson(await api.notes.items[":id"].$delete({ param: { id } }))
+    return true
+  } catch (error) {
+    if (error instanceof ApiRequestError && error.status === 404) return true
+    reportError(error, "Deleting")
+    return false
+  }
 }
 
 /**

@@ -43,6 +43,8 @@ export function createTypedTextSaver<Key extends string>({
   const chains = new Map<Key, Promise<void>>()
   /** Fields with an ordinary save queued, not started; true when it must send even unchanged. */
   const waiting = new Map<Key, boolean>()
+  /** Per field, the sends made on leaving that have not settled; ordinary saves wait for them. */
+  const leaving = new Map<Key, Set<Promise<void>>>()
   /** Every save and write not yet settled, for `stop` to wait on. */
   const unsettled = new Set<Promise<void>>()
 
@@ -70,7 +72,10 @@ export function createTypedTextSaver<Key extends string>({
     // A save asked for before the editor stopped, as its Note was deleted, must not land after.
     if (stopped) return
     const text = read(key)
-    if (!force && confirmed.get(key) === text) {
+    // Text the server already holds needs no save, unless other text is still on its way and
+    // may land after it.
+    const otherOnItsWay = (sending.get(key) ?? []).some((each) => each.text !== text)
+    if (!force && confirmed.get(key) === text && !otherOnItsWay) {
       mark(key, false)
       return
     }
@@ -106,7 +111,9 @@ export function createTypedTextSaver<Key extends string>({
       return
     }
     waiting.set(key, force)
-    after(key, () => {
+    after(key, async () => {
+      // A send made on leaving, outside the order, lands before this one.
+      await Promise.all(leaving.get(key) ?? new Set<Promise<void>>())
       const forced = waiting.get(key) === true
       waiting.delete(key)
       return send(key, NOW, forced)
@@ -120,7 +127,12 @@ export function createTypedTextSaver<Key extends string>({
     // An earlier save with other text may land after this one; once it has, the latest text
     // goes again so it wins.
     const overtaken = (sending.get(key) ?? []).some((each) => each.text !== text)
-    track(send(key, LEAVING, false))
+    const sent = send(key, LEAVING, false)
+    const sends = leaving.get(key) ?? new Set<Promise<void>>()
+    sends.add(sent)
+    leaving.set(key, sends)
+    void sent.then(() => sends.delete(sent))
+    track(sent)
     if (overtaken) inOrder(key, true)
   }
 
