@@ -1,5 +1,4 @@
-import { clearCheckedRoutes } from "#server/apps/notes/clear-checked.ts"
-import { itemRoutes } from "#server/apps/notes/items.ts"
+import { clearCheckedRoutes, itemRoutes } from "#server/apps/notes/items.ts"
 import { noteRoutes } from "#server/apps/notes/notes.ts"
 import { peopleRoutes } from "#server/apps/notes/people.ts"
 import type { Deps } from "#server/core/context.ts"

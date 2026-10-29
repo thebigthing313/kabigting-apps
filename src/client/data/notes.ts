@@ -2,17 +2,17 @@
 // the signed-in Account. Each refetch returns the complete visible set, so a Note or Item that
 // stops being visible (a member removed from its Audience, say) drops out silently; refetches
 // follow the Shell's focus and reconnect defaults.
-import { createOptimisticAction, eq, useLiveQuery } from "@tanstack/react-db"
+import { createOptimisticAction, createTransaction, eq, useLiveQuery } from "@tanstack/react-db"
 import { useQuery } from "@tanstack/react-query"
 import { api } from "@/data/api"
-import { defineRestCollection } from "@/data/collection-factory"
-import { ApiRequestError, readJson, reportError } from "@/data/error-handler"
+import { defineRestCollection, failedWrite } from "@/data/collection-factory"
+import { readJson } from "@/data/error-handler"
 import { settled } from "@/data/settled"
 import { nowInstant } from "@shared/dates"
 import { bottomOfUnchecked } from "@shared/notes/items"
 import { titleOrNull } from "@shared/notes/notes"
 import type {
-  ClearedItems,
+  ClearedChecked,
   ItemRow,
   ItemWrite,
   NoteKind,
@@ -203,60 +203,6 @@ export function deleteItem(id: string) {
   return settled(itemsCollection().delete(id))
 }
 
-/** Drops rows the server says are gone; one a refetch already dropped is skipped. */
-async function dropItems(ids: Iterable<string>) {
-  const items = itemsCollection()
-  for (const id of ids) {
-    try {
-      await items.utils.writeDelete(id)
-    } catch {
-      // Already gone.
-    }
-  }
-}
-
-type ClearRequest = { noteId: string; itemIds: string[]; answer: { kept: Item[] | null } }
-
-/**
- * Clear checked, optimistically: the Items go at once, and a refusal brings them back with a
- * toast. The server deletes only those still checked; any it kept, as someone unticked them
- * first, return as stored, and the Checklist takes the server's edited at. A Checklist that is
- * gone leaves the list with its Items.
- */
-const clearCheckedAction = createOptimisticAction<ClearRequest>({
-  onMutate: ({ itemIds }) => {
-    const items = itemsCollection()
-    items.delete(itemIds.filter((id) => items.has(id)))
-  },
-  mutationFn: async ({ noteId, itemIds, answer }) => {
-    const items = itemsCollection()
-    const notes = notesCollection()
-    let result: ClearedItems
-    try {
-      result = await readJson(
-        await api.notes.notes[":id"]["clear-checked"].$post({
-          param: { id: noteId },
-          json: { itemIds },
-        }),
-      )
-    } catch (error) {
-      reportError(error, "Clearing")
-      if (error instanceof ApiRequestError && error.status === 404) {
-        const ofNote = [...items.values()].filter((item) => item.noteId === noteId)
-        await dropItems(new Set([...itemIds, ...ofNote.map((item) => item.id)]))
-        if (notes.has(noteId)) await notes.utils.writeDelete(noteId)
-      }
-      throw error
-    }
-    await dropItems(result.cleared)
-    if (result.kept.length > 0) await items.utils.writeUpsert(result.kept)
-    if (notes.has(noteId)) {
-      await notes.utils.writeUpdate({ id: noteId, editedAt: result.noteEditedAt })
-    }
-    answer.kept = result.kept
-  },
-})
-
 /**
  * Replacing the Audience: its own route, not a field write, so it is an action of its own. The
  * new Audience shows at once; a refusal rolls it back with a toast, and a Note that is gone (404)
@@ -277,25 +223,77 @@ const replaceAudience = createOptimisticAction<{ id: string; audience: readonly 
       )
       await notes.utils.writeUpsert(row)
     } catch (error) {
-      reportError(error, "Sharing")
-      if (error instanceof ApiRequestError && error.status === 404)
-        await notes.utils.writeDelete(id)
-      throw error
+      await failedWrite(error, "Sharing", () => notes.utils.writeDelete(id))
     }
   },
 })
 
+/** Drops Items the server says are gone; one a refetch already dropped is skipped. */
+async function dropItems(ids: Iterable<string>) {
+  const items = itemsCollection()
+  for (const id of ids) {
+    try {
+      await items.utils.writeDelete(id)
+    } catch {
+      // Already gone.
+    }
+  }
+}
+
 /**
- * Deletes the Items given, those seen checked in one Checklist, that are still checked on the
- * server. Resolves to the Items it kept, or null after a refusal (rolled back and reported).
+ * Sends a clear and writes its outcome into the synced Items: the Items the server kept, as
+ * someone unticked them first, return as stored, and the Checklist takes the server's edited at.
+ * A Checklist that is gone leaves the list with its Items. Resolves to the Items kept.
+ */
+async function sendClear(noteId: string, itemIds: string[]): Promise<Item[]> {
+  const items = itemsCollection()
+  const notes = notesCollection()
+  let result: ClearedChecked
+  try {
+    result = await readJson(
+      await api.notes.notes[":id"]["clear-checked"].$post({
+        param: { id: noteId },
+        json: { itemIds },
+      }),
+    )
+  } catch (error) {
+    return failedWrite(error, "Clearing", async () => {
+      const ofNote = [...items.values()].filter((item) => item.noteId === noteId)
+      await dropItems(new Set([...itemIds, ...ofNote.map((item) => item.id)]))
+      if (notes.has(noteId)) await notes.utils.writeDelete(noteId)
+    })
+  }
+  // Every Item sent that the server didn't keep is gone, whether this clear deleted it or it was
+  // gone already.
+  const kept = new Set(result.kept.map((item) => item.id))
+  await dropItems(itemIds.filter((id) => !kept.has(id)))
+  if (result.kept.length > 0) await items.utils.writeUpsert(result.kept)
+  if (notes.has(noteId)) {
+    await notes.utils.writeUpdate({ id: noteId, editedAt: result.noteEditedAt })
+  }
+  return result.kept
+}
+
+/**
+ * Clear checked, optimistically: deletes the Items given, those seen checked in one Checklist, at
+ * once, and the server deletes those still checked. Resolves to the Items it kept, as stored, or
+ * null after a refusal, which brings the Items back with a toast. Send at least one id.
  */
 export async function clearChecked(
   noteId: string,
   itemIds: string[],
 ): Promise<{ kept: Item[] } | null> {
-  const answer: ClearRequest["answer"] = { kept: null }
-  const stored = await settled(clearCheckedAction({ noteId, itemIds, answer }))
-  return stored && answer.kept !== null ? { kept: answer.kept } : null
+  let kept: Item[] = []
+  const transaction = createTransaction({
+    mutationFn: async () => {
+      kept = await sendClear(noteId, itemIds)
+    },
+  })
+  transaction.mutate(() => {
+    const items = itemsCollection()
+    items.delete(itemIds.filter((id) => items.has(id)))
+  })
+  return (await settled(transaction)) ? { kept } : null
 }
 
 /**

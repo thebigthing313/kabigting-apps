@@ -1,13 +1,16 @@
 import "@/styles.css"
 import { describe, expect, test, vi } from "vitest"
+import { userEvent } from "vitest/browser"
 import { render } from "vitest-browser-react"
 import { NoteEditor } from "@/apps/notes/note-editor"
-import type { ClearedChecked, DraftItem, StoredItem } from "@/apps/notes/use-note-draft"
+import type { DraftItem, KeptItems, StoredItem } from "@/apps/notes/use-note-draft"
 import type { ItemChanges, NewItem, NoteFields } from "@/data/notes"
 import { instantAt } from "@shared/dates"
 
 /** Well inside the typing pause: what saves "at once" has saved by then. */
 const AT_ONCE = { timeout: 300 }
+/** Comfortably past the ~1 s pause after which typing saves. */
+const SAVED_WITHIN = { timeout: 2_500 }
 
 const me = { id: "me", name: "Mara" }
 
@@ -26,11 +29,11 @@ function item(name: string, position: string, checkedAt: string | null = null): 
 
 /** A clear the test settles by hand, to look at the Checklist while it is in flight. */
 function deferredClear() {
-  const settle: { resolve?: (result: ClearedChecked | null) => void } = {}
-  const promise = new Promise<ClearedChecked | null>((resolve) => {
+  const settle: { resolve?: (result: KeptItems | null) => void } = {}
+  const promise = new Promise<KeptItems | null>((resolve) => {
     settle.resolve = resolve
   })
-  return { promise, resolve: (result: ClearedChecked | null) => settle.resolve?.(result) }
+  return { promise, resolve: (result: KeptItems | null) => settle.resolve?.(result) }
 }
 
 async function renderChecklist(items: DraftItem[]) {
@@ -46,7 +49,7 @@ async function renderChecklist(items: DraftItem[]) {
     ),
     onDeleteItem: vi.fn<(id: string) => Promise<boolean>>(() => Promise.resolve(true)),
     // The server clears everything sent, keeping nothing.
-    onClearChecked: vi.fn<(ids: string[]) => Promise<ClearedChecked | null>>(() =>
+    onClearChecked: vi.fn<(ids: string[]) => Promise<KeptItems | null>>(() =>
       Promise.resolve({ kept: [] }),
     ),
     onDelete: vi.fn<(onServer: Promise<boolean>) => void>(),
@@ -144,6 +147,52 @@ describe("Clear checked", () => {
     clear.resolve(null)
     await expect.element(clearButton()).toBeVisible()
     expect(listed("Checked")).toEqual(["Bread", "Jam"])
+    expect(listed("To do")).toEqual(["Milk"])
+  })
+})
+
+describe("text typed into a checked Item just before clearing", () => {
+  test("is kept and saved when the server keeps the Item", async () => {
+    const { screen, listed, clearButton, onClearChecked, onUpdateItem } = await renderChecklist([
+      item("Milk", "c"),
+      item("Jam", "i", EARLIER),
+    ])
+    // Someone else unticked Jam first; the server still holds its old text.
+    onClearChecked.mockResolvedValue({ kept: [item("Jam", "t")] })
+    await userEvent.fill(screen.getByRole("textbox", { name: "Item" }).nth(1), "Jam jar")
+    await clearButton().click()
+    await vi.waitFor(() => expect(listed("To do")).toEqual(["Milk", "Jam jar"]), AT_ONCE)
+    await vi.waitFor(
+      () => expect(onUpdateItem).toHaveBeenCalledWith("id-Jam", { text: "Jam jar" }),
+      SAVED_WITHIN,
+    )
+  })
+
+  test("is kept and saved when the clear is refused", async () => {
+    const { screen, listed, clearButton, onClearChecked, onUpdateItem } = await renderChecklist([
+      item("Milk", "c"),
+      item("Jam", "i", EARLIER),
+    ])
+    onClearChecked.mockResolvedValue(null)
+    await userEvent.fill(screen.getByRole("textbox", { name: "Item" }).nth(1), "Jam jar")
+    await clearButton().click()
+    await vi.waitFor(() => expect(listed("Checked")).toEqual(["Jam jar"]), AT_ONCE)
+    await vi.waitFor(
+      () => expect(onUpdateItem).toHaveBeenCalledWith("id-Jam", { text: "Jam jar" }),
+      SAVED_WITHIN,
+    )
+  })
+
+  test("is dropped with its Item when the clear deletes it", async () => {
+    const { screen, listed, clearButton, onClearChecked, onUpdateItem } = await renderChecklist([
+      item("Milk", "c"),
+      item("Jam", "i", EARLIER),
+    ])
+    await userEvent.fill(screen.getByRole("textbox", { name: "Item" }).nth(1), "Jam jar")
+    await clearButton().click()
+    await vi.waitFor(() => expect(onClearChecked).toHaveBeenCalledWith(["id-Jam"]), AT_ONCE)
+    await new Promise((resolve) => setTimeout(resolve, 1_500))
+    expect(onUpdateItem).not.toHaveBeenCalled()
     expect(listed("To do")).toEqual(["Milk"])
   })
 })

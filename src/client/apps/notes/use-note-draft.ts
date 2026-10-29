@@ -32,7 +32,7 @@ export type StoredItem = { checkedAt: string | null }
  * What a clear did on the server: the Items sent that it kept, as stored, because someone
  * unticked them first. Every other Item sent is gone.
  */
-export type ClearedChecked = { kept: DraftItem[] }
+export type KeptItems = { kept: DraftItem[] }
 
 type Handlers = {
   /** Stores a new Note with everything typed so far; resolves true once stored. */
@@ -49,13 +49,21 @@ type Handlers = {
    * Deletes the Items given, those seen checked, that are still checked on the server; resolves
    * to what it kept, or null after a refusal.
    */
-  onClearChecked: (ids: string[]) => Promise<ClearedChecked | null>
+  onClearChecked: (ids: string[]) => Promise<KeptItems | null>
 }
 
 export type NoteDraftOptions = Handlers & {
   initial: Omit<NoteDraft, "newItemText">
   /** Whether the Note exists on the server yet. A new one exists only here until it has content. */
   saved: boolean
+}
+
+/** An Item as the editor holds it, with `text` in place of the stored text when given. */
+function toDraftItem(
+  { id, text, checked, checkedAt, position }: DraftItem,
+  typed: string | undefined,
+): DraftItem {
+  return { id, text: typed ?? text, checked, checkedAt, position }
 }
 
 /** Where changes go while no editor listens. */
@@ -185,15 +193,18 @@ function createAutosave(initial: NoteDraft, saved: boolean, first: Handlers) {
   /**
    * Clears the checked Items at once, here and then on the server, after the saves ahead of it,
    * so a tick just made is cleared too. A refused clear puts them back; an Item the server kept,
-   * as someone unticked it first, comes back as stored.
+   * as someone unticked it first, comes back as stored. Either way an Item that comes back keeps
+   * the text typed into it that had not saved yet, and saves it once typing would have paused.
    */
   function clearChecked() {
     const cleared = latest.items.filter((item) => item.checked)
     if (cleared.length === 0) return
     const ids = new Set(cleared.map((item) => item.id))
-    // Text still waiting to save is moot once its Item is cleared, unless the clear is refused.
-    const typed = [...ids].filter((id) => timers.has(`item:${id}`))
-    for (const id of typed) {
+    // Text still waiting to save waits on the clear: it is moot if its Item goes.
+    const typed = new Map(
+      cleared.filter((item) => timers.has(`item:${item.id}`)).map((item) => [item.id, item.text]),
+    )
+    for (const id of typed.keys()) {
       clearTimeout(timers.get(`item:${id}`))
       timers.delete(`item:${id}`)
     }
@@ -202,26 +213,18 @@ function createAutosave(initial: NoteDraft, saved: boolean, first: Handlers) {
       const sent = [...ids].filter((id) => storedItems.has(id))
       if (sent.length === 0) return
       const result = await handlers.onClearChecked(sent)
-      if (result !== null) {
-        const kept = new Set(result.kept.map((item) => item.id))
-        for (const id of sent) if (!kept.has(id)) storedItems.delete(id)
-      }
-      const returned =
-        result === null
-          ? cleared
-          : result.kept.map(({ id, text, checked, checkedAt, position }) => ({
-              id,
-              text,
-              checked,
-              checkedAt,
-              position,
-            }))
+      const returned = result === null ? cleared : result.kept
+      const survivors = new Set(returned.map((item) => item.id))
+      for (const id of sent) if (!survivors.has(id)) storedItems.delete(id)
       const here = new Set(latest.items.map((item) => item.id))
-      const back = returned.filter((item) => !here.has(item.id))
-      if (back.length === 0) return
-      setItems([...latest.items, ...back])
-      if (result === null) for (const id of typed) schedule(`item:${id}`)
-      onSaved(latest)
+      const back = returned
+        .filter((item) => !here.has(item.id))
+        .map((item) => toDraftItem(item, typed.get(item.id)))
+      if (back.length > 0) {
+        setItems([...latest.items, ...back])
+        onSaved(latest)
+      }
+      for (const id of typed.keys()) if (survivors.has(id) && findItem(id)) schedule(`item:${id}`)
     })
   }
 

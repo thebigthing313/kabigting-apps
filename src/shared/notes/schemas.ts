@@ -1,6 +1,7 @@
 /** Wire schemas for the Notes App's API. */
 import { z } from "zod"
 import { id, instant } from "../schemas/primitives.ts"
+import { MAX_QUERY_IDS } from "../schemas/query.ts"
 
 /** A Note's kind, fixed when it is made. */
 export const NOTE_KINDS = ["text", "checklist"] as const
@@ -105,7 +106,7 @@ export const itemWrite = z.object({ item: itemRow, noteEditedAt: instant })
  * Checklist are deleted, so an Item someone unticked meanwhile survives.
  */
 export const clearChecked = z.strictObject({
-  itemIds: z.array(id).max(10_000, "Too many Items to clear at once"),
+  itemIds: z.array(id).min(1).max(MAX_QUERY_IDS),
 })
 
 /**
@@ -113,7 +114,7 @@ export const clearChecked = z.strictObject({
  * longer checked, as stored; and the Checklist's edited at, which moves only when something was
  * deleted. Ids sent that are in no Item of this Checklist are ignored.
  */
-export const clearedItems = z.object({
+export const clearedChecked = z.object({
   cleared: z.array(id),
   kept: z.array(itemRow),
   noteEditedAt: instant,
@@ -129,4 +130,4 @@ export type UpdateItem = z.infer<typeof updateItem>
 export type ItemRow = z.infer<typeof itemRow>
 export type ItemWrite = z.infer<typeof itemWrite>
 export type ClearChecked = z.infer<typeof clearChecked>
-export type ClearedItems = z.infer<typeof clearedItems>
+export type ClearedChecked = z.infer<typeof clearedChecked>

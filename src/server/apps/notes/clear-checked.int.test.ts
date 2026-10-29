@@ -2,12 +2,12 @@ import { afterAll, beforeAll, describe, expect, test } from "vitest"
 import { newId } from "#shared/ids.ts"
 import { orderItems } from "#shared/notes/items.ts"
 import {
-  clearedItems,
+  clearedChecked,
   itemRows,
   itemWrite,
   noteRow,
   noteRows,
-  type ClearedItems,
+  type ClearedChecked,
   type ItemRow,
   type NoteRow,
 } from "#shared/notes/schemas.ts"
@@ -18,10 +18,13 @@ let creator: Headers
 let someoneElse: Headers
 let noAccess: Headers
 let admin: Headers
+let member: { headers: Headers; id: string }
 
 beforeAll(async () => {
   server = await createTestServer()
   creator = (await server.signedInAccount({ apps: ["notes"] })).headers
+  const signedIn = await server.signedInAccount({ apps: ["notes"] })
+  member = { headers: signedIn.headers, id: signedIn.user.id }
   someoneElse = (await server.signedInAccount({ apps: ["notes"] })).headers
   noAccess = (await server.signedInAccount({ apps: ["finances"] })).headers
   admin = (await server.signedInAccount({ role: "admin" })).headers
@@ -71,10 +74,10 @@ function clearChecked(noteId: string, itemIds: unknown, as = creator) {
   )
 }
 
-async function cleared(noteId: string, itemIds: string[]): Promise<ClearedItems> {
+async function cleared(noteId: string, itemIds: string[]): Promise<ClearedChecked> {
   const response = await clearChecked(noteId, itemIds)
   expect(response.status).toBe(200)
-  return clearedItems.parse(await response.json())
+  return clearedChecked.parse(await response.json())
 }
 
 async function itemsOf(noteId: string, as = creator) {
@@ -128,7 +131,7 @@ describe("the still-checked rule", () => {
       clearChecked(note.id, [id("Jam")]),
     ])
     expect(clear.status).toBe(200)
-    const result = clearedItems.parse(await clear.json())
+    const result = clearedChecked.parse(await clear.json())
     const { unchecked } = await itemsOf(note.id)
     if (untick.status === 200) {
       expect(result.cleared).toEqual([])
@@ -210,15 +213,17 @@ describe("edited at", () => {
 describe("refusals", () => {
   test("a Text note has no Items to clear", async () => {
     const note = await makeNote("text")
-    const response = await clearChecked(note.id, [])
+    const response = await clearChecked(note.id, [newId()])
     expect(response.status).toBe(400)
     expect(await response.json()).toMatchObject({ error: { code: "validation_failed" } })
   })
 
-  test("the ids must be a list of Item ids", async () => {
+  test("the ids must be a non-empty list of Item ids", async () => {
     const { note } = await checklist([], ["Jam"])
     expect((await clearChecked(note.id, ["not-an-id"])).status).toBe(400)
     expect((await clearChecked(note.id, undefined)).status).toBe(400)
+    expect((await clearChecked(note.id, [])).status).toBe(400)
+    expect(texts((await itemsOf(note.id)).checked)).toEqual(["Jam"])
   })
 
   test("a Checklist that is gone is 404", async () => {
@@ -245,4 +250,37 @@ describe("refusals", () => {
       expect(await listedNote(note.id)).toMatchObject({ editedAt: before })
     })
   }
+})
+
+async function shareWith(noteId: string, accountIds: string[]) {
+  const response = await server.app.request(
+    `/api/notes/notes/${noteId}/audience`,
+    json("PUT", { accountIds }, creator),
+  )
+  expect(response.status).toBe(200)
+}
+
+describe("the Audience", () => {
+  test("a member may clear, and it counts as an edit", async () => {
+    const { note, id } = await checklist(["Milk"], ["Jam"])
+    await shareWith(note.id, [member.id])
+    const before = (await listedNote(note.id))!.editedAt
+    const response = await clearChecked(note.id, [id("Jam")], member.headers)
+    expect(response.status).toBe(200)
+    const result = clearedChecked.parse(await response.json())
+    expect(result.cleared).toEqual([id("Jam")])
+    expect(Date.parse(result.noteEditedAt)).toBeGreaterThan(Date.parse(before))
+    const { unchecked, checked } = await itemsOf(note.id)
+    expect(texts(unchecked)).toEqual(["Milk"])
+    expect(checked).toEqual([])
+  })
+
+  test("a member removed from the Audience gets 404 and clears nothing", async () => {
+    const { note, id } = await checklist([], ["Jam"])
+    await shareWith(note.id, [member.id])
+    await shareWith(note.id, [])
+    const response = await clearChecked(note.id, [id("Jam")], member.headers)
+    expect(response.status).toBe(404)
+    expect(texts((await itemsOf(note.id)).checked)).toEqual(["Jam"])
+  })
 })

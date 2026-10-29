@@ -7,7 +7,7 @@ import { clearChecked, type Item, type Note, useItems, useNotes } from "@/data/n
 import { queryClient } from "@/data/query-client"
 import { orderItems } from "@shared/notes/items"
 import { orderNotes } from "@shared/notes/notes"
-import type { ClearedItems } from "@shared/notes/schemas"
+import type { ClearedChecked } from "@shared/notes/schemas"
 
 const CHECKLIST = "0190f5d2-0000-7000-8000-000000000001"
 const TEXT_NOTE = "0190f5d2-0000-7000-8000-000000000002"
@@ -67,7 +67,7 @@ beforeEach(() => {
       cleared: [JAM, BREAD],
       kept: [],
       noteEditedAt: SERVER_NOW,
-    } satisfies ClearedItems)
+    } satisfies ClearedChecked)
   vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
     const request = new Request(input, init)
     const path = new URL(request.url, location.origin).pathname
@@ -150,11 +150,27 @@ test("an Item someone unticked first comes back unchecked, as the server keeps i
       cleared: [BREAD],
       kept: [keptJam],
       noteEditedAt: SERVER_NOW,
-    } satisfies ClearedItems)
+    } satisfies ClearedChecked)
 
   expect(await clearChecked(CHECKLIST, [JAM, BREAD])).toEqual({ kept: [keptJam] })
   await vi.waitFor(() => expect(texts("To do")).toEqual(["Milk", "Jam"]))
   expect(texts("Checked")).toEqual([])
+})
+
+test("an Item the server had already lost stays gone, though this clear didn't delete it", async () => {
+  const { texts } = await renderHarness()
+  // Someone else deleted Jam first: the server clears only Bread and keeps nothing.
+  clearAnswer = () =>
+    Response.json({
+      cleared: [BREAD],
+      kept: [],
+      noteEditedAt: SERVER_NOW,
+    } satisfies ClearedChecked)
+
+  expect(await clearChecked(CHECKLIST, [JAM, BREAD])).toEqual({ kept: [] })
+  await new Promise((resolve) => setTimeout(resolve, 100))
+  expect(texts("Checked")).toEqual([])
+  expect(texts("To do")).toEqual(["Milk"])
 })
 
 test("a refused clear puts the checked Items back", async () => {
