@@ -21,7 +21,7 @@ function notFound(): never {
   throw new ApiError("not_found", "No such Item")
 }
 
-function toItemRow(item: typeof noteItems.$inferSelect): ItemRow {
+export function toItemRow(item: typeof noteItems.$inferSelect): ItemRow {
   return {
     id: item.id,
     noteId: item.noteId,
@@ -56,7 +56,7 @@ async function bottomPosition(tx: Tx, noteId: string): Promise<string> {
 }
 
 /** Every Item write is an edit to its Checklist: it moves the Checklist's edited at forward. */
-async function touch(tx: Tx, noteId: string): Promise<string> {
+export async function touch(tx: Tx, noteId: string): Promise<string> {
   const [note] = await tx
     .update(notes)
     .set({ editedAt: sql`now()` })

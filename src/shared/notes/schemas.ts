@@ -91,6 +91,25 @@ export const itemRows = z.object({ rows: z.array(itemRow) })
  */
 export const itemWrite = z.object({ item: itemRow, noteEditedAt: instant })
 
+/**
+ * Clear checked: the ids of the Items the clearer saw checked. Only those still checked in this
+ * Checklist are deleted, so an Item someone unticked meanwhile survives.
+ */
+export const clearChecked = z.strictObject({
+  itemIds: z.array(id).max(10_000, "Too many Items to clear at once"),
+})
+
+/**
+ * What Clear checked answers: the ids it deleted; the Items sent that are in the Checklist but no
+ * longer checked, as stored; and the Checklist's edited at, which moves only when something was
+ * deleted. Ids sent that are in no Item of this Checklist are ignored.
+ */
+export const clearedItems = z.object({
+  cleared: z.array(id),
+  kept: z.array(itemRow),
+  noteEditedAt: instant,
+})
+
 export type CreateNote = z.infer<typeof createNote>
 export type UpdateNote = z.infer<typeof updateNote>
 export type NotePerson = z.infer<typeof notePerson>
@@ -99,3 +118,5 @@ export type CreateItem = z.infer<typeof createItem>
 export type UpdateItem = z.infer<typeof updateItem>
 export type ItemRow = z.infer<typeof itemRow>
 export type ItemWrite = z.infer<typeof itemWrite>
+export type ClearChecked = z.infer<typeof clearChecked>
+export type ClearedItems = z.infer<typeof clearedItems>

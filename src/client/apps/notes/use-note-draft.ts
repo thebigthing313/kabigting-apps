@@ -28,6 +28,12 @@ export type NoteDraft = { fields: NoteFields; items: DraftItem[]; newItemText: s
 /** What the server stored for an Item: its tick time is the server's, not this device's. */
 export type StoredItem = { checkedAt: string | null }
 
+/**
+ * What a clear did on the server: the Items sent that it kept, as stored, because someone
+ * unticked them first. Every other Item sent is gone.
+ */
+export type ClearedChecked = { kept: DraftItem[] }
+
 type Handlers = {
   /** Stores a new Note with everything typed so far; resolves true once stored. */
   onCreate: (fields: NoteFields) => Promise<boolean>
@@ -39,6 +45,11 @@ type Handlers = {
   onUpdateItem: (id: string, changes: ItemChanges) => Promise<StoredItem | null>
   /** Deletes one Item; resolves true once deleted. */
   onDeleteItem: (id: string) => Promise<boolean>
+  /**
+   * Deletes the Items given, those seen checked, that are still checked on the server; resolves
+   * to what it kept, or null after a refusal.
+   */
+  onClearChecked: (ids: string[]) => Promise<ClearedChecked | null>
 }
 
 export type NoteDraftOptions = Handlers & {
@@ -171,6 +182,49 @@ function createAutosave(initial: NoteDraft, saved: boolean, first: Handlers) {
     saveItemText(id)
   }
 
+  /**
+   * Clears the checked Items at once, here and then on the server, after the saves ahead of it,
+   * so a tick just made is cleared too. A refused clear puts them back; an Item the server kept,
+   * as someone unticked it first, comes back as stored.
+   */
+  function clearChecked() {
+    const cleared = latest.items.filter((item) => item.checked)
+    if (cleared.length === 0) return
+    const ids = new Set(cleared.map((item) => item.id))
+    // Text still waiting to save is moot once its Item is cleared, unless the clear is refused.
+    const typed = [...ids].filter((id) => timers.has(`item:${id}`))
+    for (const id of typed) {
+      clearTimeout(timers.get(`item:${id}`))
+      timers.delete(`item:${id}`)
+    }
+    setItems(latest.items.filter((item) => !ids.has(item.id)))
+    enqueue(async () => {
+      const sent = [...ids].filter((id) => storedItems.has(id))
+      if (sent.length === 0) return
+      const result = await handlers.onClearChecked(sent)
+      if (result !== null) {
+        const kept = new Set(result.kept.map((item) => item.id))
+        for (const id of sent) if (!kept.has(id)) storedItems.delete(id)
+      }
+      const returned =
+        result === null
+          ? cleared
+          : result.kept.map(({ id, text, checked, checkedAt, position }) => ({
+              id,
+              text,
+              checked,
+              checkedAt,
+              position,
+            }))
+      const here = new Set(latest.items.map((item) => item.id))
+      const back = returned.filter((item) => !here.has(item.id))
+      if (back.length === 0) return
+      setItems([...latest.items, ...back])
+      if (result === null) for (const id of typed) schedule(`item:${id}`)
+      onSaved(latest)
+    })
+  }
+
   /** Takes the server's tick time for an Item that is still checked here. */
   function takeTickTime(id: string, stored: StoredItem) {
     const item = findItem(id)
@@ -260,6 +314,12 @@ function createAutosave(initial: NoteDraft, saved: boolean, first: Handlers) {
       return latest
     },
 
+    /** Deletes every checked Item, keeping any the server says someone unticked first. */
+    clearChecked(): NoteDraft {
+      clearChecked()
+      return latest
+    },
+
     /** An Item left blank is dropped. */
     leaveItem(id: string): NoteDraft {
       const item = findItem(id)
@@ -323,6 +383,7 @@ export function useNoteDraft({ initial, saved, ...handlers }: NoteDraftOptions) 
     changeItem: (id: string, text: string) => setDraft(autosave.changeItem(id, text)),
     toggleItem: (id: string, checked: boolean) => setDraft(autosave.toggleItem(id, checked)),
     deleteItem: (id: string) => setDraft(autosave.deleteItem(id)),
+    clearChecked: () => setDraft(autosave.clearChecked()),
     leaveItem: (id: string) => setDraft(autosave.leaveItem(id)),
     discard: () => autosave.discard(),
   }

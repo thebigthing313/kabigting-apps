@@ -98,6 +98,7 @@ export function NoteEditor({
           onToggleItem={checklist.toggleItem}
           onDeleteItem={checklist.deleteItem}
           onLeaveItem={checklist.leaveItem}
+          onClearChecked={checklist.clearChecked}
           autoFocusAdd={!saved}
         />
       ) : (
