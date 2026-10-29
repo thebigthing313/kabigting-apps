@@ -518,6 +518,37 @@ describe("the foot and the ⋯ menu", () => {
     create.resolve("refused")
     expect(await onDelete.mock.calls[0]![0]).toBe(false)
   })
+
+  test("a Note whose create got no answer, deleted, is deleted on the server", async () => {
+    const { screen, onCreate, onDelete } = await renderEditor()
+    onCreate.mockResolvedValue("unreached")
+    await userEvent.fill(screen.getByLabelText("Title"), "Groceries")
+    await vi.waitFor(() => expect(onCreate).toHaveBeenCalled(), SAVED_WITHIN)
+    await expect.element(screen.getByLabelText("Title")).toHaveAccessibleDescription("Not saved")
+    await confirmDelete(screen)
+    // The create may have been stored all the same, so the delete still goes.
+    expect(await onDelete.mock.calls[0]![0]).toBe(true)
+  })
+
+  test("a Note whose create got no answer waits for a retry on its way before deleting", async () => {
+    const retry = deferredSave()
+    const { screen, onCreate, onDelete } = await renderEditor()
+    onCreate.mockResolvedValueOnce("unreached")
+    await userEvent.fill(screen.getByLabelText("Title"), "Groceries")
+    await expect.element(screen.getByLabelText("Title")).toHaveAccessibleDescription("Not saved")
+    onCreate.mockImplementationOnce(() => retry.promise)
+    window.dispatchEvent(new Event("online"))
+    await vi.waitFor(() => expect(onCreate).toHaveBeenCalledTimes(2))
+    await confirmDelete(screen)
+    let onServer: boolean | undefined
+    void onDelete.mock.calls[0]![0].then((stored) => {
+      onServer = stored
+    })
+    await pause(100)
+    expect(onServer).toBeUndefined()
+    retry.resolve("saved")
+    await vi.waitFor(() => expect(onServer).toBe(true))
+  })
 })
 
 describe("the header", () => {

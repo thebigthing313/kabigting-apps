@@ -111,6 +111,8 @@ function createAutosave(
   let handlers = first
 
   const findItem = (id: string) => latest.items.find((item) => item.id === id)
+  /** Whether the last create got no answer, so the server may hold the Note after all. */
+  let unsureNote = false
 
   /**
    * Creates the Note with everything typed so far, once for every save asking at once. Saves,
@@ -123,6 +125,8 @@ function createAutosave(
     const fields = { ...latest.fields }
     creating = attempt(() => handlers.onCreate(fields, options)).then((outcome) => {
       creating = null
+      // A create that got no answer may still have been stored.
+      unsureNote = outcome === "unreached"
       if (outcome === "saved") {
         exists = true
         created = fields
@@ -466,12 +470,14 @@ function createAutosave(
     /**
      * Stops saving for good, as the Note is being deleted: typing not yet saved is dropped and
      * no queued save runs. Resolves, once the saves on their way have settled, to whether the
-     * Note is on the server, so a create that lands mid-delete is deleted too.
+     * Note may be on the server: a create that lands mid-delete is deleted too, and so is one
+     * that got no answer, as it may have been stored all the same.
      */
     async discard(): Promise<boolean> {
       discarded = true
       await saver.stop()
-      return exists
+      await creating
+      return exists || unsureNote
     },
   }
 }

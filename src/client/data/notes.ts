@@ -214,9 +214,21 @@ export function updateNote(
   )
 }
 
-/** Deletes a Note for good. True once the server deleted it. */
-export function deleteNote(id: string) {
-  return settled(notesCollection().delete(id))
+/**
+ * Deletes a Note for good. True once the server deleted it. A Note not here, whose create may
+ * still have reached the server, is deleted there too; one already gone (404) counts as deleted.
+ */
+export async function deleteNote(id: string) {
+  const notes = notesCollection()
+  if (notes.has(id)) return settled(notes.delete(id))
+  try {
+    await readJson(await api.notes.notes[":id"].$delete({ param: { id } }))
+    return true
+  } catch (error) {
+    if (error instanceof ApiRequestError && error.status === 404) return true
+    reportError(error, "Deleting")
+    return false
+  }
 }
 
 /**

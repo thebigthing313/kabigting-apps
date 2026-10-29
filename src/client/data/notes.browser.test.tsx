@@ -8,6 +8,7 @@ import {
   addItem,
   createNote,
   deleteItem,
+  deleteNote,
   type Item,
   type Note,
   updateItem,
@@ -125,10 +126,10 @@ async function serve(path: string, method: string, init: RequestInit | undefined
     const move = patch.position === undefined ? {} : { position: patch.position }
     return Response.json({ item: { ...ITEMS[0], ...tick, ...move }, noteEditedAt: SERVER_TICK })
   }
-  if (path.startsWith("/api/notes/items/") && method === "DELETE") {
+  if (path.startsWith("/api/notes/") && method === "DELETE") {
     deleted.push(path)
     return Response.json(
-      { error: { code: "not_found", message: "This item isn't here" } },
+      { error: { code: "not_found", message: "This isn't here" } },
       { status: 404 },
     )
   }
@@ -301,6 +302,15 @@ describe("a save whose earlier try was stored without an answer", () => {
     )
     expect(added).toBe("saved")
     expect(sent).toEqual([{ body: { text: "Whole milk" }, keepalive: false }])
+  })
+
+  test("a Note whose create got no answer, deleted, is deleted on the server", async () => {
+    const screen = await renderNote()
+    const ghost = "0190f5d2-0000-7000-8000-0000000000a9"
+    expect(await deleteNote(ghost)).toBe(true)
+    expect(deleted).toEqual([`/api/notes/notes/${ghost}`])
+    await pause(300)
+    await expect.element(screen.getByText("Deleting failed")).not.toBeInTheDocument()
   })
 
   test("deleting an Item not here deletes it on the server, and already gone counts", async () => {
