@@ -1,3 +1,5 @@
+import { cn } from "cn"
+import { Link } from "@tanstack/react-router"
 import { FileTextIcon, ListChecksIcon, PlusIcon, UsersIcon } from "lucide-react"
 import { Avatar, KindIcon, useNow } from "@/apps/notes/note-parts"
 import { Button } from "@/components/ui/button"
@@ -10,19 +12,46 @@ import {
 import type { Item, Note } from "@/data/notes"
 import { timeAgo } from "@shared/dates"
 import { checklistCounts } from "@shared/notes/items"
-import { notePreview, orderNotes, sharingLine } from "@shared/notes/notes"
+import {
+  NOTE_TABS,
+  notePreview,
+  notesInTab,
+  orderNotes,
+  sharingLine,
+  type NoteTab,
+} from "@shared/notes/notes"
 import type { NoteKind } from "@shared/notes/schemas"
 
 const NO_ITEMS: readonly Item[] = []
 
+const TAB_TITLES: Record<NoteTab, string> = {
+  all: "All",
+  mine: "Mine",
+  shared: "Shared with me",
+}
+
+/** What each tab says when it holds no Notes. */
+const EMPTY_TABS: Record<NoteTab, { heading: string; hint: string }> = {
+  all: { heading: "No notes yet", hint: "Use New to write one." },
+  mine: {
+    heading: "You haven't written any notes yet",
+    hint: "Notes you write show here, shared or not.",
+  },
+  shared: {
+    heading: "Nothing shared with you yet",
+    hint: "Notes others share with you show here.",
+  },
+}
+
 /**
- * Notes home: the New menu over one list of every Note the viewer can see, Unopened ones first and
- * marked with the New badge, then newest edit first.
+ * Notes home: the New menu, then the All / Mine / Shared with me tabs over the Notes in the
+ * picked tab: Unopened ones first and marked with the New badge, then newest edit first.
  */
 export function NotesList({
   notes,
   viewerId,
   items,
+  tab,
   onNew,
   onOpen,
 }: {
@@ -31,12 +60,14 @@ export function NotesList({
   viewerId: string
   /** Every Checklist's Items, for the rows' previews and counts. */
   items: readonly Item[]
+  /** The tab picked; each tab is a link to the Notes home with that tab. */
+  tab: NoteTab
   /** Starts a new Note of the kind picked; its kind never changes afterwards. */
   onNew: (kind: NoteKind) => void
   onOpen: (id: string) => void
 }) {
   const now = useNow()
-  const ordered = orderNotes(notes)
+  const ordered = orderNotes(notesInTab(notes, tab, viewerId))
   const itemsByNote = new Map<string, Item[]>()
   for (const item of items) {
     itemsByNote.set(item.noteId, [...(itemsByNote.get(item.noteId) ?? []), item])
@@ -59,10 +90,26 @@ export function NotesList({
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
+      <nav aria-label="Notes tabs" className="flex gap-1 rounded-lg bg-muted p-1 text-sm">
+        {NOTE_TABS.map((key) => (
+          <Link
+            key={key}
+            to="/notes"
+            search={{ tab: key }}
+            aria-current={tab === key ? "page" : undefined}
+            className={cn(
+              "flex h-9 flex-1 items-center justify-center rounded-md px-2 font-medium whitespace-nowrap",
+              tab === key ? "bg-background shadow-sm" : "text-muted-foreground",
+            )}
+          >
+            {TAB_TITLES[key]}
+          </Link>
+        ))}
+      </nav>
       {ordered.length === 0 ? (
         <div className="rounded-xl border px-4 py-8 text-center text-muted-foreground">
-          <p className="font-medium text-foreground">No notes yet</p>
-          <p>Use New to write one.</p>
+          <p className="font-medium text-foreground">{EMPTY_TABS[tab].heading}</p>
+          <p>{EMPTY_TABS[tab].hint}</p>
         </div>
       ) : (
         <ul className="divide-y rounded-xl border">

@@ -1,5 +1,12 @@
 import { describe, expect, test } from "vitest"
-import { isEmptyNote, notePreview, orderNotes, sharingLine, titleOrNull } from "./notes.ts"
+import {
+  isEmptyNote,
+  notePreview,
+  notesInTab,
+  orderNotes,
+  sharingLine,
+  titleOrNull,
+} from "./notes.ts"
 
 describe("orderNotes", () => {
   test("puts the newest edit first", () => {
@@ -158,5 +165,35 @@ describe("sharingLine", () => {
 
   test("a Note someone else made names its Creator", () => {
     expect(sharingLine({ creator: ana, audience: [ben, cy] }, "ben")).toBe("Shared by Ana")
+  })
+})
+
+describe("notesInTab", () => {
+  const ana = { id: "ana", name: "Ana" }
+  const ben = { id: "ben", name: "Ben" }
+  const notes = [
+    { id: "private", creator: ana, audience: [] },
+    { id: "shared-by-me", creator: ana, audience: [ben] },
+    { id: "shared-with-me", creator: ben, audience: [ana] },
+  ]
+  const ids = (tab: Parameters<typeof notesInTab>[1]) =>
+    notesInTab(notes, tab, "ana").map((note) => note.id)
+
+  test("All holds every Note the viewer can see", () => {
+    expect(ids("all")).toEqual(["private", "shared-by-me", "shared-with-me"])
+  })
+
+  test("Mine holds the Notes the viewer is the Creator of, shared or not", () => {
+    expect(ids("mine")).toEqual(["private", "shared-by-me"])
+  })
+
+  test("Shared with me holds the Notes someone else made with the viewer in the Audience", () => {
+    expect(ids("shared")).toEqual(["shared-with-me"])
+  })
+
+  test("a Note the viewer is neither Creator nor Audience of is shared with no one here", () => {
+    const stray = [{ id: "stray", creator: ben, audience: [] }]
+    expect(notesInTab(stray, "shared", "ana")).toEqual([])
+    expect(notesInTab(stray, "mine", "ana")).toEqual([])
   })
 })
