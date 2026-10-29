@@ -70,6 +70,7 @@ function callbacks() {
       Promise.resolve({ kept: [] }),
     ),
     onDelete: vi.fn<(onServer: Promise<boolean>) => void>(),
+    onLeave: vi.fn<(settled: Promise<unknown>) => void>(),
     onBack: vi.fn<() => void>(),
     onShare: vi.fn<(audience: NotePerson[]) => void>(),
   }
@@ -549,6 +550,63 @@ describe("the foot and the ⋯ menu", () => {
     retry.resolve("saved")
     await vi.waitFor(() => expect(onServer).toBe(true))
   })
+
+  test("an Audience member Leaves from the ⋯ menu at once, and can't delete", async () => {
+    const { screen, onLeave, onDelete } = await renderEditor({
+      note: { ...blank, title: "Old", editedAt: "2026-10-01T09:00:00.000Z", creator: ana },
+      saved: true,
+    })
+    await userEvent.type(screen.getByLabelText("Title"), " news")
+    await screen.getByRole("button", { name: "More" }).click()
+    await expect
+      .element(screen.getByRole("menuitem", { name: "Delete note" }))
+      .not.toBeInTheDocument()
+    await screen.getByRole("menuitem", { name: "Leave note" }).click()
+    // Nothing to confirm: the Note stays for everyone else, and its Creator can add them back.
+    expect(onLeave).toHaveBeenCalledTimes(1)
+    await onLeave.mock.calls[0]![0]
+    expect(onDelete).not.toHaveBeenCalled()
+  })
+
+  test("typing still waiting to save when a member Leaves is saved first, and nothing after", async () => {
+    const update = deferredSave()
+    const { screen, onLeave, onUpdate } = await renderEditor({
+      note: { ...blank, title: "Old", editedAt: "2026-10-01T09:00:00.000Z", creator: ana },
+      saved: true,
+    })
+    onUpdate.mockImplementation(() => update.promise)
+    await userEvent.type(screen.getByLabelText("Title"), " news")
+    await screen.getByRole("button", { name: "More" }).click()
+    await screen.getByRole("menuitem", { name: "Leave note" }).click()
+    // Saved at once, not after the usual pause, and the Leave waits for it to land.
+    await vi.waitFor(() => expect(onUpdate).toHaveBeenCalledWith({ title: "Old news" }, NOW))
+    let saved = false
+    void onLeave.mock.calls[0]![0].then(() => {
+      saved = true
+    })
+    await pause(100)
+    expect(saved).toBe(false)
+    update.resolve("saved")
+    await vi.waitFor(() => expect(saved).toBe(true))
+
+    // Nothing more is saved to a Note they have left, not even on leaving the page.
+    await userEvent.type(screen.getByLabelText("Title"), "!")
+    await pause(1_500)
+    await screen.unmount()
+    expect(onUpdate).toHaveBeenCalledTimes(1)
+  })
+
+  test("the Creator's ⋯ menu offers Delete, not Leave", async () => {
+    const { screen } = await renderEditor({
+      note: { ...blank, title: "Old", editedAt: "2026-10-01T09:00:00.000Z", audience: [ana] },
+      saved: true,
+    })
+    await screen.getByRole("button", { name: "More" }).click()
+    await expect.element(screen.getByRole("menuitem", { name: "Delete note" })).toBeVisible()
+    await expect
+      .element(screen.getByRole("menuitem", { name: "Leave note" }))
+      .not.toBeInTheDocument()
+  })
 })
 
 describe("the header", () => {
@@ -606,14 +664,15 @@ describe("the header", () => {
     await expect
       .element(screen.getByRole("button", { name: "Share", exact: true }))
       .not.toBeInTheDocument()
-    await expect.element(screen.getByRole("button", { name: "More" })).not.toBeInTheDocument()
-    await expect.element(screen.getByText("Delete note")).not.toBeInTheDocument()
-
     await userEvent.type(screen.getByLabelText("Note"), "Eggs")
     await vi.waitFor(
       () => expect(onUpdate).toHaveBeenCalledWith({ body: "Eggs" }, NOW),
       SAVED_WITHIN,
     )
+
+    await screen.getByRole("button", { name: "More" }).click()
+    await expect.element(screen.getByRole("menuitem", { name: "Leave note" })).toBeVisible()
+    await expect.element(screen.getByText("Delete note")).not.toBeInTheDocument()
   })
 
   test("a member sees everyone who can see it, and can change none of it", async () => {

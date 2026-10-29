@@ -33,6 +33,8 @@ export function createTypedTextSaver<Key extends string>({
   onNotSaved,
 }: TypedTextSaving<Key>) {
   let stopped = false
+  /** Set by `finish`: what is already queued runs, but nothing new is taken. */
+  let closed = false
   const timers = new Map<Key, ReturnType<typeof setTimeout>>()
   const notSaved = new Set<Key>()
   /** Per field, the text the server last confirmed. */
@@ -159,7 +161,7 @@ export function createTypedTextSaver<Key extends string>({
   return {
     /** A field's text changed: save it once typing pauses, retrying any "Not saved" field too. */
     changed(key: Key) {
-      if (stopped) return
+      if (stopped || closed) return
       schedule(key)
       for (const other of notSaved) if (!timers.has(other)) schedule(other)
     },
@@ -176,6 +178,7 @@ export function createTypedTextSaver<Key extends string>({
 
     /** Saves the field now, in order, instead of after its pause. */
     saveNow(key: Key) {
+      if (closed) return
       clearPause(key)
       inOrder(key)
     },
@@ -185,7 +188,7 @@ export function createTypedTextSaver<Key extends string>({
      * later saves wait for it.
      */
     run(keys: Key | readonly Key[], write: () => Promise<unknown>) {
-      if (stopped) return
+      if (stopped || closed) return
       after(keys, async () => {
         if (!stopped) await write()
       })
@@ -200,6 +203,7 @@ export function createTypedTextSaver<Key extends string>({
 
     /** Tries every "Not saved" field again, now (focus, reconnect); once per field. */
     retry() {
+      if (closed) return
       for (const key of notSaved) if (!timers.has(key)) inOrder(key)
     },
 
@@ -208,13 +212,30 @@ export function createTypedTextSaver<Key extends string>({
      * typing still pausing, saves queued and "Not saved" fields. Once per field and text.
      */
     flush() {
-      if (stopped) return
+      if (stopped || closed) return
       const keys = new Set([...timers.keys(), ...waiting.keys(), ...notSaved])
       for (const timer of timers.values()) clearTimeout(timer)
       timers.clear()
       // A save on its way as an ordinary request may be cancelled with the page.
       for (const [key, saves] of sending) if (saves.some((each) => !each.keepalive)) keys.add(key)
       for (const key of keys) leave(key)
+    },
+
+    /**
+     * Saves every field not yet saved now, in order after its saves on their way (the page stays,
+     * so no keepalive), then takes nothing more: later typing, retries and writes are ignored.
+     * Resolves once every save and write on its way has settled.
+     */
+    async finish(): Promise<void> {
+      if (!stopped && !closed) {
+        const keys = new Set([...timers.keys(), ...notSaved])
+        for (const timer of timers.values()) clearTimeout(timer)
+        timers.clear()
+        for (const key of keys) inOrder(key)
+        closed = true
+      }
+      // A save may queue another as it settles (a tick after an add): wait for those too.
+      while (unsettled.size > 0) await Promise.all(unsettled)
     },
 
     /**

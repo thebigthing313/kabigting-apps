@@ -272,6 +272,14 @@ function createAutosave(
     saver.saveNow(itemKey(id))
   }
 
+  /** Before the page or Note is left: the "Add item" row becomes an Item and blank Items go. */
+  function takeAddRowAndDropBlanks() {
+    const before = latest
+    addTyped(newId())
+    for (const item of latest.items) if (isBlankItem(item)) removeItem(item.id)
+    if (latest !== before) onChanged(latest)
+  }
+
   /**
    * Clears the checked Items at once, here and then on the server, after the saves ahead of it,
    * so a tick just made is cleared too. A refused clear puts them back; an Item the server kept,
@@ -442,8 +450,8 @@ function createAutosave(
       return latest
     },
 
-    /** An Item left blank is dropped. */
-    leaveItem(id: string): NoteDraft {
+    /** An Item left blank is dropped once focus moves off it. */
+    blurItem(id: string): NoteDraft {
       const item = findItem(id)
       if (item && isBlankItem(item)) removeItem(id)
       return latest
@@ -460,11 +468,18 @@ function createAutosave(
      * dropped.
      */
     flush() {
-      const before = latest
-      addTyped(newId())
-      for (const item of latest.items) if (isBlankItem(item)) removeItem(item.id)
+      takeAddRowAndDropBlanks()
       saver.flush()
-      if (latest !== before) onChanged(latest)
+    },
+
+    /**
+     * Saves everything not yet saved, now and in order (the page stays, so no keepalive), then
+     * stops saving for good, as the viewer is Leaving the Note: nothing typed after is saved.
+     * Resolves once every save on its way has settled, so none of them races the Leave.
+     */
+    saveAndStop(): Promise<void> {
+      takeAddRowAndDropBlanks()
+      return saver.finish()
     },
 
     /**
@@ -488,7 +503,8 @@ function createAutosave(
  * and deleting an Item save at once. A new Note is created by its first save with content, so one
  * left empty, or with only blank Items, is never stored; a saved Note stays even when emptied.
  * Text that can't reach the server keeps its place, is listed in `notSaved` and is retried.
- * Hiding or leaving the page, or unmounting, sends what is not yet saved at once.
+ * Hiding or leaving the page, or unmounting, sends what is not yet saved at once; Leaving the
+ * Note saves it, then stops.
  */
 export function useNoteDraft({ initial, saved, ...handlers }: NoteDraftOptions) {
   const [first] = useState(() => ({ ...initial, newItemText: "" }))
@@ -519,7 +535,8 @@ export function useNoteDraft({ initial, saved, ...handlers }: NoteDraftOptions) 
     moveItem: (id: string, toIndex: number) => setDraft(autosave.moveItem(id, toIndex)),
     deleteItem: (id: string) => setDraft(autosave.deleteItem(id)),
     clearChecked: () => setDraft(autosave.clearChecked()),
-    leaveItem: (id: string) => setDraft(autosave.leaveItem(id)),
+    blurItem: (id: string) => setDraft(autosave.blurItem(id)),
     discard: () => autosave.discard(),
+    saveAndStop: () => autosave.saveAndStop(),
   }
 }

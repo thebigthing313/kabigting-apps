@@ -7,6 +7,7 @@ import {
   createNote,
   deleteItem,
   deleteNote,
+  leaveNote,
   shareNote,
   updateItem,
   updateItemText,
@@ -95,6 +96,11 @@ export function NotePage({
         // Once any save in flight lands, delete the Note if it reached the server; one that
         // never did has nothing to delete.
         void onServer.then((stored) => stored && deleteNote(noteId))
+      }}
+      onLeave={(settled) => {
+        back()
+        // Once the typing saved on Leave lands, so no save races the Leave or puts the Note back.
+        void settled.then(() => leaveNote(noteId))
       }}
       onBack={back}
     />

@@ -62,7 +62,8 @@ export type OnDemandCollectionSpec<Row extends { id: string }> = RestWrites<Row>
   staleTime?: number
 }
 
-function isNotFound(error: unknown): boolean {
+/** Whether the server answered that the write's target is gone, or never visible. */
+export function isNotFound(error: unknown): boolean {
   return error instanceof ApiRequestError && error.status === 404
 }
 

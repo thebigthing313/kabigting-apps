@@ -6,8 +6,13 @@ import { createOptimisticAction, createTransaction, eq, useLiveQuery } from "@ta
 import { useQuery } from "@tanstack/react-query"
 import { useEffect, useRef } from "react"
 import { api, sendWrite } from "@/data/api"
-import { defineRestCollection, failedWrite, type WriteOptions } from "@/data/collection-factory"
-import { ApiRequestError, readJson, reportError } from "@/data/error-handler"
+import {
+  defineRestCollection,
+  failedWrite,
+  isNotFound,
+  type WriteOptions,
+} from "@/data/collection-factory"
+import { readJson, reportError } from "@/data/error-handler"
 import { settled, type WriteOutcome, writeOutcome } from "@/data/settled"
 import { nowInstant } from "@shared/dates"
 import { bottomOfUnchecked } from "@shared/notes/items"
@@ -225,7 +230,7 @@ export async function deleteNote(id: string) {
     await readJson(await api.notes.notes[":id"].$delete({ param: { id } }))
     return true
   } catch (error) {
-    if (error instanceof ApiRequestError && error.status === 404) return true
+    if (isNotFound(error)) return true
     reportError(error, "Deleting")
     return false
   }
@@ -302,7 +307,7 @@ export async function deleteItem(id: string) {
     await readJson(await api.notes.items[":id"].$delete({ param: { id } }))
     return true
   } catch (error) {
-    if (error instanceof ApiRequestError && error.status === 404) return true
+    if (isNotFound(error)) return true
     reportError(error, "Deleting")
     return false
   }
@@ -356,6 +361,20 @@ async function dropItems(ids: Iterable<string>) {
     } catch {
       // Already gone.
     }
+  }
+}
+
+/**
+ * Drops a Note this Account no longer sees, and its Items; what a refetch already dropped is
+ * skipped.
+ */
+async function dropNote(noteId: string) {
+  const ofNote = [...itemsCollection().values()].filter((item) => item.noteId === noteId)
+  await dropItems(ofNote.map((item) => item.id))
+  try {
+    await notesCollection().utils.writeDelete(noteId)
+  } catch {
+    // Already gone.
   }
 }
 
@@ -421,6 +440,34 @@ export async function clearChecked(
  */
 export function shareNote(id: string, audience: readonly NotePerson[]) {
   return settled(replaceAudience({ id, audience }))
+}
+
+/**
+ * An Audience member Leaving: its own route, so an action of its own. The Note leaves this
+ * Account's view at once; a refusal brings it back with a toast. A Note already gone (404) is
+ * what Leaving wanted, so it stays gone with nothing reported. Unlike `writeThroughNoteRoute`,
+ * there is no Note to take back from the server.
+ */
+const leave = createOptimisticAction<string>({
+  onMutate: (id) => {
+    notesCollection().delete(id)
+  },
+  mutationFn: async (id) => {
+    try {
+      await readJson(await api.notes.notes[":id"].leave.$post({ param: { id } }))
+    } catch (error) {
+      if (!isNotFound(error)) await failedWrite(error, "Leaving")
+    }
+    await dropNote(id)
+  },
+})
+
+/**
+ * Takes the signed-in Account out of a Note's Audience (never its Creator). True once the server
+ * agreed; false after a refusal, which is rolled back and reported.
+ */
+export function leaveNote(id: string) {
+  return settled(leave(id))
 }
 
 /**
