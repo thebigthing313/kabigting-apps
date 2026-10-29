@@ -317,3 +317,97 @@ describe("a shared Checklist's Items", () => {
     expect((await patchItem(jam.id, { checked: true }, member)).status).toBe(404)
   })
 })
+
+function leave(noteId: string, as: Signed) {
+  return server.app.request(`/api/notes/notes/${noteId}/leave`, json("POST", {}, as.headers))
+}
+
+describe("Leaving a Note", () => {
+  test("a member Leaves: it leaves their view, and the Creator and the others keep it as it was", async () => {
+    const note = await created()
+    const before = await shared(note.id, [member.id, other.id])
+    expect((await leave(note.id, member)).status).toBe(200)
+
+    expect(await listed(note.id, member)).toBeUndefined()
+    expect((await patch(note.id, { body: "Still here?" }, member)).status).toBe(404)
+    const again = await leave(note.id, member)
+    expect(again.status).toBe(404)
+    expect(await again.json()).toMatchObject({ error: { code: "not_found" } })
+
+    const remaining = { audience: [{ id: other.id, name: other.name }], editedAt: before.editedAt }
+    expect(await listed(note.id, creator)).toMatchObject(remaining)
+    expect(await listed(note.id, other)).toMatchObject(remaining)
+  })
+
+  test("Leaving doesn't change edited at", async () => {
+    const note = await created()
+    await shared(note.id, [member.id])
+    expect((await leave(note.id, member)).status).toBe(200)
+    expect((await listed(note.id, creator))?.editedAt).toBe(note.editedAt)
+  })
+
+  test("only the Creator can add back a member who Left", async () => {
+    const note = await created()
+    await shared(note.id, [member.id, other.id])
+    expect((await leave(note.id, member)).status).toBe(200)
+    expect((await share(note.id, [other.id, member.id], member)).status).toBe(404)
+    expect((await share(note.id, [other.id, member.id], other)).status).toBe(403)
+    expect(await listed(note.id, member)).toBeUndefined()
+
+    await shared(note.id, [other.id, member.id])
+    expect(await listed(note.id, member)).toMatchObject({ title: "Shared" })
+  })
+
+  test("a member who Left and is added back finds the Note Unopened again", async () => {
+    const note = await created()
+    await shared(note.id, [member.id])
+    const opening = await server.app.request(
+      `/api/notes/notes/${note.id}/open`,
+      json("POST", {}, member.headers),
+    )
+    expect(opening.status).toBe(200)
+    expect(await listed(note.id, member)).toMatchObject({ unopened: false })
+
+    expect((await leave(note.id, member)).status).toBe(200)
+    await shared(note.id, [member.id])
+    expect(await listed(note.id, member)).toMatchObject({ unopened: true })
+  })
+
+  test("the Creator can't Leave their own Note, and nothing changes", async () => {
+    const note = await created()
+    await shared(note.id, [member.id])
+    const response = await leave(note.id, creator)
+    expect(response.status).toBe(403)
+    expect(await response.json()).toMatchObject({ error: { code: "creator_cannot_leave" } })
+    expect(await listed(note.id, creator)).toMatchObject({ audience: [{ id: member.id }] })
+    expect(await listed(note.id, member)).toBeDefined()
+  })
+
+  for (const [who, as] of [
+    ["an Account not in the Audience", () => other],
+    ["the Admin, not in the Audience", () => admin],
+  ] as const) {
+    test(`${who} gets 404 Leaving, and nothing changes`, async () => {
+      const note = await created()
+      await shared(note.id, [member.id])
+      const response = await leave(note.id, as())
+      expect(response.status).toBe(404)
+      expect(await response.json()).toMatchObject({ error: { code: "not_found" } })
+      expect(await listed(note.id, creator)).toMatchObject({ audience: [{ id: member.id }] })
+    })
+  }
+
+  test("a member can still Leave a Note whose Creator has lost App access", async () => {
+    const author = await account({ apps: ["notes"] })
+    const note = await created(author)
+    expect((await share(note.id, [member.id], author)).status).toBe(200)
+    const revoked = await server.app.request(
+      `/api/admin/accounts/${author.id}/apps`,
+      json("PUT", { apps: [] }, admin.headers),
+    )
+    expect(revoked.status).toBe(200)
+
+    expect((await leave(note.id, member)).status).toBe(200)
+    expect(await listed(note.id, member)).toBeUndefined()
+  })
+})

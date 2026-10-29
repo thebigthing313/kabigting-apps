@@ -28,7 +28,7 @@ type ItemHandlers = {
   onToggleItem: (id: string, checked: boolean) => void
   onDeleteItem: (id: string) => void
   /** The Item lost focus: a blank one is dropped. */
-  onLeaveItem: (id: string) => void
+  onBlurItem: (id: string) => void
 }
 
 export type ChecklistItemsProps = ItemHandlers & {
@@ -54,7 +54,7 @@ function EditableItem({
   onChangeItem,
   onToggleItem,
   onDeleteItem,
-  onLeaveItem,
+  onBlurItem,
   handle,
   itemRef,
   style,
@@ -88,7 +88,7 @@ function EditableItem({
         aria-label="Item"
         value={item.text}
         onChange={(event) => onChangeItem(item.id, event.target.value)}
-        onBlur={() => onLeaveItem(item.id)}
+        onBlur={() => onBlurItem(item.id)}
         onKeyDown={(event) => {
           if (event.key === "Enter") {
             event.preventDefault()

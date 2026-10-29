@@ -28,6 +28,11 @@ only the creator changes who is in it. Losing App access to Notes, or becoming a
 leaves an Account in its Audiences, so their Notes return with the access.
 _Avoid_: Sharers, collaborators, members
 
+**Leave**:
+An Account in a Note's Audience taking itself out of that Audience. It isn't an edit, so the Note's
+edited at stays; only the creator can add them back, and the creator can't Leave their own Note.
+_Avoid_: Unshare, unsubscribe, remove myself
+
 **Unopened**:
 A Note an Account in its Audience has not opened since it was last added to that Audience. Unopened
 Notes come first in that Account's list. Its creator never sees a Note as Unopened.
