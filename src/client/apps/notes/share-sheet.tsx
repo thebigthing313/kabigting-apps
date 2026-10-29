@@ -1,0 +1,147 @@
+import { useId } from "react"
+import { Avatar } from "@/apps/notes/note-parts"
+import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet"
+import { Skeleton } from "@/components/ui/skeleton"
+import type { AudienceMember, NotePerson } from "@shared/notes/schemas"
+
+export type ShareSheetProps = {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  /** Who the Note is shared with now. */
+  audience: readonly AudienceMember[]
+  /** Everyone else holding App access to Notes; undefined while loading. */
+  people: readonly NotePerson[] | undefined
+  /** Called with the whole new Audience on every tick or untick. */
+  onShare: (audience: AudienceMember[]) => void
+}
+
+/**
+ * The Creator's bottom sheet for who sees a Note: a checkbox per person with access to Notes.
+ * Each tick saves at once. Members who lost access, or became Removed Accounts, are left out of
+ * the people list but still listed, marked "no access", so they can be removed; once removed,
+ * they can't be picked again until their access returns.
+ */
+export function ShareSheet({ open, onOpenChange, audience, people, onShare }: ShareSheetProps) {
+  const markerId = useId()
+  const members = new Map(audience.map((member) => [member.id, member]))
+  const offered = people ?? []
+  const offeredIds = new Set(offered.map((person) => person.id))
+  const listed = [...offered, ...audience.filter((member) => !offeredIds.has(member.id))]
+  // Anyone the people list offers holds App access to Notes.
+  const toggle = (person: NotePerson, checked: boolean) =>
+    onShare(
+      checked
+        ? [...audience, { ...person, hasAccess: true }]
+        : audience.filter((member) => member.id !== person.id),
+    )
+
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent side="bottom" className="mx-auto max-w-lg rounded-t-xl">
+        <SheetHeader>
+          <SheetTitle>Who can see this note</SheetTitle>
+          <SheetDescription>
+            Everyone you pick can read and edit it. Only you can change this or delete the note.
+          </SheetDescription>
+        </SheetHeader>
+        {people === undefined && listed.length === 0 ? (
+          <Skeleton className="mx-4 h-24" />
+        ) : listed.length === 0 ? (
+          <p className="px-4 text-muted-foreground">Nobody else has access to Notes yet.</p>
+        ) : (
+          <ul className="flex max-h-[50vh] flex-col overflow-y-auto px-4">
+            {listed.map((person, index) => {
+              const noAccess = members.get(person.id)?.hasAccess === false
+              // The marker describes the checkbox, whose label is only the name.
+              const noAccessId = `${markerId}-${index}`
+              return (
+                <li key={person.id}>
+                  <label className="flex items-center gap-3 py-2.5 text-base">
+                    <Avatar person={person} className="size-8 text-sm" />
+                    <span className="flex-1">{person.name}</span>
+                    {noAccess && (
+                      <span id={noAccessId} className="text-sm text-muted-foreground">
+                        no access
+                      </span>
+                    )}
+                    <Checkbox
+                      aria-label={person.name}
+                      aria-describedby={noAccess ? noAccessId : undefined}
+                      className="size-5"
+                      checked={members.has(person.id)}
+                      onCheckedChange={(checked) => toggle(person, checked)}
+                    />
+                  </label>
+                </li>
+              )
+            })}
+          </ul>
+        )}
+        <SheetFooter>
+          <Button size="lg" onClick={() => onOpenChange(false)}>
+            Done
+          </Button>
+        </SheetFooter>
+      </SheetContent>
+    </Sheet>
+  )
+}
+
+export type AudienceSheetProps = {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  creator: NotePerson
+  audience: readonly AudienceMember[]
+  /** The signed-in Account, listed as "You". */
+  viewerId: string
+}
+
+/**
+ * A member's read-only view of who can see a Note: its Creator, then everyone in its Audience.
+ * Only the Creator changes it, from the Share sheet.
+ */
+export function AudienceSheet({
+  open,
+  onOpenChange,
+  creator,
+  audience,
+  viewerId,
+}: AudienceSheetProps) {
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent side="bottom" className="mx-auto max-w-lg rounded-t-xl">
+        <SheetHeader>
+          <SheetTitle>Who can see this note</SheetTitle>
+          <SheetDescription>
+            Everyone here with access to Notes can read and edit it.
+          </SheetDescription>
+        </SheetHeader>
+        <ul className="flex max-h-[50vh] flex-col overflow-y-auto px-4">
+          {[creator, ...audience].map((person) => (
+            <li key={person.id} className="flex items-center gap-3 py-2.5 text-base">
+              <Avatar person={person} className="size-8 text-sm" />
+              <span className="flex-1">{person.id === viewerId ? "You" : person.name}</span>
+              {person.id === creator.id && (
+                <span className="text-sm text-muted-foreground">Creator</span>
+              )}
+            </li>
+          ))}
+        </ul>
+        <SheetFooter>
+          <Button size="lg" onClick={() => onOpenChange(false)}>
+            Done
+          </Button>
+        </SheetFooter>
+      </SheetContent>
+    </Sheet>
+  )
+}

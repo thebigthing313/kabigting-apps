@@ -1,0 +1,108 @@
+import { getRouteApi, Link, useNavigate } from "@tanstack/react-router"
+import { NoteEditor } from "@/apps/notes/note-editor"
+import { Skeleton } from "@/components/ui/skeleton"
+import {
+  addItem,
+  clearChecked,
+  createNote,
+  deleteItem,
+  deleteNote,
+  leaveNote,
+  shareNote,
+  updateItem,
+  updateItemText,
+  updateNote,
+  useNote,
+  useNoteItems,
+  useNotePeople,
+  useOpenOnVisit,
+} from "@/data/notes"
+import type { NoteTab } from "@shared/notes/notes"
+import type { NoteKind } from "@shared/notes/schemas"
+
+const appRoute = getRouteApi("/_app")
+
+/**
+ * One Note's page. `newKind` marks a Note just started from the New menu: until its first save
+ * with content it exists only here, so leaving it empty leaves nothing behind.
+ */
+export function NotePage({
+  noteId,
+  newKind,
+  tab,
+}: {
+  noteId: string
+  newKind?: NoteKind | undefined
+  /** The Notes tab this Note was opened from, which going back returns to. */
+  tab?: NoteTab | undefined
+}) {
+  const { session } = appRoute.useRouteContext()
+  const { note, isLoading } = useNote(noteId)
+  // Only the Creator of a saved Note picks who sees it.
+  const people = useNotePeople(note !== undefined && note.creator.id === session.user.id)
+  const { data: items, isLoading: itemsLoading } = useNoteItems(noteId)
+  const navigate = useNavigate()
+  const back = () => void navigate({ to: "/notes", search: { tab } })
+  // Visiting a Note's page clears Unopened, once, as soon as the Note is here.
+  useOpenOnVisit(noteId, note?.unopened ?? false)
+
+  if (isLoading || itemsLoading) return <Skeleton className="mx-auto h-64 w-full max-w-2xl" />
+  if (!note && newKind === undefined) {
+    return (
+      <div className="mx-auto flex max-w-2xl flex-col gap-2 text-muted-foreground">
+        {/* Deleted, or no longer shared with this Account: either way, nothing is announced. */}
+        <p className="font-medium text-foreground">This note isn't available</p>
+        <Link
+          to="/notes"
+          search={{ tab }}
+          className="text-primary underline-offset-4 hover:underline"
+        >
+          Back to notes
+        </Link>
+      </div>
+    )
+  }
+
+  const kind = note?.kind ?? newKind ?? "text"
+  const creator = { id: session.user.id, name: session.user.name }
+  return (
+    <NoteEditor
+      // A fresh editor per Note, so one Note's typing never carries into another.
+      key={noteId}
+      note={
+        note ?? {
+          kind,
+          title: null,
+          body: kind === "text" ? "" : null,
+          editedAt: null,
+          creator,
+          audience: [],
+        }
+      }
+      items={items}
+      saved={note !== undefined}
+      viewerId={session.user.id}
+      people={people.data}
+      onShare={(audience) => void shareNote(noteId, audience)}
+      onCreate={(fields, options) => createNote(noteId, kind, creator, fields, options)}
+      onUpdate={(changes, options) => updateNote(noteId, changes, options)}
+      onAddItem={(item, options) => addItem(noteId, item, options)}
+      onUpdateItemText={updateItemText}
+      onUpdateItem={updateItem}
+      onDeleteItem={deleteItem}
+      onClearChecked={(ids) => clearChecked(noteId, ids)}
+      onDelete={(onServer) => {
+        back()
+        // Once any save in flight lands, delete the Note if it reached the server; one that
+        // never did has nothing to delete.
+        void onServer.then((stored) => stored && deleteNote(noteId))
+      }}
+      onLeave={(settled) => {
+        back()
+        // Once the typing saved on Leave lands, so no save races the Leave or puts the Note back.
+        void settled.then(() => leaveNote(noteId))
+      }}
+      onBack={back}
+    />
+  )
+}

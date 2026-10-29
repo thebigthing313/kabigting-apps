@@ -25,7 +25,7 @@ An Account granted access to specific Apps only, such as a friend who is shared 
 _Avoid_: Friend, external user, collaborator
 
 **App access**:
-A grant letting one Account open one App and read and write all of that App's data, which is shared by everyone holding the grant; without it the App is hidden and refused. Revoking it leaves the Account able to sign in.
+A grant letting one Account open one App and use its data; without it the App is hidden and refused. An App's data is shared by everyone holding the grant unless the App narrows it per record, as Notes does with each Note's Audience. Revoking it leaves the Account able to sign in.
 _Avoid_: Permission, entitlement
 
 **Removed Account**:

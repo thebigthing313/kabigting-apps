@@ -85,6 +85,27 @@
       "when": 1792294970287,
       "tag": "0011_finances_transfers",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1793281250475,
+      "tag": "0012_notes",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1793284780246,
+      "tag": "0013_note_items",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1793288556583,
+      "tag": "0014_notes_audience",
+      "breakpoints": true
     }
   ]
 }

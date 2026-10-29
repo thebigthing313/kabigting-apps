@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm"
-import { Hono } from "hono"
+import { Hono, type Context } from "hono"
 import { financesRoutes } from "#server/apps/finances/routes.ts"
+import { notesRoutes } from "#server/apps/notes/routes.ts"
 import { accessRoutes } from "#server/core/access-routes.ts"
 import { adminRoutes } from "#server/core/admin-routes.ts"
 import { appVersionHeader, noStore } from "#server/core/cache-headers.ts"
@@ -18,6 +19,7 @@ function apiRoutes(deps: Deps) {
     .route("/access", accessRoutes(deps))
     .route("/admin", adminRoutes(deps))
     .route("/finances", financesRoutes(deps))
+    .route("/notes", notesRoutes(deps))
 }
 
 export type AppType = ReturnType<typeof apiRoutes>
@@ -29,6 +31,11 @@ export type AppOptions = {
   appVersion: string
   /** Directory of the built SPA; omitted in development, where Vite serves it. */
   staticRoot?: string
+}
+
+/** 404 for a path under `/api` that the server doesn't answer. */
+function noApiRoute(c: Context<AppEnv>) {
+  return errorResponse(c, "not_found", "No such API route")
 }
 
 export function createApp({ db, auth, appVersion, staticRoot }: AppOptions) {
@@ -48,9 +55,13 @@ export function createApp({ db, auth, appVersion, staticRoot }: AppOptions) {
 
   app.use("/api/*", loadSession(auth))
   app.use("/api/*", mustChangePassword)
+  // The Admin manages Accounts through the Shell's own `/api/admin` routes only. Better Auth's
+  // admin endpoints stay closed: impersonating an Account or setting its password would let the
+  // Admin act as anyone, around App access and every Note's Audience.
+  app.all("/api/auth/admin/*", noApiRoute)
   app.on(["GET", "POST"], "/api/auth/*", (c) => auth.handler(c.req.raw))
   app.route("/", apiRoutes({ db, auth }))
-  app.all("/api/*", (c) => errorResponse(c, "not_found", "No such API route"))
+  app.all("/api/*", noApiRoute)
 
   if (staticRoot) serveSpa(app, staticRoot)
 

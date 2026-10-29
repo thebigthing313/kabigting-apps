@@ -14,9 +14,12 @@ import { Route as ChangePasswordRouteImport } from './routes/change-password'
 import { Route as SignInRouteImport } from './routes/sign-in'
 import { Route as AppIndexRouteImport } from './routes/_app/index'
 import { Route as AppFinancesRouteRouteImport } from './routes/_app/finances/route'
+import { Route as AppNotesRouteRouteImport } from './routes/_app/notes/route'
 import { Route as AppAdminAccountsRouteImport } from './routes/_app/admin/accounts'
 import { Route as AppFinancesIndexRouteImport } from './routes/_app/finances/index'
 import { Route as AppFinancesSummaryRouteImport } from './routes/_app/finances/summary'
+import { Route as AppNotesIndexRouteImport } from './routes/_app/notes/index'
+import { Route as AppNotesNoteIdRouteImport } from './routes/_app/notes/$noteId'
 import { Route as AppFinancesCategoriesIndexRouteImport } from './routes/_app/finances/categories/index'
 import { Route as AppFinancesCategoriesCategoryIdRouteImport } from './routes/_app/finances/categories/$categoryId'
 import { Route as AppFinancesSchedulesIndexRouteImport } from './routes/_app/finances/schedules/index'
@@ -48,6 +51,11 @@ const AppFinancesRouteRoute = AppFinancesRouteRouteImport.update({
   path: '/finances',
   getParentRoute: () => AppRoute,
 } as any)
+const AppNotesRouteRoute = AppNotesRouteRouteImport.update({
+  id: '/notes',
+  path: '/notes',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppAdminAccountsRoute = AppAdminAccountsRouteImport.update({
   id: '/admin/accounts',
   path: '/admin/accounts',
@@ -62,6 +70,16 @@ const AppFinancesSummaryRoute = AppFinancesSummaryRouteImport.update({
   id: '/summary',
   path: '/summary',
   getParentRoute: () => AppFinancesRouteRoute,
+} as any)
+const AppNotesIndexRoute = AppNotesIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => AppNotesRouteRoute,
+} as any)
+const AppNotesNoteIdRoute = AppNotesNoteIdRouteImport.update({
+  id: '/$noteId',
+  path: '/$noteId',
+  getParentRoute: () => AppNotesRouteRoute,
 } as any)
 const AppFinancesCategoriesIndexRoute =
   AppFinancesCategoriesIndexRouteImport.update({
@@ -104,9 +122,12 @@ export interface FileRoutesByFullPath {
   '/change-password': typeof ChangePasswordRoute
   '/sign-in': typeof SignInRoute
   '/finances': typeof AppFinancesRouteRouteWithChildren
+  '/notes': typeof AppNotesRouteRouteWithChildren
   '/admin/accounts': typeof AppAdminAccountsRoute
   '/finances/summary': typeof AppFinancesSummaryRoute
+  '/notes/$noteId': typeof AppNotesNoteIdRoute
   '/finances/': typeof AppFinancesIndexRoute
+  '/notes/': typeof AppNotesIndexRoute
   '/finances/categories/$categoryId': typeof AppFinancesCategoriesCategoryIdRoute
   '/finances/schedules/$scheduleId': typeof AppFinancesSchedulesScheduleIdRoute
   '/finances/wallets/$walletId': typeof AppFinancesWalletsWalletIdRoute
@@ -120,7 +141,9 @@ export interface FileRoutesByTo {
   '/': typeof AppIndexRoute
   '/admin/accounts': typeof AppAdminAccountsRoute
   '/finances/summary': typeof AppFinancesSummaryRoute
+  '/notes/$noteId': typeof AppNotesNoteIdRoute
   '/finances': typeof AppFinancesIndexRoute
+  '/notes': typeof AppNotesIndexRoute
   '/finances/categories/$categoryId': typeof AppFinancesCategoriesCategoryIdRoute
   '/finances/schedules/$scheduleId': typeof AppFinancesSchedulesScheduleIdRoute
   '/finances/wallets/$walletId': typeof AppFinancesWalletsWalletIdRoute
@@ -134,10 +157,13 @@ export interface FileRoutesById {
   '/change-password': typeof ChangePasswordRoute
   '/sign-in': typeof SignInRoute
   '/_app/finances': typeof AppFinancesRouteRouteWithChildren
+  '/_app/notes': typeof AppNotesRouteRouteWithChildren
   '/_app/': typeof AppIndexRoute
   '/_app/admin/accounts': typeof AppAdminAccountsRoute
   '/_app/finances/summary': typeof AppFinancesSummaryRoute
+  '/_app/notes/$noteId': typeof AppNotesNoteIdRoute
   '/_app/finances/': typeof AppFinancesIndexRoute
+  '/_app/notes/': typeof AppNotesIndexRoute
   '/_app/finances/categories/$categoryId': typeof AppFinancesCategoriesCategoryIdRoute
   '/_app/finances/schedules/$scheduleId': typeof AppFinancesSchedulesScheduleIdRoute
   '/_app/finances/wallets/$walletId': typeof AppFinancesWalletsWalletIdRoute
@@ -152,9 +178,12 @@ export interface FileRouteTypes {
     | '/change-password'
     | '/sign-in'
     | '/finances'
+    | '/notes'
     | '/admin/accounts'
     | '/finances/summary'
+    | '/notes/$noteId'
     | '/finances/'
+    | '/notes/'
     | '/finances/categories/$categoryId'
     | '/finances/schedules/$scheduleId'
     | '/finances/wallets/$walletId'
@@ -168,7 +197,9 @@ export interface FileRouteTypes {
     | '/'
     | '/admin/accounts'
     | '/finances/summary'
+    | '/notes/$noteId'
     | '/finances'
+    | '/notes'
     | '/finances/categories/$categoryId'
     | '/finances/schedules/$scheduleId'
     | '/finances/wallets/$walletId'
@@ -181,10 +212,13 @@ export interface FileRouteTypes {
     | '/change-password'
     | '/sign-in'
     | '/_app/finances'
+    | '/_app/notes'
     | '/_app/'
     | '/_app/admin/accounts'
     | '/_app/finances/summary'
+    | '/_app/notes/$noteId'
     | '/_app/finances/'
+    | '/_app/notes/'
     | '/_app/finances/categories/$categoryId'
     | '/_app/finances/schedules/$scheduleId'
     | '/_app/finances/wallets/$walletId'
@@ -236,6 +270,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppFinancesRouteRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/notes': {
+      id: '/_app/notes'
+      path: '/notes'
+      fullPath: '/notes'
+      preLoaderRoute: typeof AppNotesRouteRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/admin/accounts': {
       id: '/_app/admin/accounts'
       path: '/admin/accounts'
@@ -256,6 +297,20 @@ declare module '@tanstack/react-router' {
       fullPath: '/finances/summary'
       preLoaderRoute: typeof AppFinancesSummaryRouteImport
       parentRoute: typeof AppFinancesRouteRoute
+    }
+    '/_app/notes/': {
+      id: '/_app/notes/'
+      path: '/'
+      fullPath: '/notes/'
+      preLoaderRoute: typeof AppNotesIndexRouteImport
+      parentRoute: typeof AppNotesRouteRoute
+    }
+    '/_app/notes/$noteId': {
+      id: '/_app/notes/$noteId'
+      path: '/$noteId'
+      fullPath: '/notes/$noteId'
+      preLoaderRoute: typeof AppNotesNoteIdRouteImport
+      parentRoute: typeof AppNotesRouteRoute
     }
     '/_app/finances/categories/': {
       id: '/_app/finances/categories/'
@@ -327,14 +382,30 @@ const AppFinancesRouteRouteChildren: AppFinancesRouteRouteChildren = {
 const AppFinancesRouteRouteWithChildren =
   AppFinancesRouteRoute._addFileChildren(AppFinancesRouteRouteChildren)
 
+interface AppNotesRouteRouteChildren {
+  AppNotesNoteIdRoute: typeof AppNotesNoteIdRoute
+  AppNotesIndexRoute: typeof AppNotesIndexRoute
+}
+
+const AppNotesRouteRouteChildren: AppNotesRouteRouteChildren = {
+  AppNotesNoteIdRoute: AppNotesNoteIdRoute,
+  AppNotesIndexRoute: AppNotesIndexRoute,
+}
+
+const AppNotesRouteRouteWithChildren = AppNotesRouteRoute._addFileChildren(
+  AppNotesRouteRouteChildren,
+)
+
 interface AppRouteChildren {
   AppFinancesRouteRoute: typeof AppFinancesRouteRouteWithChildren
+  AppNotesRouteRoute: typeof AppNotesRouteRouteWithChildren
   AppIndexRoute: typeof AppIndexRoute
   AppAdminAccountsRoute: typeof AppAdminAccountsRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
   AppFinancesRouteRoute: AppFinancesRouteRouteWithChildren,
+  AppNotesRouteRoute: AppNotesRouteRouteWithChildren,
   AppIndexRoute: AppIndexRoute,
   AppAdminAccountsRoute: AppAdminAccountsRoute,
 }

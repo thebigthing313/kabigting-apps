@@ -71,6 +71,20 @@ export function isNetworkError(error: unknown): boolean {
   return (error instanceof ApiRequestError && error.code === "network") || !navigator.onLine
 }
 
+/** Gateway failures: a proxy in front of the server answered for it, as during a deploy. */
+const GATEWAY_STATUSES: ReadonlySet<number> = new Set([502, 503, 504])
+
+/**
+ * True for a failure to reach the server at all: no network, or a gateway failure. Trying again
+ * later may work; any other failure is the server's answer.
+ */
+export function isUnreached(error: unknown): boolean {
+  return (
+    isNetworkError(error) ||
+    (error instanceof ApiRequestError && GATEWAY_STATUSES.has(error.status))
+  )
+}
+
 /** Tells the user a write failed (its optimistic change has been undone). */
 export function reportError(error: unknown, action: string) {
   if (error instanceof ApiRequestError) {

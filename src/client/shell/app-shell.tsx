@@ -93,32 +93,35 @@ export function ShellSidebar({
       </SidebarHeader>
       <SidebarContent>
         {current ? (
-          <SidebarGroup>
-            <SidebarGroupLabel>{current.title}</SidebarGroupLabel>
-            <SidebarGroupContent>
-              <SidebarMenu>
-                {current.sidebar.map((item) => (
-                  <SidebarMenuItem key={item.to}>
-                    <SidebarMenuButton
-                      size="lg"
-                      tooltip={item.title}
-                      isActive={isSectionActive(pathname, item, current)}
-                      render={
-                        <Link
-                          to={item.to}
-                          activeOptions={{ exact: item.to === current.to }}
-                          onClick={closeDrawer}
-                        />
-                      }
-                    >
-                      <item.icon />
-                      <span>{item.title}</span>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                ))}
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
+          // An App whose home is its only page has no sections to list.
+          current.sidebar.length > 0 && (
+            <SidebarGroup>
+              <SidebarGroupLabel>{current.title}</SidebarGroupLabel>
+              <SidebarGroupContent>
+                <SidebarMenu>
+                  {current.sidebar.map((item) => (
+                    <SidebarMenuItem key={item.to}>
+                      <SidebarMenuButton
+                        size="lg"
+                        tooltip={item.title}
+                        isActive={isSectionActive(pathname, item, current)}
+                        render={
+                          <Link
+                            to={item.to}
+                            activeOptions={{ exact: item.to === current.to }}
+                            onClick={closeDrawer}
+                          />
+                        }
+                      >
+                        <item.icon />
+                        <span>{item.title}</span>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  ))}
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </SidebarGroup>
+          )
         ) : (
           <>
             <SidebarGroup>

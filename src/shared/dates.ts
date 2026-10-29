@@ -4,7 +4,7 @@
  * Never `new Date("YYYY-MM-DD")`: it parses as UTC midnight, the wrong day in New York.
  */
 import { TZDate } from "@date-fns/tz"
-import { addDays as addCalendarDays, addMonths, format } from "date-fns"
+import { addDays as addCalendarDays, addMonths, format, formatDistanceStrict } from "date-fns"
 
 export const HOUSEHOLD_ZONE = "America/New_York"
 
@@ -33,9 +33,24 @@ export function monthOf(instant: string): string {
   return format(new TZDate(Date.parse(instant), HOUSEHOLD_ZONE), "yyyy-MM")
 }
 
+/** A moment given in milliseconds since the epoch, as an ISO-8601 UTC string. */
+export function instantAt(ms: number): string {
+  return new Date(ms).toISOString()
+}
+
 /** The current moment as an ISO-8601 UTC string. */
 export function nowInstant(): string {
   return new Date().toISOString()
+}
+
+/**
+ * How long ago an instant was, for "Edited … ago": "just now" under a minute, then whole minutes,
+ * hours, days and so on, rounded down.
+ */
+export function timeAgo(instant: string, now: number = Date.now()): string {
+  const at = Date.parse(instant)
+  if (now - at < 60_000) return "just now"
+  return formatDistanceStrict(at, now, { addSuffix: true, roundingMethod: "floor" })
 }
 
 function parts(date: string): [number, number, number] {
