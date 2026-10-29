@@ -33,17 +33,32 @@ export function toItemRow(item: typeof noteItems.$inferSelect): ItemRow {
 }
 
 /**
- * The Item, if `accountId` may see its Checklist, locked with the Checklist until the write
- * commits, so writes to one Checklist's Items take turns.
+ * The Checklist, if `accountId` may see it, locked until the write commits. Every write to a
+ * Checklist's Items locks the Checklist before any Item, so they queue on it in one order and
+ * never deadlock.
+ */
+async function lockChecklist(tx: Tx, accountId: string, noteId: string) {
+  const [note] = await tx
+    .select({ kind: notes.kind, editedAt: notes.editedAt })
+    .from(notes)
+    .where(and(eq(notes.id, noteId), visibleTo(accountId)))
+    .for("update")
+  return note
+}
+
+/**
+ * The Item, if `accountId` may see its Checklist, locked after the Checklist (see
+ * `lockChecklist`) until the write commits. An Item never moves to another Checklist.
  */
 async function lockItem(tx: Tx, accountId: string, itemId: string) {
-  const [row] = await tx
-    .select({ item: noteItems, noteEditedAt: notes.editedAt })
+  const [found] = await tx
+    .select({ noteId: noteItems.noteId })
     .from(noteItems)
-    .innerJoin(notes, eq(notes.id, noteItems.noteId))
-    .where(and(eq(noteItems.id, itemId), visibleTo(accountId)))
-    .for("update")
-  return row ?? notFound()
+    .where(eq(noteItems.id, itemId))
+  const note = found && (await lockChecklist(tx, accountId, found.noteId))
+  if (!found || !note) notFound()
+  const [item] = await tx.select().from(noteItems).where(eq(noteItems.id, itemId)).for("update")
+  return item ? { item, noteEditedAt: note.editedAt } : notFound()
 }
 
 /** Where an Item goes to join the bottom of its Checklist's unchecked Items. */

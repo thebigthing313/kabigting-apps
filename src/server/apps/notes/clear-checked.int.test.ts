@@ -140,6 +140,29 @@ describe("the still-checked rule", () => {
     }
   })
 
+  test("clears racing unticks, edits and deletes never fail, however they interleave", async () => {
+    for (let round = 0; round < 40; round += 1) {
+      const { note, id } = await checklist([], ["Jam", "Bread", "Eggs"])
+      const responses = await Promise.all([
+        server.app.request(
+          `/api/notes/items/${id("Jam")}`,
+          json("PATCH", { checked: false }, creator),
+        ),
+        clearChecked(note.id, [id("Jam"), id("Bread"), id("Eggs")]),
+        server.app.request(
+          `/api/notes/items/${id("Bread")}`,
+          json("PATCH", { text: "Rye" }, creator),
+        ),
+        server.app.request(`/api/notes/items/${id("Eggs")}`, {
+          method: "DELETE",
+          headers: creator,
+        }),
+      ])
+      for (const response of responses) expect([200, 404]).toContain(response.status)
+      expect(responses[1]?.status).toBe(200)
+    }
+  })
+
   test("an Item checked that the clearer didn't see stays checked", async () => {
     const { note, id } = await checklist([], ["Jam", "Bread"])
     const result = await cleared(note.id, [id("Jam")])
