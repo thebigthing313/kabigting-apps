@@ -171,19 +171,16 @@ function createAutosave(initial: NoteDraft, saved: boolean, first: Handlers) {
     saveItemText(id)
   }
 
-  function placeItem(id: string, position: string) {
-    setItems(latest.items.map((each) => (each.id === id ? { ...each, position } : each)))
+  /** Changes one Item, leaving the rest as they are. */
+  function patchItem(id: string, changes: Partial<DraftItem>) {
+    setItems(latest.items.map((each) => (each.id === id ? { ...each, ...changes } : each)))
   }
 
   /** Takes the server's tick time for an Item that is still checked here. */
   function takeTickTime(id: string, stored: StoredItem) {
     const item = findItem(id)
     if (!item?.checked || stored.checkedAt === null || stored.checkedAt === item.checkedAt) return
-    setItems(
-      latest.items.map((each) =>
-        each.id === id ? { ...each, checkedAt: stored.checkedAt } : each,
-      ),
-    )
+    patchItem(id, { checkedAt: stored.checkedAt })
     onSaved(latest)
   }
 
@@ -220,7 +217,7 @@ function createAutosave(initial: NoteDraft, saved: boolean, first: Handlers) {
 
     /** Takes an Item's new text and saves it once typing pauses; blank text never saves. */
     changeItem(id: string, text: string): NoteDraft {
-      setItems(latest.items.map((item) => (item.id === id ? { ...item, text } : item)))
+      patchItem(id, { text })
       schedule(`item:${id}`)
       return latest
     },
@@ -234,19 +231,9 @@ function createAutosave(initial: NoteDraft, saved: boolean, first: Handlers) {
       if (!item || item.checked === checked || isBlankItem(item)) return latest
       const position = bottomOfUnchecked(latest.items)
       // Shown at once with this device's time, then the server's, which orders checked Items.
-      setItems(
-        latest.items.map((each) =>
-          each.id !== id
-            ? each
-            : checked
-              ? { ...each, checked, checkedAt: nowInstant() }
-              : {
-                  ...each,
-                  checked,
-                  checkedAt: null,
-                  position,
-                },
-        ),
+      patchItem(
+        id,
+        checked ? { checked, checkedAt: nowInstant() } : { checked, checkedAt: null, position },
       )
       // Text still waiting to save goes first, so the Item exists to be ticked.
       settleItemText(id)
@@ -267,14 +254,14 @@ function createAutosave(initial: NoteDraft, saved: boolean, first: Handlers) {
       const position = dropPosition(latest.items, id, toIndex)
       const before = findItem(id)?.position
       if (position === null || before === undefined) return latest
-      placeItem(id, position)
+      patchItem(id, { position })
       // Text still waiting to save goes first, so the Item exists to be moved.
       settleItemText(id)
       enqueue(async () => {
         if (!storedItems.has(id)) return
         if (await handlers.onUpdateItem(id, { position })) return
         if (findItem(id)?.position !== position) return
-        placeItem(id, before)
+        patchItem(id, { position: before })
         onSaved(latest)
       })
       return latest

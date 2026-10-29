@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "vitest"
 import { newId } from "#shared/ids.ts"
-import { dropPosition, orderItems } from "#shared/notes/items.ts"
+import { dropPosition, orderItems, positionBetween } from "#shared/notes/items.ts"
 import {
   itemRows,
   itemWrite,
@@ -301,10 +301,23 @@ describe("moving Items", () => {
     const note = await checklist()
     const milk = await added(note.id, "Milk")
     const eggs = await added(note.id, "Eggs")
-    const moved = await patched(eggs.item.id, { position: positionBefore(milk.item.position) })
+    const moved = await patched(eggs.item.id, {
+      position: positionBetween(null, milk.item.position),
+    })
     expect(Date.parse(moved.noteEditedAt)).toBeGreaterThan(Date.parse(eggs.noteEditedAt))
     const again = await patched(eggs.item.id, { position: moved.item.position })
     expect(again.noteEditedAt).toBe(moved.noteEditedAt)
+  })
+
+  test("a move of an Item checked meanwhile is ignored, and is no edit", async () => {
+    const note = await checklist()
+    const milk = await added(note.id, "Milk")
+    await added(note.id, "Eggs")
+    const ticked = await patched(milk.item.id, { checked: true })
+    const moved = await patched(milk.item.id, { position: "z" })
+    expect(moved.item).toEqual(ticked.item)
+    expect(moved.noteEditedAt).toBe(ticked.noteEditedAt)
+    expect(await listedNote(note.id)).toMatchObject({ editedAt: ticked.noteEditedAt })
   })
 
   test("a position must be a key of base-36 digits not ending in 0", async () => {
@@ -324,18 +337,6 @@ describe("moving Items", () => {
     expect(texts((await itemsOf(note.id)).unchecked)).toEqual(["Milk", "Eggs"])
   })
 })
-
-/** A key just before the given one, as a drop at the top makes. */
-function positionBefore(position: string): string {
-  return dropPosition(
-    [
-      { id: "top", position, checked: false, checkedAt: null },
-      { id: "moved", position: `${position}z`, checked: false, checkedAt: null },
-    ],
-    "moved",
-    0,
-  )!
-}
 
 describe("deleting Items", () => {
   test("removes only that Item", async () => {

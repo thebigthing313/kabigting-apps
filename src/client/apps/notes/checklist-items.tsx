@@ -43,7 +43,7 @@ export type ChecklistItemsProps = ItemHandlers & {
   autoFocusAdd?: boolean
 }
 
-/** The space a row's drag handle takes, kept empty where there is none so rows line up. */
+/** The space an Item's drag handle takes, kept empty where there is none so everything lines up. */
 const HANDLE_SLOT = "flex h-11 w-8 shrink-0 items-center justify-center"
 
 function EditableItem({
@@ -54,7 +54,7 @@ function EditableItem({
   onDeleteItem,
   onLeaveItem,
   handle,
-  rowRef,
+  itemRef,
   style,
   dragging = false,
 }: ItemHandlers & {
@@ -62,13 +62,13 @@ function EditableItem({
   onEnter: () => void
   /** The drag handle, for an unchecked Item. */
   handle?: ReactNode
-  rowRef?: Ref<HTMLLIElement>
+  itemRef?: Ref<HTMLLIElement>
   style?: CSSProperties
   dragging?: boolean
 }) {
   return (
     <li
-      ref={rowRef}
+      ref={itemRef}
       style={style}
       className={cn(
         "group flex min-h-11 items-center gap-2 rounded-md bg-background",
@@ -127,7 +127,7 @@ function SortableItem(props: ItemHandlers & { item: DraftItem; onEnter: () => vo
   return (
     <EditableItem
       {...props}
-      rowRef={setNodeRef}
+      itemRef={setNodeRef}
       style={{
         transform: transform ? `translate3d(0, ${transform.y}px, 0)` : undefined,
         transition,

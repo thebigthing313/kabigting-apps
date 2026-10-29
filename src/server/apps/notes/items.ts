@@ -130,7 +130,12 @@ export function itemRoutes(db: Db) {
                 }
               : {}
         // A move sets only this Item's key, so moves of different Items never undo each other.
-        const move = position === undefined || position === item.position ? {} : { position }
+        // Checked Items order by their tick, so a move that reaches one checked meanwhile is moot
+        // and changes nothing.
+        const move =
+          position === undefined || position === item.position || (checked ?? item.checked)
+            ? {}
+            : { position }
         const changes = {
           ...(text === undefined || text === item.text ? {} : { text }),
           ...tick,

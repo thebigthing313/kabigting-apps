@@ -137,6 +137,11 @@ describe("positionBetween", () => {
     )
   })
 
+  test("refuses neighbours out of order or equal, as nothing fits between", () => {
+    expect(() => positionBetween("s", "c")).toThrow(RangeError)
+    expect(() => positionBetween("c", "c")).toThrow(RangeError)
+  })
+
   test("keeps keys short when Items keep going to the top", () => {
     let top = "i"
     for (let count = 0; count < 100; count += 1) top = positionBetween(null, top)

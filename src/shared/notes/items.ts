@@ -62,9 +62,12 @@ export function appendPosition(positions: readonly string[]): string {
 
 /**
  * A key between two others, like a midpoint: `null` for `before` is the top and for `after` the
- * bottom. The keys must differ, `before` first.
+ * bottom. Throws unless `before` sorts first, as no key fits otherwise.
  */
 export function positionBetween(before: string | null, after: string | null): string {
+  if (before !== null && after !== null && before >= after) {
+    throw new RangeError(`No position between "${before}" and "${after}"`)
+  }
   return between(before ?? "", after)
 }
 

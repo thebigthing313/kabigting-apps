@@ -295,8 +295,8 @@ describe("ticking", () => {
   })
 })
 
-/** Drags an element by `dy` pixels as a finger would: down, a few moves, then up. */
-async function touchDrag(handle: Element, dy: number) {
+/** Drags an element by `dy` pixels with a finger or a mouse: down, a few moves, then up. */
+async function drag(handle: Element, dy: number, pointerType: "touch" | "mouse" = "touch") {
   const box = handle.getBoundingClientRect()
   const x = box.left + box.width / 2
   const y = box.top + box.height / 2
@@ -306,7 +306,7 @@ async function touchDrag(handle: Element, dy: number) {
       cancelable: true,
       isPrimary: true,
       pointerId: 7,
-      pointerType: "touch",
+      pointerType,
       button: 0,
       clientX: x,
       clientY,
@@ -320,15 +320,18 @@ async function touchDrag(handle: Element, dy: number) {
   await pause(16)
 }
 
-/** Picks an Item up by its handle with the keyboard, moves it one place down and drops it. */
-async function keyboardMoveDown(handle: Element) {
+/** Picks an Item up by its handle with the keyboard, moves it one place and drops it. */
+async function keyboardMove(handle: Element, arrow: "{ArrowDown}" | "{ArrowUp}") {
   if (handle instanceof HTMLElement) handle.focus()
   await userEvent.keyboard(" ")
   await pause(50)
-  await userEvent.keyboard("{ArrowDown}")
+  await userEvent.keyboard(arrow)
   await pause(50)
   await userEvent.keyboard(" ")
 }
+
+const keyboardMoveDown = (handle: Element) => keyboardMove(handle, "{ArrowDown}")
+const keyboardMoveUp = (handle: Element) => keyboardMove(handle, "{ArrowUp}")
 
 /** Three unchecked Items and a checked one. */
 const shopping = () => [
@@ -341,9 +344,9 @@ const shopping = () => [
 describe("reordering", () => {
   test("dragging an Item's handle by touch moves it, writing only its position", async () => {
     const { screen, listed, onUpdateItem } = await renderSaved(shopping())
-    const rows = screen.getByRole("list", { name: "To do" }).getByRole("listitem")
-    const rowHeight = rows.first().element().getBoundingClientRect().height
-    await touchDrag(screen.getByRole("button", { name: "Reorder Bread" }).element(), -2 * rowHeight)
+    const lines = screen.getByRole("list", { name: "To do" }).getByRole("listitem")
+    const lineHeight = lines.first().element().getBoundingClientRect().height
+    await drag(screen.getByRole("button", { name: "Reorder Bread" }).element(), -2 * lineHeight)
     await vi.waitFor(() => expect(listed("To do")).toEqual(["Bread", "Milk", "Eggs"]), AT_ONCE)
     await vi.waitFor(() => expect(onUpdateItem).toHaveBeenCalledTimes(1), AT_ONCE)
     const [id, changes] = onUpdateItem.mock.calls[0]!
@@ -351,6 +354,19 @@ describe("reordering", () => {
     expect(Object.keys(changes)).toEqual(["position"])
     expect(changes.position! < "c").toBe(true)
     expect(listed("Checked")).toEqual(["Jam"])
+  })
+
+  test("dragging an Item's handle with a mouse moves it", async () => {
+    const { screen, listed, onUpdateItem } = await renderSaved(shopping())
+    const lines = screen.getByRole("list", { name: "To do" }).getByRole("listitem")
+    const lineHeight = lines.first().element().getBoundingClientRect().height
+    const handle = screen.getByRole("button", { name: "Reorder Milk" }).element()
+    await drag(handle, 2 * lineHeight, "mouse")
+    await vi.waitFor(() => expect(listed("To do")).toEqual(["Eggs", "Bread", "Milk"]), AT_ONCE)
+    await vi.waitFor(() => expect(onUpdateItem).toHaveBeenCalledTimes(1), AT_ONCE)
+    const [id, changes] = onUpdateItem.mock.calls[0]!
+    expect(id).toBe("id-Milk")
+    expect(changes.position! > "s").toBe(true)
   })
 
   test("the handle moves an Item with the keyboard too", async () => {
@@ -365,10 +381,47 @@ describe("reordering", () => {
 
   test("a drop back where it started writes nothing", async () => {
     const { screen, listed, onUpdateItem } = await renderSaved(shopping())
-    await touchDrag(screen.getByRole("button", { name: "Reorder Eggs" }).element(), 6)
+    await drag(screen.getByRole("button", { name: "Reorder Eggs" }).element(), 6)
     await pause(100)
     expect(listed("To do")).toEqual(["Milk", "Eggs", "Bread"])
     expect(onUpdateItem).not.toHaveBeenCalled()
+  })
+
+  test("an Item moved while it is still being added keeps its place once it lands", async () => {
+    const add = deferredSave()
+    const { screen, listed, onAddItem, onUpdateItem } = await renderSaved([
+      item("Milk", "c"),
+      item("Eggs", "i"),
+    ])
+    onAddItem.mockImplementation(() => add.promise)
+    await userEvent.type(screen.getByRole("textbox", { name: "Add item" }), "Bread{Enter}")
+    await keyboardMoveUp(screen.getByRole("button", { name: "Reorder Bread" }).element())
+    await vi.waitFor(() => expect(listed("To do")).toEqual(["Milk", "Bread", "Eggs"]), AT_ONCE)
+    await pause(100)
+    expect(onUpdateItem).not.toHaveBeenCalled()
+    add.resolve(true)
+    // The server put the new Item at the bottom; the move then sets its place.
+    await vi.waitFor(() => expect(onUpdateItem).toHaveBeenCalledTimes(1), AT_ONCE)
+    const [id, changes] = onUpdateItem.mock.calls[0]!
+    expect(id).toBe(onAddItem.mock.calls[0]![0].id)
+    expect(changes.position! > "c" && changes.position! < "i").toBe(true)
+  })
+
+  test("an Item whose add failed is added again when moved, then moved", async () => {
+    const { screen, onAddItem, onUpdateItem } = await renderSaved([
+      item("Milk", "c"),
+      item("Eggs", "i"),
+    ])
+    onAddItem.mockImplementationOnce(() => Promise.resolve(false))
+    await userEvent.type(screen.getByRole("textbox", { name: "Add item" }), "Bread{Enter}")
+    await vi.waitFor(() => expect(onAddItem).toHaveBeenCalledTimes(1), AT_ONCE)
+    await keyboardMoveUp(screen.getByRole("button", { name: "Reorder Bread" }).element())
+    await vi.waitFor(() => expect(onUpdateItem).toHaveBeenCalledTimes(1), AT_ONCE)
+    expect(onAddItem).toHaveBeenCalledTimes(2)
+    expect(onAddItem.mock.invocationCallOrder[1]).toBeLessThan(
+      onUpdateItem.mock.invocationCallOrder[0]!,
+    )
+    expect(Object.keys(onUpdateItem.mock.calls[0]![1])).toEqual(["position"])
   })
 
   test("a move the server refuses is undone", async () => {
