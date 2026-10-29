@@ -6,7 +6,7 @@ import { createOptimisticAction, createTransaction, eq, useLiveQuery } from "@ta
 import { useQuery } from "@tanstack/react-query"
 import { api } from "@/data/api"
 import { defineRestCollection, failedWrite } from "@/data/collection-factory"
-import { readJson } from "@/data/error-handler"
+import { ApiRequestError, readJson } from "@/data/error-handler"
 import { settled } from "@/data/settled"
 import { nowInstant } from "@shared/dates"
 import { bottomOfUnchecked } from "@shared/notes/items"
@@ -322,8 +322,7 @@ const leave = createOptimisticAction<string>({
       await readJson(await api.notes.notes[":id"].leave.$post({ param: { id } }))
     } catch (error) {
       if (!(error instanceof ApiRequestError && error.status === 404)) {
-        reportError(error, "Leaving")
-        throw error
+        await failedWrite(error, "Leaving")
       }
     }
     await notes.utils.writeDelete(id)
