@@ -1,11 +1,11 @@
-import { and, asc, desc, eq, inArray, notInArray, sql, type SQL } from "drizzle-orm"
+import { and, asc, desc, eq, exists, inArray, isNull, notInArray, sql, type SQL } from "drizzle-orm"
 import { Hono } from "hono"
 import { addableAmong } from "#server/apps/notes/people.ts"
 import { visibleTo } from "#server/apps/notes/visibility.ts"
 import type { AppEnv } from "#server/core/context.ts"
 import { ApiError } from "#server/core/errors.ts"
 import { validate } from "#server/core/validate.ts"
-import type { Db } from "#server/db/client.ts"
+import { subquery, type Db } from "#server/db/client.ts"
 import { auth_user, noteAudience, notes } from "#server/db/schema/index.ts"
 import { titleOrNull } from "#shared/notes/notes.ts"
 import {
@@ -42,10 +42,42 @@ async function audiencesOf(db: Db, noteIds: string[]): Promise<Map<string, NoteP
   return audiences
 }
 
-/** The Notes `accountId` may see that also match `where`, as wire rows, newest edit first. */
+/**
+ * The Audience row that makes a Note Unopened for `accountId`: theirs, not yet opened since they
+ * were last added. `noteId` is a Note's id or the outer query's `notes.id`. The Creator has no
+ * Audience row, so their own Notes never match.
+ */
+function unopenedRow(noteId: string | typeof notes.id, accountId: string): SQL {
+  return (
+    and(
+      eq(noteAudience.noteId, noteId),
+      eq(noteAudience.accountId, accountId),
+      isNull(noteAudience.openedAt),
+    ) ?? sql`false`
+  )
+}
+
+/** Whether each Note in the outer query is Unopened for `accountId`. */
+function unopenedBy(accountId: string): SQL {
+  return exists(
+    subquery
+      .select({ noteId: noteAudience.noteId })
+      .from(noteAudience)
+      .where(unopenedRow(notes.id, accountId)),
+  )
+}
+
+/**
+ * The Notes `accountId` may see that also match `where`, as wire rows, newest edit first. The
+ * client does the final ordering, Unopened first (`orderNotes`).
+ */
 async function readNotes(db: Db, accountId: string, where?: SQL): Promise<NoteRow[]> {
   const rows = await db
-    .select({ note: notes, creatorName: auth_user.name })
+    .select({
+      note: notes,
+      creatorName: auth_user.name,
+      unopened: unopenedBy(accountId).mapWith(Boolean),
+    })
     .from(notes)
     .innerJoin(auth_user, eq(auth_user.id, notes.creatorId))
     .where(and(visibleTo(accountId), where))
@@ -54,13 +86,14 @@ async function readNotes(db: Db, accountId: string, where?: SQL): Promise<NoteRo
     db,
     rows.map(({ note }) => note.id),
   )
-  return rows.map(({ note, creatorName }) => ({
+  return rows.map(({ note, creatorName, unopened }) => ({
     id: note.id,
     kind: note.kind,
     title: note.title,
     body: note.body,
     creator: { id: note.creatorId, name: creatorName },
     audience: audiences.get(note.id) ?? [],
+    unopened,
     createdAt: note.createdAt.toISOString(),
     editedAt: note.editedAt.toISOString(),
   }))
@@ -134,6 +167,19 @@ export function noteRoutes(db: Db) {
         .returning({ id: notes.id })
       if (!deleted) notFound()
       return c.json(note)
+    })
+    .post("/:id/open", validate("param", noteParams), async (c) => {
+      const noteId = c.req.valid("param").id
+      const accountId = c.get("account").id
+      // A Note the caller can't see is 404 before anything is written.
+      await readNote(db, accountId, noteId)
+      // Only the caller's own Audience row, and only while Unopened, so the first open's time
+      // stays. Not a content change, so edited at stays. The Creator has no row: a no-op.
+      await db
+        .update(noteAudience)
+        .set({ openedAt: sql`now()` })
+        .where(unopenedRow(noteId, accountId))
+      return c.json(await readNote(db, accountId, noteId))
     })
     .put(
       "/:id/audience",
