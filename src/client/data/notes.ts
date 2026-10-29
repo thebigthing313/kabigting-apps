@@ -32,7 +32,7 @@ export type NoteFields = { title: string; body: string }
 export type NewItem = { id: string; text: string; position: string }
 
 /** The parts of an Item its editor changes, each written on its own. */
-export type ItemChanges = { text?: string; checked?: boolean }
+export type ItemChanges = { text?: string; checked?: boolean; position?: string }
 
 function editable(changes: Partial<NoteRow>): UpdateNote {
   const { title, body } = changes
@@ -72,10 +72,11 @@ async function bumpNoteThenItem({ item, noteEditedAt }: ItemWrite): Promise<Item
 }
 
 function itemChanges(changes: Partial<ItemRow>): UpdateItem {
-  const { text, checked } = changes
+  const { text, checked, position } = changes
   return {
     ...(text === undefined ? {} : { text }),
     ...(checked === undefined ? {} : { checked }),
+    ...(position === undefined ? {} : { position }),
   }
 }
 
@@ -177,8 +178,9 @@ export function addItem(noteId: string, { id, text, position }: NewItem) {
 
 /**
  * Writes only the parts given. A tick shows at once and the server stamps its own time; an
- * untick returns the Item to the bottom of the unchecked Items. Resolves to the Item as the
- * server stored it, tick time included, or null after a refusal (rolled back and reported).
+ * untick returns the Item to the bottom of the unchecked Items; a position moves it among them.
+ * Resolves to the Item as the server stored it, tick time included, or null after a refusal
+ * (rolled back and reported).
  */
 export async function updateItem(id: string, changes: ItemChanges): Promise<Item | null> {
   const items = itemsCollection()
@@ -194,6 +196,7 @@ export async function updateItem(id: string, changes: ItemChanges): Promise<Item
         draft.checkedAt = null
         draft.position = bottomOfUnchecked(checklist)
       }
+      if (changes.position !== undefined) draft.position = changes.position
     }),
   )
   return stored ? (items.get(id) ?? null) : null

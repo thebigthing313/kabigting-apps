@@ -42,23 +42,34 @@ const ITEMS: Item[] = [
 /** The server's clock, which need not agree with this device's. */
 const SERVER_TICK = "2026-10-03T09:00:00.000Z"
 
-function answer(path: string, method: string): unknown {
+/** The bodies of the Item writes sent, in order. */
+let itemPatches: unknown[] = []
+
+function answer(path: string, method: string, body: Record<string, unknown>): unknown {
   if (path === "/api/notes/notes" && method === "GET") return { rows: NOTES }
   if (path === "/api/notes/items" && method === "GET") return { rows: ITEMS }
   if (path === `/api/notes/items/${MILK}` && method === "PATCH") {
-    return {
-      item: { ...ITEMS[0], checked: true, checkedAt: SERVER_TICK },
-      noteEditedAt: SERVER_TICK,
-    }
+    itemPatches.push(body)
+    const tick = body.checked === true ? { checked: true, checkedAt: SERVER_TICK } : {}
+    const move = typeof body.position === "string" ? { position: body.position } : {}
+    return { item: { ...ITEMS[0], ...tick, ...move }, noteEditedAt: SERVER_TICK }
   }
   return { rows: [] }
 }
 
 beforeEach(() => {
+  itemPatches = []
   vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = new URL(input instanceof Request ? input.url : String(input), location.origin)
     const method = (input instanceof Request ? input.method : init?.method) ?? "GET"
-    return Response.json(answer(url.pathname, method.toUpperCase()))
+    const text =
+      input instanceof Request
+        ? await input.clone().text()
+        : typeof init?.body === "string"
+          ? init.body
+          : ""
+    const body: Record<string, unknown> = text ? JSON.parse(text) : {}
+    return Response.json(answer(url.pathname, method.toUpperCase(), body))
   })
 })
 
@@ -91,4 +102,13 @@ test("ticking an Item moves its Checklist to the top of the list, with the serve
   const stored = await updateItem(MILK, { checked: true })
   expect(stored).toMatchObject({ checked: true, checkedAt: SERVER_TICK })
   await vi.waitFor(() => expect(titles()).toEqual(["Groceries", "Wi-Fi"]))
+})
+
+test("moving an Item sends only its new position and keeps it", async () => {
+  const screen = await render(<ListHarness />)
+  await vi.waitFor(() => expect(screen.getByRole("listitem").elements()).toHaveLength(2))
+
+  const stored = await updateItem(MILK, { position: "a" })
+  expect(stored).toMatchObject({ position: "a" })
+  expect(itemPatches).toEqual([{ position: "a" }])
 })
