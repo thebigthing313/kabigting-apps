@@ -4,7 +4,7 @@ import { userEvent } from "vitest/browser"
 import { render } from "vitest-browser-react"
 import { NoteEditor } from "@/apps/notes/note-editor"
 import type { DraftItem, KeptItems, StoredItem } from "@/apps/notes/use-note-draft"
-import type { ItemChanges, NewItem, NoteFields } from "@/data/notes"
+import type { ItemChanges, NewItem, NoteFields, SaveOptions, SaveOutcome } from "@/data/notes"
 import { instantAt } from "@shared/dates"
 
 /** Well inside the typing pause: what saves "at once" has saved by then. */
@@ -38,11 +38,18 @@ function deferredClear() {
 
 async function renderChecklist(items: DraftItem[]) {
   const spies = {
-    onCreate: vi.fn<(fields: NoteFields) => Promise<boolean>>(() => Promise.resolve(true)),
-    onUpdate: vi.fn<(changes: Partial<NoteFields>) => Promise<boolean>>(() =>
-      Promise.resolve(true),
+    onCreate: vi.fn<(fields: NoteFields, options: SaveOptions) => Promise<SaveOutcome>>(() =>
+      Promise.resolve("saved"),
     ),
-    onAddItem: vi.fn<(item: NewItem) => Promise<boolean>>(() => Promise.resolve(true)),
+    onUpdate: vi.fn<(changes: Partial<NoteFields>, options: SaveOptions) => Promise<SaveOutcome>>(
+      () => Promise.resolve("saved"),
+    ),
+    onAddItem: vi.fn<(item: NewItem, options: SaveOptions) => Promise<SaveOutcome>>(() =>
+      Promise.resolve("saved"),
+    ),
+    onUpdateItemText: vi.fn<
+      (id: string, text: string, options: SaveOptions) => Promise<SaveOutcome>
+    >(() => Promise.resolve("saved")),
     onUpdateItem: vi.fn<(id: string, changes: ItemChanges) => Promise<StoredItem | null>>(
       (_id, changes) =>
         Promise.resolve({ checkedAt: changes.checked ? instantAt(Date.now()) : null }),
@@ -69,6 +76,9 @@ async function renderChecklist(items: DraftItem[]) {
   const clearButton = () => screen.getByRole("button", { name: "Clear checked" })
   return { screen, listed, clearButton, ...spies }
 }
+
+/** How a save ordinarily goes out. */
+const NOW = { keepalive: false }
 
 const EARLIER = "2026-10-01T09:00:00.000Z"
 const LATER = "2026-10-01T09:05:00.000Z"
@@ -154,46 +164,43 @@ describe("Clear checked", () => {
 
 describe("text typed into a checked Item just before clearing", () => {
   test("is kept and saved when the server keeps the Item", async () => {
-    const { screen, listed, clearButton, onClearChecked, onUpdateItem } = await renderChecklist([
-      item("Milk", "c"),
-      item("Jam", "i", EARLIER),
-    ])
+    const { screen, listed, clearButton, onClearChecked, onUpdateItemText } = await renderChecklist(
+      [item("Milk", "c"), item("Jam", "i", EARLIER)],
+    )
     // Someone else unticked Jam first; the server still holds its old text.
     onClearChecked.mockResolvedValue({ kept: [item("Jam", "t")] })
     await userEvent.fill(screen.getByRole("textbox", { name: "Item" }).nth(1), "Jam jar")
     await clearButton().click()
     await vi.waitFor(() => expect(listed("To do")).toEqual(["Milk", "Jam jar"]), AT_ONCE)
     await vi.waitFor(
-      () => expect(onUpdateItem).toHaveBeenCalledWith("id-Jam", { text: "Jam jar" }),
+      () => expect(onUpdateItemText).toHaveBeenCalledWith("id-Jam", "Jam jar", NOW),
       SAVED_WITHIN,
     )
   })
 
   test("is kept and saved when the clear is refused", async () => {
-    const { screen, listed, clearButton, onClearChecked, onUpdateItem } = await renderChecklist([
-      item("Milk", "c"),
-      item("Jam", "i", EARLIER),
-    ])
+    const { screen, listed, clearButton, onClearChecked, onUpdateItemText } = await renderChecklist(
+      [item("Milk", "c"), item("Jam", "i", EARLIER)],
+    )
     onClearChecked.mockResolvedValue(null)
     await userEvent.fill(screen.getByRole("textbox", { name: "Item" }).nth(1), "Jam jar")
     await clearButton().click()
     await vi.waitFor(() => expect(listed("Checked")).toEqual(["Jam jar"]), AT_ONCE)
     await vi.waitFor(
-      () => expect(onUpdateItem).toHaveBeenCalledWith("id-Jam", { text: "Jam jar" }),
+      () => expect(onUpdateItemText).toHaveBeenCalledWith("id-Jam", "Jam jar", NOW),
       SAVED_WITHIN,
     )
   })
 
   test("is dropped with its Item when the clear deletes it", async () => {
-    const { screen, listed, clearButton, onClearChecked, onUpdateItem } = await renderChecklist([
-      item("Milk", "c"),
-      item("Jam", "i", EARLIER),
-    ])
+    const { screen, listed, clearButton, onClearChecked, onUpdateItemText } = await renderChecklist(
+      [item("Milk", "c"), item("Jam", "i", EARLIER)],
+    )
     await userEvent.fill(screen.getByRole("textbox", { name: "Item" }).nth(1), "Jam jar")
     await clearButton().click()
     await vi.waitFor(() => expect(onClearChecked).toHaveBeenCalledWith(["id-Jam"]), AT_ONCE)
     await new Promise((resolve) => setTimeout(resolve, 1_500))
-    expect(onUpdateItem).not.toHaveBeenCalled()
+    expect(onUpdateItemText).not.toHaveBeenCalled()
     expect(listed("To do")).toEqual(["Milk"])
   })
 })

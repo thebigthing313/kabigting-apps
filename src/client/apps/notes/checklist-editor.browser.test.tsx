@@ -4,7 +4,7 @@ import { userEvent } from "vitest/browser"
 import { render } from "vitest-browser-react"
 import { NoteEditor, type NoteEditorProps } from "@/apps/notes/note-editor"
 import type { KeptItems, DraftItem, StoredItem } from "@/apps/notes/use-note-draft"
-import type { ItemChanges, NewItem, NoteFields } from "@/data/notes"
+import type { ItemChanges, NewItem, NoteFields, SaveOptions, SaveOutcome } from "@/data/notes"
 import { instantAt } from "@shared/dates"
 
 /** Comfortably past the ~1 s pause after which typing saves. */
@@ -32,11 +32,18 @@ function item(name: string, position: string, checkedAt: string | null = null): 
 
 function callbacks() {
   return {
-    onCreate: vi.fn<(fields: NoteFields) => Promise<boolean>>(() => Promise.resolve(true)),
-    onUpdate: vi.fn<(changes: Partial<NoteFields>) => Promise<boolean>>(() =>
-      Promise.resolve(true),
+    onCreate: vi.fn<(fields: NoteFields, options: SaveOptions) => Promise<SaveOutcome>>(() =>
+      Promise.resolve("saved"),
     ),
-    onAddItem: vi.fn<(item: NewItem) => Promise<boolean>>(() => Promise.resolve(true)),
+    onUpdate: vi.fn<(changes: Partial<NoteFields>, options: SaveOptions) => Promise<SaveOutcome>>(
+      () => Promise.resolve("saved"),
+    ),
+    onAddItem: vi.fn<(item: NewItem, options: SaveOptions) => Promise<SaveOutcome>>(() =>
+      Promise.resolve("saved"),
+    ),
+    onUpdateItemText: vi.fn<
+      (id: string, text: string, options: SaveOptions) => Promise<SaveOutcome>
+    >(() => Promise.resolve("saved")),
     // The server stamps a tick with its own time.
     onUpdateItem: vi.fn<(id: string, changes: ItemChanges) => Promise<StoredItem | null>>(
       (_id, changes) =>
@@ -76,12 +83,16 @@ const serverNow = () => instantAt(Date.now() + 60 * 60_000)
 
 /** A save the test settles by hand, to act while it is in flight. */
 function deferredSave() {
-  const settle: { resolve?: (stored: boolean) => void } = {}
-  const promise = new Promise<boolean>((resolve) => {
+  const settle: { resolve?: (outcome: SaveOutcome) => void } = {}
+  const promise = new Promise<SaveOutcome>((resolve) => {
     settle.resolve = resolve
   })
-  return { promise, resolve: (stored: boolean) => settle.resolve?.(stored) }
+  return { promise, resolve: (outcome: SaveOutcome) => settle.resolve?.(outcome) }
 }
+
+/** How a save ordinarily goes out, and how it goes out when the page is being left. */
+const NOW = { keepalive: false }
+const LEAVING = { keepalive: true }
 
 describe("a new Checklist", () => {
   test("opens with a title and an Add item row, and no body", async () => {
@@ -97,7 +108,7 @@ describe("a new Checklist", () => {
     await userEvent.type(screen.getByRole("textbox", { name: "Add item" }), "Eggs{Enter}")
     await vi.waitFor(() => expect(onAddItem).toHaveBeenCalledTimes(2), AT_ONCE)
     expect(onCreate).toHaveBeenCalledTimes(1)
-    expect(onCreate).toHaveBeenCalledWith({ title: "", body: "" })
+    expect(onCreate).toHaveBeenCalledWith({ title: "", body: "" }, NOW)
     expect(onCreate.mock.invocationCallOrder[0]).toBeLessThan(
       onAddItem.mock.invocationCallOrder[0]!,
     )
@@ -121,7 +132,7 @@ describe("a new Checklist", () => {
     await userEvent.type(screen.getByRole("textbox", { name: "Add item" }), "Bread")
     await screen.unmount()
     await vi.waitFor(() =>
-      expect(onAddItem).toHaveBeenCalledWith(expect.objectContaining({ text: "Bread" })),
+      expect(onAddItem).toHaveBeenCalledWith(expect.objectContaining({ text: "Bread" }), LEAVING),
     )
     expect(onCreate).toHaveBeenCalledTimes(1)
   })
@@ -142,23 +153,23 @@ describe("Items", () => {
   })
 
   test("editing an Item's text writes only that Item, once typing pauses", async () => {
-    const { screen, onUpdateItem, onUpdate } = await renderSaved([
+    const { screen, onUpdateItemText, onUpdate } = await renderSaved([
       item("Milk", "c"),
       item("Eggs", "s"),
     ])
     await userEvent.fill(screen.getByRole("textbox", { name: "Item" }).first(), "Oat milk")
     await pause(300)
-    expect(onUpdateItem).not.toHaveBeenCalled()
+    expect(onUpdateItemText).not.toHaveBeenCalled()
     await vi.waitFor(
-      () => expect(onUpdateItem).toHaveBeenCalledWith("id-Milk", { text: "Oat milk" }),
+      () => expect(onUpdateItemText).toHaveBeenCalledWith("id-Milk", "Oat milk", NOW),
       SAVED_WITHIN,
     )
-    expect(onUpdateItem).toHaveBeenCalledTimes(1)
+    expect(onUpdateItemText).toHaveBeenCalledTimes(1)
     expect(onUpdate).not.toHaveBeenCalled()
   })
 
   test("a blank Item is dropped when left", async () => {
-    const { screen, listed, onUpdateItem, onDeleteItem } = await renderSaved([
+    const { screen, listed, onUpdateItemText, onDeleteItem } = await renderSaved([
       item("Milk", "c"),
       item("Eggs", "s"),
     ])
@@ -167,7 +178,7 @@ describe("Items", () => {
     await vi.waitFor(() => expect(onDeleteItem).toHaveBeenCalledWith("id-Milk"), AT_ONCE)
     expect(listed("To do")).toEqual(["Eggs"])
     await pause(1_200)
-    expect(onUpdateItem).not.toHaveBeenCalled()
+    expect(onUpdateItemText).not.toHaveBeenCalled()
   })
 
   test("the delete button deletes only that Item, at once", async () => {
@@ -280,7 +291,7 @@ describe("ticking", () => {
     await screen.getByRole("checkbox", { name: "Milk" }).click()
     await pause(100)
     expect(onUpdateItem).not.toHaveBeenCalled()
-    add.resolve(true)
+    add.resolve("saved")
     await vi.waitFor(() => expect(onUpdateItem).toHaveBeenCalled(), AT_ONCE)
     await pause(100)
     expect(onAddItem).toHaveBeenCalledTimes(1)
@@ -288,14 +299,118 @@ describe("ticking", () => {
   })
 
   test("an Item ticked right after typing saves its text first", async () => {
-    const { screen, onUpdateItem } = await renderSaved([item("Milk", "c")])
+    const { screen, onUpdateItem, onUpdateItemText } = await renderSaved([item("Milk", "c")])
     await userEvent.fill(screen.getByRole("textbox", { name: "Item" }), "Oat milk")
     await screen.getByRole("checkbox", { name: "Oat milk" }).click()
-    await vi.waitFor(() => expect(onUpdateItem).toHaveBeenCalledTimes(2), AT_ONCE)
-    expect(onUpdateItem.mock.calls).toEqual([
-      ["id-Milk", { text: "Oat milk" }],
-      ["id-Milk", { checked: true }],
-    ])
+    await vi.waitFor(() => expect(onUpdateItem).toHaveBeenCalledTimes(1), AT_ONCE)
+    expect(onUpdateItemText.mock.calls).toEqual([["id-Milk", "Oat milk", NOW]])
+    expect(onUpdateItem.mock.calls).toEqual([["id-Milk", { checked: true }]])
+    expect(onUpdateItemText.mock.invocationCallOrder[0]).toBeLessThan(
+      onUpdateItem.mock.invocationCallOrder[0]!,
+    )
+  })
+})
+
+describe("Item text that can't reach the server", () => {
+  test("keeps the text, marked Not saved, and retries on reconnecting", async () => {
+    const { screen, onUpdateItemText } = await renderSaved([item("Milk", "c"), item("Eggs", "s")])
+    onUpdateItemText.mockResolvedValueOnce("unreached")
+    const milk = screen.getByRole("textbox", { name: "Item" }).first()
+    await userEvent.fill(milk, "Oat milk")
+    await vi.waitFor(() => expect(onUpdateItemText).toHaveBeenCalledTimes(1), SAVED_WITHIN)
+    await expect.element(milk).toHaveAccessibleDescription("Not saved")
+    await expect.element(milk).toHaveValue("Oat milk")
+    await expect
+      .element(screen.getByRole("textbox", { name: "Item" }).nth(1))
+      .not.toHaveAccessibleDescription()
+
+    window.dispatchEvent(new Event("online"))
+    await vi.waitFor(() => expect(onUpdateItemText).toHaveBeenCalledTimes(2), AT_ONCE)
+    expect(onUpdateItemText).toHaveBeenLastCalledWith("id-Milk", "Oat milk", NOW)
+    await expect.element(milk).not.toHaveAccessibleDescription()
+  })
+
+  test("an Item whose add can't reach the server is added by the retry", async () => {
+    const { screen, onAddItem } = await renderSaved([])
+    onAddItem.mockResolvedValueOnce("unreached")
+    await userEvent.type(screen.getByRole("textbox", { name: "Add item" }), "Milk{Enter}")
+    const milk = screen.getByRole("textbox", { name: "Item" })
+    await expect.element(milk).toHaveAccessibleDescription("Not saved")
+
+    window.dispatchEvent(new Event("focus"))
+    await vi.waitFor(() => expect(onAddItem).toHaveBeenCalledTimes(2), AT_ONCE)
+    await expect.element(milk).not.toHaveAccessibleDescription()
+  })
+
+  test("a tick on an Item whose add can't reach the server is sent once the retry adds it", async () => {
+    const { screen, onAddItem, onUpdateItem } = await renderSaved([])
+    // The add, and the add the tick tries again, can't reach the server.
+    onAddItem.mockResolvedValueOnce("unreached").mockResolvedValueOnce("unreached")
+    await userEvent.type(screen.getByRole("textbox", { name: "Add item" }), "Milk{Enter}")
+    await expect
+      .element(screen.getByRole("textbox", { name: "Item" }))
+      .toHaveAccessibleDescription("Not saved")
+    await screen.getByRole("checkbox", { name: "Milk" }).click()
+    await vi.waitFor(() => expect(onAddItem).toHaveBeenCalledTimes(2), AT_ONCE)
+    await pause(200)
+    expect(onUpdateItem).not.toHaveBeenCalled()
+
+    window.dispatchEvent(new Event("online"))
+    await vi.waitFor(() => expect(onUpdateItem).toHaveBeenCalledTimes(1), AT_ONCE)
+    expect(onAddItem).toHaveBeenCalledTimes(3)
+    expect(onUpdateItem).toHaveBeenCalledWith(expect.any(String), { checked: true })
+    expect(onAddItem.mock.invocationCallOrder[2]).toBeLessThan(
+      onUpdateItem.mock.invocationCallOrder[0]!,
+    )
+  })
+
+  test("a tick the server refuses is undone", async () => {
+    const { screen, listed, onUpdateItem } = await renderSaved([item("Milk", "c")])
+    onUpdateItem.mockResolvedValueOnce(null)
+    await screen.getByRole("checkbox", { name: "Milk" }).click()
+    await vi.waitFor(() => expect(listed("To do")).toEqual(["Milk"]), AT_ONCE)
+    await expect.element(screen.getByRole("checkbox", { name: "Milk" })).not.toBeChecked()
+  })
+
+  test("an Item whose add got no answer is still deleted on the server", async () => {
+    const { screen, onAddItem, onDeleteItem } = await renderSaved([])
+    onAddItem.mockResolvedValueOnce("unreached")
+    await userEvent.type(screen.getByRole("textbox", { name: "Add item" }), "Milk{Enter}")
+    await vi.waitFor(() => expect(onAddItem).toHaveBeenCalledTimes(1), AT_ONCE)
+    await screen.getByRole("button", { name: "Delete item" }).click()
+    await vi.waitFor(() => expect(onDeleteItem).toHaveBeenCalledTimes(1), AT_ONCE)
+    await pause(200)
+    expect(onAddItem).toHaveBeenCalledTimes(1)
+  })
+
+  test("an add that throws leaves the Item to be added, ticked and deleted later", async () => {
+    const { screen, onAddItem, onUpdateItem, onDeleteItem } = await renderSaved([])
+    onAddItem.mockImplementationOnce(() => {
+      throw new Error("Already in the collection")
+    })
+    await userEvent.type(screen.getByRole("textbox", { name: "Add item" }), "Milk{Enter}")
+    await vi.waitFor(() => expect(onAddItem).toHaveBeenCalledTimes(1), AT_ONCE)
+
+    // Ticking adds it again, then ticks it; deleting then deletes it.
+    await screen.getByRole("checkbox", { name: "Milk" }).click()
+    await vi.waitFor(() => expect(onUpdateItem).toHaveBeenCalledTimes(1), AT_ONCE)
+    expect(onAddItem).toHaveBeenCalledTimes(2)
+    await screen.getByRole("button", { name: "Delete item" }).click()
+    await vi.waitFor(() => expect(onDeleteItem).toHaveBeenCalledTimes(1), AT_ONCE)
+  })
+
+  test("leaving the page sends pending Item text and the Add item row at once", async () => {
+    const { screen, onUpdateItemText, onAddItem } = await renderSaved([item("Milk", "c")])
+    await userEvent.fill(screen.getByRole("textbox", { name: "Item" }), "Oat milk")
+    await userEvent.type(screen.getByRole("textbox", { name: "Add item" }), "Bread")
+    // Nothing settles, as on a page being unloaded: every save must already be on its way.
+    onUpdateItemText.mockImplementation(() => new Promise<SaveOutcome>(() => {}))
+    onAddItem.mockImplementation(() => new Promise<SaveOutcome>(() => {}))
+    window.dispatchEvent(new PageTransitionEvent("pagehide"))
+    await vi.waitFor(() => {
+      expect(onUpdateItemText).toHaveBeenCalledWith("id-Milk", "Oat milk", LEAVING)
+      expect(onAddItem).toHaveBeenCalledWith(expect.objectContaining({ text: "Bread" }), LEAVING)
+    }, AT_ONCE)
   })
 })
 
@@ -403,7 +518,7 @@ describe("reordering", () => {
     await vi.waitFor(() => expect(listed("To do")).toEqual(["Milk", "Bread", "Eggs"]), AT_ONCE)
     await pause(100)
     expect(onUpdateItem).not.toHaveBeenCalled()
-    add.resolve(true)
+    add.resolve("saved")
     // The server put the new Item at the bottom; the move then sets its place.
     await vi.waitFor(() => expect(onUpdateItem).toHaveBeenCalledTimes(1), AT_ONCE)
     const [id, changes] = onUpdateItem.mock.calls[0]!
@@ -416,7 +531,7 @@ describe("reordering", () => {
       item("Milk", "c"),
       item("Eggs", "i"),
     ])
-    onAddItem.mockImplementationOnce(() => Promise.resolve(false))
+    onAddItem.mockImplementationOnce(() => Promise.resolve("refused"))
     await userEvent.type(screen.getByRole("textbox", { name: "Add item" }), "Bread{Enter}")
     await vi.waitFor(() => expect(onAddItem).toHaveBeenCalledTimes(1), AT_ONCE)
     await keyboardMoveUp(screen.getByRole("button", { name: "Reorder Bread" }).element())

@@ -17,7 +17,8 @@ import {
 } from "@dnd-kit/sortable"
 import { cn } from "cn"
 import { ChevronDownIcon, GripVerticalIcon, PlusIcon, XIcon } from "lucide-react"
-import { useRef, useState, type CSSProperties, type ReactNode, type Ref } from "react"
+import { useId, useRef, useState, type CSSProperties, type ReactNode, type Ref } from "react"
+import { NotSaved } from "@/apps/notes/note-parts"
 import type { DraftItem } from "@/apps/notes/use-note-draft"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -29,6 +30,8 @@ type ItemHandlers = {
   onDeleteItem: (id: string) => void
   /** The Item lost focus: a blank one is dropped. */
   onBlurItem: (id: string) => void
+  /** Whether an Item's text is "Not saved". */
+  isNotSaved?: (id: string) => boolean
 }
 
 export type ChecklistItemsProps = ItemHandlers & {
@@ -55,6 +58,7 @@ function EditableItem({
   onToggleItem,
   onDeleteItem,
   onBlurItem,
+  isNotSaved = () => false,
   handle,
   itemRef,
   style,
@@ -68,12 +72,14 @@ function EditableItem({
   style?: CSSProperties
   dragging?: boolean
 }) {
+  const notSavedId = useId()
+  const notSaved = isNotSaved(item.id)
   return (
     <li
       ref={itemRef}
       style={style}
       className={cn(
-        "group flex min-h-11 items-center gap-2 rounded-md bg-background",
+        "group flex min-h-11 flex-wrap items-center gap-x-2 rounded-md bg-background",
         dragging && "relative z-10 bg-muted shadow-sm",
       )}
     >
@@ -96,6 +102,7 @@ function EditableItem({
           }
         }}
         maxLength={1_000}
+        aria-describedby={notSaved ? notSavedId : undefined}
         className={cn(
           "ml-1 min-w-0 flex-1 bg-transparent py-2 text-base outline-none",
           item.checked && "text-muted-foreground line-through",
@@ -111,6 +118,11 @@ function EditableItem({
       >
         <XIcon />
       </Button>
+      {notSaved && (
+        <div className="basis-full pb-1 pl-20">
+          <NotSaved id={notSavedId} />
+        </div>
+      )}
     </li>
   )
 }

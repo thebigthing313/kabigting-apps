@@ -1,12 +1,10 @@
 import { useEffect, useState } from "react"
-import type { ItemChanges, NewItem, NoteFields } from "@/data/notes"
+import { createTypedTextSaver, useTypedTextLifecycle } from "@/apps/notes/typed-text"
+import type { ItemChanges, NewItem, NoteFields, SaveOptions, SaveOutcome } from "@/data/notes"
 import { nowInstant } from "@shared/dates"
 import { newId } from "@shared/ids"
 import { bottomOfUnchecked, dropPosition } from "@shared/notes/items"
 import { isBlankItem, isEmptyNote } from "@shared/notes/notes"
-
-/** How long typing must pause before a field saves. */
-export const SAVE_DELAY_MS = 1_000
 
 type Field = keyof NoteFields
 
@@ -35,13 +33,15 @@ export type StoredItem = { checkedAt: string | null }
 export type KeptItems = { kept: DraftItem[] }
 
 type Handlers = {
-  /** Stores a new Note with everything typed so far; resolves true once stored. */
-  onCreate: (fields: NoteFields) => Promise<boolean>
-  /** Stores one field's latest text; resolves true once stored. */
-  onUpdate: (changes: Partial<NoteFields>) => Promise<boolean>
-  /** Stores a new Item in the saved Checklist; resolves true once stored. */
-  onAddItem: (item: NewItem) => Promise<boolean>
-  /** Stores one change to one Item; resolves to the Item as stored, or null after a refusal. */
+  /** Stores a new Note with everything typed so far. */
+  onCreate: (fields: NoteFields, options: SaveOptions) => Promise<SaveOutcome>
+  /** Stores one field's latest text. */
+  onUpdate: (changes: Partial<NoteFields>, options: SaveOptions) => Promise<SaveOutcome>
+  /** Stores a new Item in the saved Checklist, as its text first saves. */
+  onAddItem: (item: NewItem, options: SaveOptions) => Promise<SaveOutcome>
+  /** Stores one Item's latest text. */
+  onUpdateItemText: (id: string, text: string, options: SaveOptions) => Promise<SaveOutcome>
+  /** Ticks or unticks one Item; resolves to the Item as stored, or null after a refusal. */
   onUpdateItem: (id: string, changes: ItemChanges) => Promise<StoredItem | null>
   /** Deletes one Item; resolves true once deleted. */
   onDeleteItem: (id: string) => Promise<boolean>
@@ -69,106 +69,161 @@ function toDraftItem(
 /** Where changes go while no editor listens. */
 function unheard(): void {}
 
-/** A timer key: a field, or one Item's text. */
+/** Runs a save, counting one that throws, at once or later, as refused (reported where it failed). */
+function attempt(save: () => Promise<SaveOutcome>): Promise<SaveOutcome> {
+  return new Promise<SaveOutcome>((resolve) => resolve(save())).catch((): SaveOutcome => "refused")
+}
+
+/** A saving key: a field, or one Item's text. */
 type SaveKey = Field | `item:${string}`
+
+const itemKey = (id: string): SaveKey => `item:${id}`
 
 /**
  * The saving behind an editor, outside React so it outlives the page: pending saves still run
- * after the editor unmounts.
+ * after the editor unmounts. Typed text (the fields and each Item's text) saves through the
+ * typed-text saver: "Not saved" and retried when it can't reach the server, sent at once on
+ * leaving. Ticks and deletes run in order after their Item's text.
  */
-function createAutosave(initial: NoteDraft, saved: boolean, first: Handlers) {
+function createAutosave(
+  initial: NoteDraft,
+  saved: boolean,
+  first: Handlers,
+  onNotSaved: (keys: ReadonlySet<SaveKey>) => void,
+) {
   let latest = initial
   let exists = saved
   /** The Items the server holds; the rest exist only here so far. */
   const storedItems = new Set(initial.items.map((item) => item.id))
-  /** Items whose add is queued or in flight. */
-  const addingItems = new Set<string>()
-  /** Told of changes the server makes after a save, such as an Item's tick time. */
-  let onSaved: (draft: NoteDraft) => void = unheard
+  /** The create on its way, which every save waits for, and the fields it carried. */
+  let creating: Promise<SaveOutcome> | null = null
+  let created: NoteFields | null = null
+  /** Items whose add is on its way, and the text each add carried. */
+  const addingItems = new Map<string, Promise<SaveOutcome>>()
+  const addedText = new Map<string, string>()
+  /** Items whose last add got no answer: the server may hold them, so a delete still goes. */
+  const unsureItems = new Set<string>()
+  /** Items with a tick or untick queued, which sends once their add lands. */
+  const ticking = new Set<string>()
+  /** Told of changes made outside a keystroke, such as an Item's tick time from the server. */
+  let onChanged: (draft: NoteDraft) => void = unheard
   let discarded = false
-  /** Set once the viewer Leaves: saves already queued still run, but none is queued after. */
-  let stopped = false
   let handlers = first
-  const timers = new Map<SaveKey, ReturnType<typeof setTimeout>>()
-  // Saves run one at a time, so a field's update never overtakes the create, an Item never
-  // reaches the server before its Checklist, and a delete can wait for the save in flight.
-  let queue: Promise<unknown> = Promise.resolve()
-
-  function enqueue(write: () => Promise<unknown>) {
-    if (stopped) return
-    queue = queue
-      .then(async () => {
-        // A save queued before the Note was deleted must not land after the delete.
-        if (!discarded) await write()
-      })
-      // A failed save is reported where it failed; the saves behind it still run.
-      .catch(() => {})
-  }
 
   const findItem = (id: string) => latest.items.find((item) => item.id === id)
+  /** Whether the last create got no answer, so the server may hold the Note after all. */
+  let unsureNote = false
 
-  /** Creates the Note with everything typed so far, once there is something. */
-  async function ensureNote(): Promise<boolean> {
-    if (!exists && !isEmptyNote(latest.fields, latest.items)) {
-      exists = await handlers.onCreate({ ...latest.fields })
-    }
-    return exists
-  }
-
-  function saveField(field: Field) {
-    enqueue(async () => {
-      if (exists) await handlers.onUpdate({ [field]: latest.fields[field] })
-      else await ensureNote()
-    })
-  }
-
-  /** Saves an Item's latest text: the first save with text adds it. Blank text waits. */
-  function saveItemText(id: string) {
-    const adds = !storedItems.has(id)
-    if (adds) addingItems.add(id)
-    enqueue(async () => {
-      try {
-        // An Item deleted meanwhile is never brought back by a late save.
-        const item = findItem(id)
-        if (!item || isBlankItem(item)) return
-        if (storedItems.has(id)) {
-          await handlers.onUpdateItem(id, { text: item.text })
-        } else if (await ensureNote()) {
-          const { text, position } = item
-          if (await handlers.onAddItem({ id, text, position })) storedItems.add(id)
-        }
-      } finally {
-        if (adds) addingItems.delete(id)
+  /**
+   * Creates the Note with everything typed so far, once for every save asking at once. Saves,
+   * leaving's included, wait for a create on its way: nothing may reach the server before it, so
+   * leaving during one can lose up to about a second of typing.
+   */
+  function ensureNote(options: SaveOptions): Promise<SaveOutcome> {
+    if (exists) return Promise.resolve("saved")
+    if (creating) return creating
+    const fields = { ...latest.fields }
+    creating = attempt(() => handlers.onCreate(fields, options)).then((outcome) => {
+      creating = null
+      // A create that got no answer may still have been stored.
+      unsureNote = outcome === "unreached"
+      if (outcome === "saved") {
+        exists = true
+        created = fields
       }
+      return outcome
     })
-  }
-
-  function save(key: SaveKey) {
-    if (key === "title" || key === "body") saveField(key)
-    else saveItemText(key.slice("item:".length))
-  }
-
-  function schedule(key: SaveKey) {
-    clearTimeout(timers.get(key))
-    timers.set(
-      key,
-      setTimeout(() => {
-        timers.delete(key)
-        save(key)
-      }, SAVE_DELAY_MS),
-    )
+    return creating
   }
 
   /**
-   * Runs an Item's pending text save now, ahead of a change that must follow it. An Item that is
-   * neither stored nor being added (its add failed) is added again.
+   * Adds an Item with its text so far, after the Note exists; once for every save asking. Like
+   * the create, saves of the Item wait for an add on its way. A tick made before the add landed
+   * is sent once it has.
+   */
+  function addItemOnce(id: string, options: SaveOptions): Promise<SaveOutcome> {
+    const adding = addingItems.get(id)
+    if (adding) return adding
+    const add = (async (): Promise<SaveOutcome> => {
+      const note = await ensureNote(options)
+      if (note !== "saved") return note
+      const item = findItem(id)
+      // Deleted or emptied meanwhile, or the Note is being deleted: nothing to add.
+      if (discarded || !item || isBlankItem(item)) return "saved"
+      const { text, position } = item
+      const outcome = await attempt(() => handlers.onAddItem({ id, text, position }, options))
+      // An add that never got an answer may still have been stored.
+      if (outcome === "unreached") unsureItems.add(id)
+      else unsureItems.delete(id)
+      if (outcome === "saved") {
+        storedItems.add(id)
+        addedText.set(id, text)
+        // An Item is added unchecked; a tick made before, and not already waiting, follows.
+        if (findItem(id)?.checked && !ticking.has(id)) {
+          saver.run(itemKey(id), () => tick(id, true))
+        }
+      }
+      return outcome
+    })()
+    addingItems.set(id, add)
+    void add.then(() => addingItems.delete(id))
+    return add
+  }
+
+  /** Sends a tick or untick of a stored Item; a refused one is undone here too. */
+  async function tick(id: string, checked: boolean) {
+    const stored = await new Promise<StoredItem | null>((resolve) =>
+      resolve(handlers.onUpdateItem(id, { checked })),
+    ).catch(() => null)
+    if (stored) takeTickTime(id, stored)
+    else undoTick(id, checked)
+  }
+
+  async function saveField(field: Field, text: string, options: SaveOptions) {
+    if (!exists) {
+      // An empty new Note is never stored.
+      if (isEmptyNote(latest.fields, latest.items)) return "saved"
+      // The create carries every field typed so far; an update never reaches the server first.
+      const outcome = await ensureNote(options)
+      if (outcome !== "saved") return outcome
+      if (discarded || created?.[field] === text) return "saved"
+    }
+    return handlers.onUpdate({ [field]: text }, options)
+  }
+
+  /** Saves an Item's text: its first save with text adds it. Blank text waits. */
+  async function saveItemText(id: string, text: string, options: SaveOptions) {
+    // An Item deleted meanwhile is never brought back by a late save.
+    const item = findItem(id)
+    if (!item || isBlankItem(item)) return "saved"
+    if (!storedItems.has(id)) {
+      const outcome = await addItemOnce(id, options)
+      if (outcome !== "saved" || discarded || addedText.get(id) === text || !findItem(id)) {
+        return outcome
+      }
+    }
+    return handlers.onUpdateItemText(id, text, options)
+  }
+
+  const saver = createTypedTextSaver<SaveKey>({
+    read: (key) =>
+      key === "title" || key === "body"
+        ? latest.fields[key]
+        : (findItem(key.slice("item:".length))?.text ?? ""),
+    onNotSaved,
+    save: (key, text, options) =>
+      key === "title" || key === "body"
+        ? saveField(key, text, options)
+        : saveItemText(key.slice("item:".length), text, options),
+  })
+
+  /**
+   * Saves an Item's text now, ahead of a change that must follow it, unless it is already
+   * stored or on its way. An Item whose add failed is added again.
    */
   function settleItemText(id: string) {
-    const key: SaveKey = `item:${id}`
-    if (!timers.has(key) && (storedItems.has(id) || addingItems.has(id))) return
-    clearTimeout(timers.get(key))
-    timers.delete(key)
-    saveItemText(id)
+    const key = itemKey(id)
+    if (saver.hasPause(key) || (!storedItems.has(id) && !addingItems.has(id))) saver.saveNow(key)
   }
 
   function setItems(items: DraftItem[]) {
@@ -176,12 +231,36 @@ function createAutosave(initial: NoteDraft, saved: boolean, first: Handlers) {
   }
 
   function removeItem(id: string) {
-    clearTimeout(timers.get(`item:${id}`))
-    timers.delete(`item:${id}`)
+    const key = itemKey(id)
+    saver.forget(key)
     setItems(latest.items.filter((item) => item.id !== id))
-    enqueue(async () => {
-      if (storedItems.has(id) && (await handlers.onDeleteItem(id))) storedItems.delete(id)
+    saver.run(key, async () => {
+      // An add on its way lands first, so the Item it stores is deleted too. One whose add got
+      // no answer may be stored all the same: the delete goes anyway, and "already gone" is fine.
+      await addingItems.get(id)
+      if (!storedItems.has(id) && !unsureItems.has(id)) return
+      const deleted = await new Promise<boolean>((resolve) =>
+        resolve(handlers.onDeleteItem(id)),
+      ).catch(() => false)
+      if (deleted) {
+        storedItems.delete(id)
+        unsureItems.delete(id)
+      }
     })
+  }
+
+  /** Undoes a tick or untick the server refused, as its toast says. */
+  function undoTick(id: string, checked: boolean) {
+    const item = findItem(id)
+    if (item?.checked !== checked) return
+    setItems(
+      latest.items.map((each) =>
+        each.id === id
+          ? { ...each, checked: !checked, checkedAt: checked ? null : each.checkedAt }
+          : each,
+      ),
+    )
+    onChanged(latest)
   }
 
   function addTyped(id: string) {
@@ -190,7 +269,15 @@ function createAutosave(initial: NoteDraft, saved: boolean, first: Handlers) {
     if (isBlankItem({ text })) return
     const position = bottomOfUnchecked(latest.items)
     setItems([...latest.items, { id, text, checked: false, checkedAt: null, position }])
-    saveItemText(id)
+    saver.saveNow(itemKey(id))
+  }
+
+  /** Before the page or Note is left: the "Add item" row becomes an Item and blank Items go. */
+  function takeAddRowAndDropBlanks() {
+    const before = latest
+    addTyped(newId())
+    for (const item of latest.items) if (isBlankItem(item)) removeItem(item.id)
+    if (latest !== before) onChanged(latest)
   }
 
   /**
@@ -203,42 +290,46 @@ function createAutosave(initial: NoteDraft, saved: boolean, first: Handlers) {
     const cleared = latest.items.filter((item) => item.checked)
     if (cleared.length === 0) return
     const ids = new Set(cleared.map((item) => item.id))
-    // Text still waiting to save waits on the clear: it is moot if its Item goes.
+    // Text not yet saved, pausing or "Not saved", waits on the clear: it is moot if its Item goes.
     const typed = new Map(
-      cleared.filter((item) => timers.has(`item:${item.id}`)).map((item) => [item.id, item.text]),
+      cleared
+        .filter((item) => saver.hasUnsaved(itemKey(item.id)))
+        .map((item) => [item.id, item.text]),
     )
-    for (const id of typed.keys()) {
-      clearTimeout(timers.get(`item:${id}`))
-      timers.delete(`item:${id}`)
-    }
+    for (const id of ids) saver.forget(itemKey(id))
     setItems(latest.items.filter((item) => !ids.has(item.id)))
-    enqueue(async () => {
+    saver.run([...ids].map(itemKey), async () => {
+      // Adds on their way land first, so the Items they store are cleared too.
+      await Promise.all([...ids].map((id) => addingItems.get(id) ?? Promise.resolve()))
       const sent = [...ids].filter((id) => storedItems.has(id))
-      if (sent.length === 0) return
-      const result = await handlers.onClearChecked(sent)
-      const returned = result === null ? cleared : result.kept
-      const survivors = new Set(returned.map((item) => item.id))
-      for (const id of sent) if (!survivors.has(id)) storedItems.delete(id)
-      const here = new Set(latest.items.map((item) => item.id))
-      const back = returned
-        .filter((item) => !here.has(item.id))
-        .map((item) => toDraftItem(item, typed.get(item.id)))
-      if (back.length > 0) {
-        setItems([...latest.items, ...back])
-        onSaved(latest)
+      if (sent.length > 0) {
+        const result = await new Promise<KeptItems | null>((resolve) =>
+          resolve(handlers.onClearChecked(sent)),
+        ).catch(() => null)
+        const returned = result === null ? cleared : result.kept
+        const survivors = new Set(returned.map((item) => item.id))
+        for (const id of sent) if (!survivors.has(id)) storedItems.delete(id)
+        const here = new Set(latest.items.map((item) => item.id))
+        const back = returned
+          .filter((item) => !here.has(item.id))
+          .map((item) => toDraftItem(item, typed.get(item.id)))
+        if (back.length > 0) {
+          setItems([...latest.items, ...back])
+          onChanged(latest)
+        }
+        for (const id of typed.keys()) {
+          if (survivors.has(id) && findItem(id)) saver.changed(itemKey(id))
+        }
       }
-      for (const id of typed.keys()) if (survivors.has(id) && findItem(id)) schedule(`item:${id}`)
+      // An Item whose add got no answer may be stored, unchecked: it is deleted outright.
+      for (const id of ids) {
+        if (storedItems.has(id) || !unsureItems.has(id)) continue
+        const deleted = await new Promise<boolean>((resolve) =>
+          resolve(handlers.onDeleteItem(id)),
+        ).catch(() => false)
+        if (deleted) unsureItems.delete(id)
+      }
     })
-  }
-
-  /** Saves everything still waiting for its pause, now, and drops blank Items. */
-  function flush() {
-    addTyped(newId())
-    const pending = [...timers.keys()]
-    for (const timer of timers.values()) clearTimeout(timer)
-    timers.clear()
-    for (const key of pending) save(key)
-    for (const item of latest.items) if (isBlankItem(item)) removeItem(item.id)
   }
 
   /** Changes one Item, leaving the rest as they are. */
@@ -251,7 +342,7 @@ function createAutosave(initial: NoteDraft, saved: boolean, first: Handlers) {
     const item = findItem(id)
     if (!item?.checked || stored.checkedAt === null || stored.checkedAt === item.checkedAt) return
     patchItem(id, { checkedAt: stored.checkedAt })
-    onSaved(latest)
+    onChanged(latest)
   }
 
   return {
@@ -260,13 +351,13 @@ function createAutosave(initial: NoteDraft, saved: boolean, first: Handlers) {
     },
 
     listen(listener: (draft: NoteDraft) => void) {
-      onSaved = listener
+      onChanged = listener
     },
 
     /** Takes a field's new text and saves it once typing pauses. */
     change(field: Field, value: string): NoteDraft {
       latest = { ...latest, fields: { ...latest.fields, [field]: value } }
-      schedule(field)
+      saver.changed(field)
       return latest
     },
 
@@ -288,7 +379,7 @@ function createAutosave(initial: NoteDraft, saved: boolean, first: Handlers) {
     /** Takes an Item's new text and saves it once typing pauses; blank text never saves. */
     changeItem(id: string, text: string): NoteDraft {
       patchItem(id, { text })
-      schedule(`item:${id}`)
+      saver.changed(itemKey(id))
       return latest
     },
 
@@ -307,10 +398,15 @@ function createAutosave(initial: NoteDraft, saved: boolean, first: Handlers) {
       )
       // Text still waiting to save goes first, so the Item exists to be ticked.
       settleItemText(id)
-      enqueue(async () => {
-        if (!storedItems.has(id)) return
-        const stored = await handlers.onUpdateItem(id, { checked })
-        if (stored) takeTickTime(id, stored)
+      ticking.add(id)
+      saver.run(itemKey(id), async () => {
+        try {
+          await addingItems.get(id)
+          // An Item not stored yet is ticked once its add lands, retried or not.
+          if (storedItems.has(id)) await tick(id, checked)
+        } finally {
+          ticking.delete(id)
+        }
       })
       return latest
     },
@@ -327,12 +423,17 @@ function createAutosave(initial: NoteDraft, saved: boolean, first: Handlers) {
       patchItem(id, { position })
       // Text still waiting to save goes first, so the Item exists to be moved.
       settleItemText(id)
-      enqueue(async () => {
+      saver.run(itemKey(id), async () => {
+        // An Item not stored yet takes its position with it when its add lands.
+        await addingItems.get(id)
         if (!storedItems.has(id)) return
-        if (await handlers.onUpdateItem(id, { position })) return
+        const moved = await new Promise<StoredItem | null>((resolve) =>
+          resolve(handlers.onUpdateItem(id, { position })),
+        ).catch(() => null)
+        if (moved) return
         if (findItem(id)?.position !== position) return
         patchItem(id, { position: before })
-        onSaved(latest)
+        onChanged(latest)
       })
       return latest
     },
@@ -356,29 +457,42 @@ function createAutosave(initial: NoteDraft, saved: boolean, first: Handlers) {
       return latest
     },
 
-    flush,
+    /** Tries every "Not saved" field and Item again, now. */
+    retry() {
+      saver.retry()
+    },
 
     /**
-     * Saves everything still waiting for its pause, now, then stops saving for good, as the
-     * viewer is Leaving the Note: nothing typed after is saved. Resolves once those saves have
-     * settled, so none of them races the Leave.
+     * Sends everything not yet saved at once, with keepalive: typing still pausing, "Not saved"
+     * text and what is typed in the "Add item" row, which becomes an Item. Blank Items are
+     * dropped.
      */
-    saveAndStop(): Promise<unknown> {
-      flush()
-      stopped = true
-      return queue
+    flush() {
+      takeAddRowAndDropBlanks()
+      saver.flush()
+    },
+
+    /**
+     * Saves everything not yet saved, now and in order (the page stays, so no keepalive), then
+     * stops saving for good, as the viewer is Leaving the Note: nothing typed after is saved.
+     * Resolves once every save on its way has settled, so none of them races the Leave.
+     */
+    saveAndStop(): Promise<void> {
+      takeAddRowAndDropBlanks()
+      return saver.finish()
     },
 
     /**
      * Stops saving for good, as the Note is being deleted: typing not yet saved is dropped and
-     * no queued save runs. Resolves, once the save in flight has settled, to whether the Note
-     * is on the server, so a create that lands mid-delete is deleted too.
+     * no queued save runs. Resolves, once the saves on their way have settled, to whether the
+     * Note may be on the server: a create that lands mid-delete is deleted too, and so is one
+     * that got no answer, as it may have been stored all the same.
      */
-    discard(): Promise<boolean> {
+    async discard(): Promise<boolean> {
       discarded = true
-      for (const timer of timers.values()) clearTimeout(timer)
-      timers.clear()
-      return queue.then(() => exists)
+      await saver.stop()
+      await creating
+      return exists || unsureNote
     },
   }
 }
@@ -388,12 +502,15 @@ function createAutosave(initial: NoteDraft, saved: boolean, first: Handlers) {
  * saves about a second after typing pauses, independently of the others; adding, ticking, moving
  * and deleting an Item save at once. A new Note is created by its first save with content, so one
  * left empty, or with only blank Items, is never stored; a saved Note stays even when emptied.
- * Navigating away from the page flushes what is pending; Leaving the Note saves it, then stops.
+ * Text that can't reach the server keeps its place, is listed in `notSaved` and is retried.
+ * Hiding or leaving the page, or unmounting, sends what is not yet saved at once; Leaving the
+ * Note saves it, then stops.
  */
 export function useNoteDraft({ initial, saved, ...handlers }: NoteDraftOptions) {
   const [first] = useState(() => ({ ...initial, newItemText: "" }))
   const [draft, setDraft] = useState(first)
-  const [autosave] = useState(() => createAutosave(first, saved, handlers))
+  const [notSaved, setNotSaved] = useState<ReadonlySet<SaveKey>>(() => new Set())
+  const [autosave] = useState(() => createAutosave(first, saved, handlers, setNotSaved))
 
   // Later saves use the latest render's callbacks.
   useEffect(() => {
@@ -401,14 +518,15 @@ export function useNoteDraft({ initial, saved, ...handlers }: NoteDraftOptions) 
   })
   useEffect(() => {
     autosave.listen(setDraft)
-    return () => {
-      autosave.listen(unheard)
-      autosave.flush()
-    }
+    return () => autosave.listen(unheard)
   }, [autosave])
+  useTypedTextLifecycle(autosave)
 
   return {
     draft,
+    /** Whether a field's text, or an Item's, is "Not saved". */
+    isNotSaved: (key: Field | { item: string }) =>
+      notSaved.has(typeof key === "string" ? key : itemKey(key.item)),
     change: (field: Field, value: string) => setDraft(autosave.change(field, value)),
     typeNewItem: (text: string) => setDraft(autosave.typeNewItem(text)),
     addItem: () => setDraft(autosave.addItem(newId())),
