@@ -15,6 +15,7 @@ import {
   useNotePeople,
   useOpenOnVisit,
 } from "@/data/notes"
+import type { NoteTab } from "@shared/notes/notes"
 import type { NoteKind } from "@shared/notes/schemas"
 
 const appRoute = getRouteApi("/_app")
@@ -23,14 +24,23 @@ const appRoute = getRouteApi("/_app")
  * One Note's page. `newKind` marks a Note just started from the New menu: until its first save
  * with content it exists only here, so leaving it empty leaves nothing behind.
  */
-export function NotePage({ noteId, newKind }: { noteId: string; newKind?: NoteKind | undefined }) {
+export function NotePage({
+  noteId,
+  newKind,
+  tab,
+}: {
+  noteId: string
+  newKind?: NoteKind | undefined
+  /** The Notes tab this Note was opened from, which going back returns to. */
+  tab?: NoteTab | undefined
+}) {
   const { session } = appRoute.useRouteContext()
   const { note, isLoading } = useNote(noteId)
   // Only the Creator of a saved Note picks who sees it.
   const people = useNotePeople(note !== undefined && note.creator.id === session.user.id)
   const { data: items, isLoading: itemsLoading } = useNoteItems(noteId)
   const navigate = useNavigate()
-  const back = () => void navigate({ to: "/notes" })
+  const back = () => void navigate({ to: "/notes", search: { tab } })
   // Visiting a Note's page clears Unopened, once, as soon as the Note is here.
   useOpenOnVisit(noteId, note?.unopened ?? false)
 
@@ -40,7 +50,11 @@ export function NotePage({ noteId, newKind }: { noteId: string; newKind?: NoteKi
       <div className="mx-auto flex max-w-2xl flex-col gap-2 text-muted-foreground">
         {/* Deleted, or no longer shared with this Account: either way, nothing is announced. */}
         <p className="font-medium text-foreground">This note isn't available</p>
-        <Link to="/notes" className="text-primary underline-offset-4 hover:underline">
+        <Link
+          to="/notes"
+          search={{ tab }}
+          className="text-primary underline-offset-4 hover:underline"
+        >
           Back to notes
         </Link>
       </div>

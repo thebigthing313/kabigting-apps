@@ -23,15 +23,18 @@ export function NotesHome({ tab }: { tab: NoteTab }) {
       viewerId={session.user.id}
       items={items}
       tab={tab}
-      // All is the default, so it keeps the plain /notes address.
-      onTab={(picked) =>
-        void navigate({ to: "/notes", search: picked === "all" ? {} : { tab: picked } })
-      }
-      // A new Note gets its id now but exists only on this device until it has content.
+      // A Note's page carries the tab it was opened from, so its back arrow returns there. A new
+      // Note gets its id now but exists only on this device until it has content.
       onNew={(kind) =>
-        void navigate({ to: "/notes/$noteId", params: { noteId: newId() }, search: { new: kind } })
+        void navigate({
+          to: "/notes/$noteId",
+          params: { noteId: newId() },
+          search: { new: kind, tab },
+        })
       }
-      onOpen={(noteId) => void navigate({ to: "/notes/$noteId", params: { noteId } })}
+      onOpen={(noteId) =>
+        void navigate({ to: "/notes/$noteId", params: { noteId }, search: { tab } })
+      }
     />
   )
 }

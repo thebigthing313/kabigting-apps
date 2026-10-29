@@ -1,11 +1,17 @@
 import "@/styles.css"
-import { useState } from "react"
+import {
+  createMemoryHistory,
+  createRootRoute,
+  createRoute,
+  createRouter,
+  RouterProvider,
+} from "@tanstack/react-router"
 import { describe, expect, test, vi } from "vitest"
 import { render } from "vitest-browser-react"
 import { NotesList } from "@/apps/notes/notes-list"
+import { notesSearch } from "@/apps/notes/notes-search"
 import type { Item, Note } from "@/data/notes"
 import { instantAt } from "@shared/dates"
-import type { NoteTab } from "@shared/notes/notes"
 import type { NoteKind } from "@shared/notes/schemas"
 
 const minutesAgo = (minutes: number) => instantAt(Date.now() - minutes * 60_000)
@@ -25,33 +31,44 @@ function note(overrides: Partial<Note>): Note {
   }
 }
 
-async function renderList(notes: Note[], items: Item[] = []) {
+/** Renders the Notes home at `path`, with the real search params, so the tabs are links. */
+async function renderList(notes: Note[], items: Item[] = [], path = "/notes") {
   const onNew = vi.fn<(kind: NoteKind) => void>()
   const onOpen = vi.fn<(id: string) => void>()
-  // The tab lives in the URL in the App; here it lives in state, as the home wires it.
-  function WithTabs() {
-    const [tab, setTab] = useState<NoteTab>("all")
-    return (
-      <NotesList
-        notes={notes}
-        items={items}
-        viewerId="me"
-        tab={tab}
-        onTab={setTab}
-        onNew={onNew}
-        onOpen={onOpen}
-      />
-    )
-  }
-  const screen = await render(<WithTabs />)
+  const rootRoute = createRootRoute()
+  const notesRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: "/notes",
+    validateSearch: notesSearch,
+    component: function NotesRoute() {
+      const { tab } = notesRoute.useSearch()
+      return (
+        <NotesList
+          notes={notes}
+          items={items}
+          viewerId="me"
+          tab={tab}
+          onNew={onNew}
+          onOpen={onOpen}
+        />
+      )
+    },
+  })
+  const router = createRouter({
+    routeTree: rootRoute.addChildren([notesRoute]),
+    history: createMemoryHistory({ initialEntries: [path] }),
+  })
+  await router.load()
+  const screen = await render(<RouterProvider router={router} />)
   return { onNew, onOpen, screen }
 }
 
-function rowTexts(screen: Awaited<ReturnType<typeof renderList>>["screen"]) {
+/** What each shown Note reads as, top to bottom. */
+function shownNotes(screen: Awaited<ReturnType<typeof renderList>>["screen"]) {
   return screen
     .getByRole("listitem")
     .elements()
-    .map((row) => row.textContent)
+    .map((element) => element.textContent)
 }
 
 describe("the New menu", () => {
@@ -218,37 +235,64 @@ describe("the tabs", () => {
       }),
     ])
     await expect
-      .element(screen.getByRole("tab", { name: "All" }))
-      .toHaveAttribute("aria-selected", "true")
+      .element(screen.getByRole("link", { name: "All" }))
+      .toHaveAttribute("aria-current", "page")
     await expect.element(screen.getByText("Wi-Fi")).toBeVisible()
-    expect(rowTexts(screen)).toEqual([groceries, wifi, onlyMine])
+    expect(shownNotes(screen)).toEqual([groceries, wifi, onlyMine])
 
-    await screen.getByRole("tab", { name: "Mine" }).click()
+    await screen.getByRole("link", { name: "Mine" }).click()
     await expect
-      .element(screen.getByRole("tab", { name: "Mine" }))
-      .toHaveAttribute("aria-selected", "true")
+      .element(screen.getByRole("link", { name: "Mine" }))
+      .toHaveAttribute("aria-current", "page")
     await expect.element(screen.getByText("Wi-Fi")).not.toBeInTheDocument()
-    expect(rowTexts(screen)).toEqual([groceries, onlyMine])
+    expect(shownNotes(screen)).toEqual([groceries, onlyMine])
 
-    await screen.getByRole("tab", { name: "Shared with me" }).click()
+    await screen.getByRole("link", { name: "Shared with me" }).click()
     await expect.element(screen.getByText("Private")).not.toBeInTheDocument()
-    expect(rowTexts(screen)).toEqual([wifi])
+    expect(shownNotes(screen)).toEqual([wifi])
 
-    await screen.getByRole("tab", { name: "All" }).click()
+    await screen.getByRole("link", { name: "All" }).click()
     await expect.element(screen.getByText("Private")).toBeVisible()
-    expect(rowTexts(screen)).toEqual([groceries, wifi, onlyMine])
+    expect(shownNotes(screen)).toEqual([groceries, wifi, onlyMine])
   })
 
   test("an empty tab says so in its own words", async () => {
     const { screen } = await renderList([
       note({ id: "0190a000-0000-7000-8000-00000000000a", title: "Private" }),
     ])
-    await screen.getByRole("tab", { name: "Shared with me" }).click()
+    await screen.getByRole("link", { name: "Shared with me" }).click()
     await expect.element(screen.getByText("Nothing shared with you yet")).toBeVisible()
     await expect.element(screen.getByText("Private")).not.toBeInTheDocument()
 
-    await screen.getByRole("tab", { name: "Mine" }).click()
+    await screen.getByRole("link", { name: "Mine" }).click()
     await expect.element(screen.getByText("Private")).toBeVisible()
+  })
+
+  test("an unknown tab in the address falls back to All", async () => {
+    const { screen } = await renderList(
+      [note({ id: "0190a000-0000-7000-8000-00000000000a", title: "Private" })],
+      [],
+      "/notes?tab=archived",
+    )
+    await expect
+      .element(screen.getByRole("link", { name: "All" }))
+      .toHaveAttribute("aria-current", "page")
+    await expect.element(screen.getByText("Private")).toBeVisible()
+  })
+
+  test("the address names the tab, so it can be opened straight away", async () => {
+    const { screen } = await renderList(
+      [note({ id: "0190a000-0000-7000-8000-00000000000a", title: "Private" })],
+      [],
+      "/notes?tab=shared",
+    )
+    await expect
+      .element(screen.getByRole("link", { name: "Shared with me" }))
+      .toHaveAttribute("aria-current", "page")
+    await expect.element(screen.getByText("Nothing shared with you yet")).toBeVisible()
+    await expect
+      .element(screen.getByRole("link", { name: "Mine" }))
+      .toHaveAttribute("href", "/notes?tab=mine")
   })
 
   test("Mine with no Notes of the viewer's own says so", async () => {
@@ -260,8 +304,8 @@ describe("the tabs", () => {
         audience: [me],
       }),
     ])
-    await screen.getByRole("tab", { name: "Mine" }).click()
-    await expect.element(screen.getByText("Nothing of yours yet")).toBeVisible()
+    await screen.getByRole("link", { name: "Mine" }).click()
+    await expect.element(screen.getByText("You haven't written any notes yet")).toBeVisible()
     await expect.element(screen.getByText("Wi-Fi")).not.toBeInTheDocument()
   })
 
@@ -290,17 +334,17 @@ describe("the tabs", () => {
     ])
     const justShared = "Just sharedNewBShared by Ben · 5 hours ago"
     await expect.element(screen.getByText("Just shared")).toBeVisible()
-    expect(rowTexts(screen)).toEqual([justShared, wifi, onlyMine])
+    expect(shownNotes(screen)).toEqual([justShared, wifi, onlyMine])
 
-    await screen.getByRole("tab", { name: "Shared with me" }).click()
+    await screen.getByRole("link", { name: "Shared with me" }).click()
     await expect.element(screen.getByText("Private")).not.toBeInTheDocument()
-    expect(rowTexts(screen)).toEqual([justShared, wifi])
+    expect(shownNotes(screen)).toEqual([justShared, wifi])
     await expect
       .element(screen.getByRole("listitem").nth(0).getByText("New", { exact: true }))
       .toBeVisible()
 
-    await screen.getByRole("tab", { name: "Mine" }).click()
+    await screen.getByRole("link", { name: "Mine" }).click()
     await expect.element(screen.getByText("Just shared")).not.toBeInTheDocument()
-    expect(rowTexts(screen)).toEqual([onlyMine])
+    expect(shownNotes(screen)).toEqual([onlyMine])
   })
 })
