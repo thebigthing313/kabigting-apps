@@ -143,10 +143,14 @@ describe("the still-checked rule", () => {
     }
   })
 
-  test("clears racing unticks, edits and deletes never fail, however they interleave", async () => {
+  test("clears racing unticks, edits, moves and deletes never fail, however they interleave", async () => {
     for (let round = 0; round < 40; round += 1) {
-      const { note, id } = await checklist([], ["Jam", "Bread", "Eggs"])
+      const { note, id } = await checklist(["Milk"], ["Jam", "Bread", "Eggs"])
       const responses = await Promise.all([
+        server.app.request(
+          `/api/notes/items/${id("Milk")}`,
+          json("PATCH", { position: "a" }, creator),
+        ),
         server.app.request(
           `/api/notes/items/${id("Jam")}`,
           json("PATCH", { checked: false }, creator),
@@ -162,7 +166,7 @@ describe("the still-checked rule", () => {
         }),
       ])
       for (const response of responses) expect([200, 404]).toContain(response.status)
-      expect(responses[1]?.status).toBe(200)
+      expect(responses[2]?.status).toBe(200)
     }
   })
 
