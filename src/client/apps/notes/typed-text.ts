@@ -19,8 +19,8 @@ export type TypedTextSaving<Key extends string> = {
   save: (key: Key, text: string, options: SaveOptions) => Promise<SaveOutcome>
   /** Told whenever the set of "Not saved" fields changes. */
   onNotSaved: (keys: ReadonlySet<Key>) => void
-  /** Told each time a save of the field settles, however it ended. */
-  onSettled?: (key: Key) => void
+  /** Told each time a save of the field settles, with how it ended ("failed" when it threw). */
+  onSettled?: (key: Key, outcome: SaveOutcome | "failed") => void
 }
 
 /**
@@ -87,10 +87,11 @@ export function createTypedTextSaver<Key extends string>({
     if (!force && alreadySending(key, false)) return
     const entry = { text, keepalive: options.keepalive === true }
     sending.set(key, [...(sending.get(key) ?? []), entry])
+    let ended: SaveOutcome | "failed" = "failed"
     try {
-      const outcome = await save(key, text, options)
-      if (outcome === "saved") confirmed.set(key, text)
-      mark(key, outcome === "unreached")
+      ended = await save(key, text, options)
+      if (ended === "saved") confirmed.set(key, text)
+      mark(key, ended === "unreached")
     } catch {
       // A failed save is reported where it failed.
     } finally {
@@ -98,7 +99,7 @@ export function createTypedTextSaver<Key extends string>({
         key,
         (sending.get(key) ?? []).filter((each) => each !== entry),
       )
-      onSettled(key)
+      onSettled(key, ended)
     }
   }
 
@@ -210,13 +211,14 @@ export function createTypedTextSaver<Key extends string>({
 
     /**
      * Runs a write once the earlier saves and writes of every field given have settled; their
-     * later saves wait for it.
+     * later saves wait for it. False when saving has stopped or finished, so the write never runs.
      */
-    run(keys: Key | readonly Key[], write: () => Promise<unknown>) {
-      if (stopped || closed) return
+    run(keys: Key | readonly Key[], write: () => Promise<unknown>): boolean {
+      if (stopped || closed) return false
       after(keys, async () => {
         if (!stopped) await write()
       })
+      return true
     },
 
     /** Forgets a field that is gone, such as a deleted Item: nothing more saves or retries it. */

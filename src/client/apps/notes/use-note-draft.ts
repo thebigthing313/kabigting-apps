@@ -104,13 +104,19 @@ function createAutosave(
   /** Items deleted or cleared here: a load that still holds one never brings it back. */
   const removedHere = new Set<string>()
   /**
-   * Items gone from the server while text typed into them had not saved. Each stays, keeping the
-   * text, until its save settles, and then goes: that save can only fail, as nothing writes an
-   * Item back once it is deleted.
+   * Items a load no longer holds while text typed into them had not saved. Each stays, keeping
+   * the text, until its save settles, and then goes. Its save is an edit, never an add, so it
+   * can't bring the Item back: one deleted answers 404, and the viewer is told why the text went.
    */
   const goneWhileTyping = new Set<string>()
-  /** Items with a move queued or on its way. */
-  const moving = new Set<string>()
+  /** Items with moves queued or on their way, and how many. */
+  const moving = new Map<string, number>()
+  /** The field or Item text that has focus: a load leaves it alone until it loses focus. */
+  let focused: SaveKey | null = null
+  /** Typed text a load changed while it was held, to catch up with once it is let go. */
+  const behind = new Set<SaveKey>()
+  /** Typed text whose save was refused: the next load's text is taken even while focused. */
+  const rolledBack = new Set<SaveKey>()
   let exists = saved
   /** The Items the server holds; the rest exist only here so far. */
   const storedItems = new Set(initial.items.map((item) => item.id))
@@ -170,10 +176,23 @@ function createAutosave(
       // Deleted or emptied meanwhile, or the Note is being deleted: nothing to add.
       if (discarded || !item || isBlankItem(item)) return "saved"
       const { text, position } = item
-      const outcome = await attempt(() => handlers.onAddItem({ id, text, position }, options))
+      let threw = false
+      const outcome = await new Promise<SaveOutcome>((resolve) =>
+        resolve(handlers.onAddItem({ id, text, position }, options)),
+      ).catch((): SaveOutcome => {
+        threw = true
+        return "refused"
+      })
       // An add that never got an answer may still have been stored.
       if (outcome === "unreached") unsureItems.add(id)
       else unsureItems.delete(id)
+      // An add the server refused is undone, as its toast says. One that threw here never
+      // reached it, and is added again by the Item's next save.
+      if (outcome === "refused" && !threw && findItem(id)) {
+        saver.forget(itemKey(id))
+        setItems(latest.items.filter((each) => each.id !== id))
+        onChanged(latest)
+      }
       if (outcome === "saved") {
         storedItems.add(id)
         addedText.set(id, text)
@@ -224,13 +243,80 @@ function createAutosave(
     return handlers.onUpdateItemText(id, text, options)
   }
 
-  /** An Item gone from the server goes from here too, once its text here has settled. */
-  function textSettled(key: SaveKey): void {
+  /**
+   * After a save of typed text settles. Saved, it is the last write, so a load it skipped no
+   * longer matters. Refused, it was rolled back, so the field takes the server's text again,
+   * whether the load that brings it came before or after. An Item gone from the server goes from
+   * here too, once its text here has settled.
+   */
+  function textSettled(key: SaveKey, outcome: SaveOutcome | "failed"): void {
+    if (outcome === "saved") behind.delete(key)
+    // Even while it has focus: the toast just said the text didn't save. The load that rolls it
+    // back may come after, and is taken the same way.
+    if (outcome === "refused") {
+      rolledBack.add(key)
+      catchUp(key, true)
+    }
     if (key === "title" || key === "body") return
     const id = key.slice("item:".length)
     if (!goneWhileTyping.has(id) || saver.holdsUnsaved(key)) return
     dropGone(id)
     onChanged(latest)
+  }
+
+  /** Whether typed text must stay as it is here: not saved yet, or being typed into. */
+  function isHeld(key: SaveKey) {
+    return focused === key || saver.holdsUnsaved(key)
+  }
+
+  /** The text the last load holds for a field or Item; undefined when it has no such Item. */
+  function loadedText(key: SaveKey): string | undefined {
+    if (key === "title" || key === "body") return loaded.fields[key]
+    const id = key.slice("item:".length)
+    return loaded.items.find((item) => item.id === id)?.text
+  }
+
+  /**
+   * Takes the last load's text for a field, or for an Item the server holds, unless it is held
+   * (by focus too, unless `evenFocused`). A new Note, or an Item not added yet, has nothing on the
+   * server to take.
+   */
+  function catchUp(key: SaveKey, evenFocused = false) {
+    if (evenFocused ? saver.holdsUnsaved(key) : isHeld(key)) return
+    const text = loadedText(key)
+    if (key === "title" || key === "body") {
+      if (!exists || text === undefined) return
+      behind.delete(key)
+      saver.received(key, text)
+      if (latest.fields[key] === text) return
+      latest = { ...latest, fields: { ...latest.fields, [key]: text } }
+    } else {
+      const id = key.slice("item:".length)
+      if (text === undefined || !storedItems.has(id) || !findItem(id)) return
+      behind.delete(key)
+      saver.received(key, text)
+      if (findItem(id)?.text === text) return
+      patchItem(id, { text })
+    }
+    onChanged(latest)
+  }
+
+  /** Takes a load's new text for a field or Item, or, while it is held, catches up later. */
+  function takeText(key: SaveKey, text: string) {
+    const refused = rolledBack.delete(key)
+    if (refused ? saver.holdsUnsaved(key) : isHeld(key)) {
+      behind.add(key)
+      return
+    }
+    behind.delete(key)
+    saver.received(key, text)
+    if (key === "title" || key === "body") {
+      if (latest.fields[key] !== text) {
+        latest = { ...latest, fields: { ...latest.fields, [key]: text } }
+      }
+    } else {
+      patchItem(key.slice("item:".length), { text })
+    }
   }
 
   const saver = createTypedTextSaver<SaveKey>({
@@ -280,11 +366,7 @@ function createAutosave(
    * and its tick and place, unless a tick or move made here is still on its way.
    */
   function takeChanges(item: DraftItem, earlier: DraftItem) {
-    const key = itemKey(item.id)
-    if (item.text !== earlier.text && !saver.holdsUnsaved(key)) {
-      saver.received(key, item.text)
-      patchItem(item.id, { text: item.text })
-    }
+    if (item.text !== earlier.text) takeText(itemKey(item.id), item.text)
     const placed =
       item.checked !== earlier.checked ||
       item.checkedAt !== earlier.checkedAt ||
@@ -298,7 +380,9 @@ function createAutosave(
   /**
    * Takes in a later load of the Note, such as a refetch with someone else's edits: whatever it
    * changed, except text typed here that has not saved yet (still pausing, on its way or "Not
-   * saved"), which stays as typed and saves over it, the last write winning.
+   * saved"), which stays as typed and saves over it, the last write winning, and the text being
+   * typed into, which takes the load once it loses focus. A load that began before a save here
+   * landed never undoes it: the collections keep a write's answer over an older load's.
    */
   function receive(next: LoadedNote) {
     const before = latest
@@ -306,11 +390,7 @@ function createAutosave(
     loaded = next
     for (const field of ["title", "body"] as const) {
       const text = next.fields[field]
-      if (text === previous.fields[field] || saver.holdsUnsaved(field)) continue
-      saver.received(field, text)
-      if (latest.fields[field] !== text) {
-        latest = { ...latest, fields: { ...latest.fields, [field]: text } }
-      }
+      if (text !== previous.fields[field]) takeText(field, text)
     }
     const earlier = new Map(previous.items.map((item) => [item.id, item]))
     for (const item of next.items) {
@@ -485,6 +565,7 @@ function createAutosave(
     /** Takes a field's new text and saves it once typing pauses. */
     change(field: Field, value: string): NoteDraft {
       latest = { ...latest, fields: { ...latest.fields, [field]: value } }
+      rolledBack.delete(field)
       saver.changed(field)
       return latest
     },
@@ -507,6 +588,7 @@ function createAutosave(
     /** Takes an Item's new text and saves it once typing pauses; blank text never saves. */
     changeItem(id: string, text: string): NoteDraft {
       patchItem(id, { text })
+      rolledBack.delete(itemKey(id))
       saver.changed(itemKey(id))
       return latest
     },
@@ -551,8 +633,7 @@ function createAutosave(
       patchItem(id, { position })
       // Text still waiting to save goes first, so the Item exists to be moved.
       settleItemText(id)
-      moving.add(id)
-      saver.run(itemKey(id), async () => {
+      const accepted = saver.run(itemKey(id), async () => {
         try {
           // An Item not stored yet takes its position with it when its add lands.
           await addingItems.get(id)
@@ -565,9 +646,13 @@ function createAutosave(
           patchItem(id, { position: before })
           onChanged(latest)
         } finally {
-          moving.delete(id)
+          const left = (moving.get(id) ?? 1) - 1
+          if (left > 0) moving.set(id, left)
+          else moving.delete(id)
         }
       })
+      // Counted only once the move is taken, so one never sent holds nothing.
+      if (accepted) moving.set(id, (moving.get(id) ?? 0) + 1)
       return latest
     },
 
@@ -583,10 +668,28 @@ function createAutosave(
       return latest
     },
 
-    /** An Item left blank is dropped once focus moves off it. */
+    /** A field or an Item's text took focus: a load leaves it alone until it loses focus. */
+    focus(key: SaveKey) {
+      focused = key
+    },
+
+    /** A field lost focus: it takes what a load changed meanwhile, unless typing holds it. */
+    blur(key: SaveKey): NoteDraft {
+      if (focused === key) focused = null
+      if (behind.has(key)) catchUp(key)
+      return latest
+    },
+
+    /**
+     * An Item lost focus: one left blank is dropped, and any other takes what a load changed
+     * meanwhile, unless typing holds it.
+     */
     blurItem(id: string): NoteDraft {
+      const key = itemKey(id)
+      if (focused === key) focused = null
       const item = findItem(id)
       if (item && isBlankItem(item)) removeItem(id)
+      else if (behind.has(key)) catchUp(key)
       return latest
     },
 
@@ -678,6 +781,9 @@ export function useNoteDraft({ loaded, saved, ...handlers }: NoteDraftOptions) {
     moveItem: (id: string, toIndex: number) => setDraft(autosave.moveItem(id, toIndex)),
     deleteItem: (id: string) => setDraft(autosave.deleteItem(id)),
     clearChecked: () => setDraft(autosave.clearChecked()),
+    focusField: (field: Field) => autosave.focus(field),
+    blurField: (field: Field) => setDraft(autosave.blur(field)),
+    focusItem: (id: string) => autosave.focus(itemKey(id)),
     blurItem: (id: string) => setDraft(autosave.blurItem(id)),
     discard: () => autosave.discard(),
     saveAndStop: () => autosave.saveAndStop(),

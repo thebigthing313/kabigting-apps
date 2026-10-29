@@ -148,6 +148,8 @@ export function NoteEditor({
         aria-label="Title"
         value={fields.title}
         onChange={(event) => change("title", event.target.value)}
+        onFocus={() => checklist.focusField("title")}
+        onBlur={() => checklist.blurField("title")}
         placeholder="Title"
         maxLength={200}
         aria-describedby={isNotSaved("title") ? titleNotSaved : undefined}
@@ -164,6 +166,7 @@ export function NoteEditor({
           onToggleItem={checklist.toggleItem}
           onMoveItem={checklist.moveItem}
           onDeleteItem={checklist.deleteItem}
+          onFocusItem={checklist.focusItem}
           onBlurItem={checklist.blurItem}
           onClearChecked={checklist.clearChecked}
           isNotSaved={(id) => isNotSaved({ item: id })}
@@ -177,6 +180,8 @@ export function NoteEditor({
             aria-describedby={isNotSaved("body") ? bodyNotSaved : undefined}
             value={fields.body}
             onChange={(event) => change("body", event.target.value)}
+            onFocus={() => checklist.focusField("body")}
+            onBlur={() => checklist.blurField("body")}
             placeholder="Note"
             autoFocus={!saved}
             className="min-h-[50vh] resize-none bg-transparent text-base leading-relaxed whitespace-pre-wrap outline-none placeholder:text-muted-foreground/60"

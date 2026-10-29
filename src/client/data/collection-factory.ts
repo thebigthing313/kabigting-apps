@@ -24,6 +24,11 @@ export type WriteOptions = {
    * failure needs no toast. Refusals are still reported.
    */
   quietWhenUnreached?: boolean
+  /**
+   * The caller tells the viewer itself when the write's target is gone (404), so that failure
+   * gets no error toast. The row is still dropped.
+   */
+  quietWhenGone?: boolean
 }
 
 function writeOptions(metadata: unknown): WriteOptions {
@@ -32,6 +37,9 @@ function writeOptions(metadata: unknown): WriteOptions {
     ...("keepalive" in metadata && metadata.keepalive === true ? { keepalive: true } : {}),
     ...("quietWhenUnreached" in metadata && metadata.quietWhenUnreached === true
       ? { quietWhenUnreached: true }
+      : {}),
+    ...("quietWhenGone" in metadata && metadata.quietWhenGone === true
+      ? { quietWhenGone: true }
       : {}),
   }
 }
@@ -67,9 +75,10 @@ export function isNotFound(error: unknown): boolean {
   return error instanceof ApiRequestError && error.status === 404
 }
 
-/** Reports a failed write, unless the caller shows a failure to reach the server itself. */
+/** Reports a failed write, unless the caller shows that failure itself. */
 function report(error: unknown, action: string, options: WriteOptions) {
   if (options.quietWhenUnreached && isUnreached(error)) return
+  if (options.quietWhenGone && isNotFound(error)) return
   reportError(error, action)
 }
 

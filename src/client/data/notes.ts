@@ -5,6 +5,7 @@
 import { createOptimisticAction, createTransaction, eq, useLiveQuery } from "@tanstack/react-db"
 import { useQuery } from "@tanstack/react-query"
 import { useEffect, useRef } from "react"
+import { toast } from "sonner"
 import { api, sendWrite } from "@/data/api"
 import {
   defineRestCollection,
@@ -13,7 +14,7 @@ import {
   type WriteOptions,
 } from "@/data/collection-factory"
 import { isUnreached, readJson, reportError } from "@/data/error-handler"
-import { settled, type WriteOutcome, writeOutcome } from "@/data/settled"
+import { type Settling, settled, type WriteOutcome, writeOutcome } from "@/data/settled"
 import { nowInstant } from "@shared/dates"
 import { bottomOfUnchecked } from "@shared/notes/items"
 import { titleOrNull } from "@shared/notes/notes"
@@ -56,6 +57,39 @@ export type SaveOutcome = WriteOutcome
 /** A save of typed text: a failure to reach the server shows as "Not saved", not as a toast. */
 function typedText(options: SaveOptions): { metadata: WriteOptions } {
   return { metadata: { ...options, quietWhenUnreached: true } }
+}
+
+/** An edit of typed text: its target found gone is told by `typedOutcome`, not as a failure. */
+function typedEdit(options: SaveOptions): { metadata: WriteOptions } {
+  return { metadata: { ...options, quietWhenUnreached: true, quietWhenGone: true } }
+}
+
+/**
+ * Tells the viewer that what they typed wasn't saved because its Note or Item is gone: deleted,
+ * or no longer shared with them. Someone else did it, so it is news, not an error.
+ */
+function reportGone(what: "note" | "item") {
+  if (what === "item") {
+    toast("Item deleted", {
+      description: "Someone else deleted this item, so what you typed in it wasn't saved.",
+    })
+  } else {
+    toast("Note no longer available", {
+      description:
+        "It was deleted or is no longer shared with you, so what you typed wasn't saved.",
+    })
+  }
+}
+
+/** How an edit of typed text ended, telling the viewer when its target was found gone. */
+async function typedOutcome(transaction: Settling, what: "note" | "item"): Promise<SaveOutcome> {
+  try {
+    await transaction.when("settled")
+    return "saved"
+  } catch (error) {
+    if (isNotFound(error)) reportGone(what)
+    return isUnreached(error) ? "unreached" : "refused"
+  }
 }
 
 function editable(changes: Partial<NoteRow>): UpdateNote {
@@ -208,16 +242,20 @@ export async function createNote(
 
 /**
  * Saves typed text whose Note or Item is no longer here, as a refetch found it gone: the server
- * has the last word. Gone there too (404), the save is refused and reported, so the typing that
- * goes with it doesn't vanish unexplained; still there after all, it is taken back in.
+ * has the last word. Gone there too (404), the save is refused and the viewer told why, so the
+ * typing that goes with it doesn't vanish unexplained; still there after all, it is taken back in.
  */
-async function saveWhereGone(send: () => Promise<void>): Promise<SaveOutcome> {
+async function saveWhereGone(
+  what: "note" | "item",
+  send: () => Promise<void>,
+): Promise<SaveOutcome> {
   try {
     await send()
     return "saved"
   } catch (error) {
     if (isUnreached(error)) return "unreached"
-    reportError(error, "Saving")
+    if (isNotFound(error)) reportGone(what)
+    else reportError(error, "Saving")
     return "refused"
   }
 }
@@ -234,7 +272,7 @@ export function updateNote(
       ...(changes.title === undefined ? {} : { title: titleOrNull(changes.title) }),
       ...(changes.body === undefined ? {} : { body: changes.body }),
     })
-    return saveWhereGone(async () => {
+    return saveWhereGone("note", async () => {
       const stored = await readJson(
         await sendWrite(options, json, (init) =>
           api.notes.notes[":id"].$patch({ param: { id }, json }, init),
@@ -243,11 +281,12 @@ export function updateNote(
       await notes.utils.writeUpsert(stored)
     })
   }
-  return writeOutcome(
-    notesCollection().update(id, typedText(options), (draft) => {
+  return typedOutcome(
+    notes.update(id, typedEdit(options), (draft) => {
       if (changes.title !== undefined) draft.title = titleOrNull(changes.title)
       if (changes.body !== undefined) draft.body = changes.body
     }),
+    "note",
   )
 }
 
@@ -296,7 +335,7 @@ export function updateItemText(
   const items = itemsCollection()
   if (!items.has(id)) {
     const json = { text }
-    return saveWhereGone(async () => {
+    return saveWhereGone("item", async () => {
       const stored = await readJson(
         await sendWrite(options, json, (init) =>
           api.notes.items[":id"].$patch({ param: { id }, json }, init),
@@ -305,10 +344,11 @@ export function updateItemText(
       await items.utils.writeUpsert(await bumpNoteThenItem(stored))
     })
   }
-  return writeOutcome(
-    items.update(id, typedText(options), (draft) => {
+  return typedOutcome(
+    items.update(id, typedEdit(options), (draft) => {
       draft.text = text
     }),
+    "item",
   )
 }
 
