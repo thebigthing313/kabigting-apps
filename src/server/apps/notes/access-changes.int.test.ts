@@ -64,6 +64,10 @@ function open(noteId: string, as: Signed) {
   return server.app.request(`/api/notes/notes/${noteId}/open`, json("POST", {}, as.headers))
 }
 
+function leave(noteId: string, as: Signed) {
+  return server.app.request(`/api/notes/notes/${noteId}/leave`, json("POST", {}, as.headers))
+}
+
 function notesOf(as: Signed) {
   return server.app.request("/api/notes/notes", { headers: as.headers })
 }
@@ -296,6 +300,25 @@ describe("a Note whose Creator loses access", () => {
     await setApps(creator, ["notes"])
     expect((await shared(hidden.id, [], creator)).audience).toEqual([])
     expect((await remove(hidden.id, creator)).status).toBe(200)
+  })
+
+  test("can still be Left by a member while its Creator is a Removed Account", async () => {
+    const creator = await withNotes()
+    const leaver = await withNotes()
+    const stayer = await withNotes()
+    const note = await created(creator)
+    await shared(note.id, [leaver.id, stayer.id], creator)
+    await removeAccount(creator)
+
+    const leaving = await leave(note.id, leaver)
+    expect(leaving.status).toBe(200)
+    expect(await listed(note.id, leaver)).toBeUndefined()
+    // Leaving isn't a content change, and the Note stays for everyone else.
+    expect(await listed(note.id, stayer)).toMatchObject({
+      editedAt: note.editedAt,
+      creator: { id: creator.id, name: creator.name },
+      audience: [{ id: stayer.id, name: stayer.name, hasAccess: true }],
+    })
   })
 
   test("can't be reached by the Admin acting as its Creator", async () => {

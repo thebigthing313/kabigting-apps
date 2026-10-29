@@ -292,7 +292,12 @@ describe("the foot and the ⋯ menu", () => {
 
   test("the Creator's ⋯ menu offers Delete, not Leave", async () => {
     const { screen } = await renderEditor({
-      note: { ...blank, title: "Old", editedAt: "2026-10-01T09:00:00.000Z", audience: [ana] },
+      note: {
+        ...blank,
+        title: "Old",
+        editedAt: "2026-10-01T09:00:00.000Z",
+        audience: [member(ana)],
+      },
       saved: true,
     })
     await screen.getByRole("button", { name: "More" }).click()
