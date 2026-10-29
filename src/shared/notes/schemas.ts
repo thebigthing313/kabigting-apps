@@ -45,6 +45,8 @@ export const noteRow = z.object({
   /** Null for a Checklist. */
   body: z.string().nullable(),
   creator: notePerson,
+  /** The Accounts, besides the Creator, it is shared with; empty when private. */
+  audience: z.array(notePerson),
   createdAt: instant,
   /** Server time of the last change to the Note's content. */
   editedAt: instant,
@@ -52,6 +54,13 @@ export const noteRow = z.object({
 
 export const noteRows = z.object({ rows: z.array(noteRow) })
 
+/** The Creator replaces the whole Audience at once; an empty set makes the Note private. */
+export const replaceAudience = z.strictObject({
+  accountIds: z.array(z.string().min(1)).max(100, "That's too many people"),
+})
+
+/** The Accounts a Creator can add to an Audience: those holding App access to Notes. */
+export const notePeople = z.object({ rows: z.array(notePerson) })
 /** One line of plain text, kept exactly as typed. */
 const itemText = z
   .string()
@@ -100,6 +109,7 @@ export const itemWrite = z.object({ item: itemRow, noteEditedAt: instant })
 
 export type CreateNote = z.infer<typeof createNote>
 export type UpdateNote = z.infer<typeof updateNote>
+export type ReplaceAudience = z.infer<typeof replaceAudience>
 export type NotePerson = z.infer<typeof notePerson>
 export type NoteRow = z.infer<typeof noteRow>
 export type CreateItem = z.infer<typeof createItem>

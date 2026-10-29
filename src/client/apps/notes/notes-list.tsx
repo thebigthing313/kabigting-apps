@@ -1,5 +1,5 @@
-import { FileTextIcon, ListChecksIcon, PlusIcon } from "lucide-react"
-import { KindIcon, useNow } from "@/apps/notes/note-parts"
+import { FileTextIcon, ListChecksIcon, PlusIcon, UsersIcon } from "lucide-react"
+import { Avatar, KindIcon, useNow } from "@/apps/notes/note-parts"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
@@ -10,19 +10,22 @@ import {
 import type { Item, Note } from "@/data/notes"
 import { timeAgo } from "@shared/dates"
 import { checklistCounts } from "@shared/notes/items"
-import { notePreview, orderNotes } from "@shared/notes/notes"
+import { notePreview, orderNotes, sharingLine } from "@shared/notes/notes"
 import type { NoteKind } from "@shared/notes/schemas"
 
 const NO_ITEMS: readonly Item[] = []
 
-/** Notes home: the New menu over one list of Notes, newest edit first. */
+/** Notes home: the New menu over one list of every Note the viewer can see, newest edit first. */
 export function NotesList({
   notes,
+  viewerId,
   items,
   onNew,
   onOpen,
 }: {
   notes: readonly Note[]
+  /** The signed-in Account, so each row can say who else sees it. */
+  viewerId: string
   /** Every Checklist's Items, for the rows' previews and counts. */
   items: readonly Item[]
   /** Starts a new Note of the kind picked; its kind never changes afterwards. */
@@ -80,9 +83,16 @@ export function NotesList({
                     {snippet && (
                       <span className="truncate text-sm text-muted-foreground">{snippet}</span>
                     )}
-                    <span className="text-xs text-muted-foreground">
-                      {counts && `${counts.unchecked} to do · ${counts.checked} done · `}
-                      {timeAgo(note.editedAt, now)}
+                    <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                      {note.creator.id !== viewerId ? (
+                        <Avatar person={note.creator} className="size-4 text-[0.55rem] ring-1" />
+                      ) : note.audience.length > 0 ? (
+                        <UsersIcon aria-hidden className="size-3.5" />
+                      ) : null}
+                      <span className="truncate">
+                        {counts && `${counts.unchecked} to do · ${counts.checked} done · `}
+                        {sharingLine(note, viewerId)} · {timeAgo(note.editedAt, now)}
+                      </span>
                     </span>
                   </span>
                 </button>
