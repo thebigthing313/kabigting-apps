@@ -1,10 +1,10 @@
 import "@/styles.css"
-import { describe, expect, test, vi } from "vitest"
+import { afterEach, describe, expect, test, vi } from "vitest"
 import { userEvent } from "vitest/browser"
 import { render } from "vitest-browser-react"
 import { NoteEditor, type NoteEditorProps } from "@/apps/notes/note-editor"
 import type { KeptItems, StoredItem } from "@/apps/notes/use-note-draft"
-import type { ItemChanges, NewItem, NoteFields } from "@/data/notes"
+import type { ItemChanges, NewItem, NoteFields, SaveOptions, SaveOutcome } from "@/data/notes"
 import { instantAt } from "@shared/dates"
 import type { AudienceMember, NotePerson } from "@shared/notes/schemas"
 
@@ -32,12 +32,16 @@ const SHARE_LINE =
 
 /** A save the test settles by hand, to act while it is in flight. */
 function deferredSave() {
-  const settle: { resolve?: (stored: boolean) => void } = {}
-  const promise = new Promise<boolean>((resolve) => {
+  const settle: { resolve?: (outcome: SaveOutcome) => void } = {}
+  const promise = new Promise<SaveOutcome>((resolve) => {
     settle.resolve = resolve
   })
-  return { promise, resolve: (stored: boolean) => settle.resolve?.(stored) }
+  return { promise, resolve: (outcome: SaveOutcome) => settle.resolve?.(outcome) }
 }
+
+/** How a save ordinarily goes out, and how it goes out when the page is being left. */
+const NOW = { keepalive: false }
+const LEAVING = { keepalive: true }
 
 const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
@@ -49,11 +53,18 @@ async function confirmDelete(screen: Awaited<ReturnType<typeof render>>) {
 
 function callbacks() {
   return {
-    onCreate: vi.fn<(fields: NoteFields) => Promise<boolean>>(() => Promise.resolve(true)),
-    onUpdate: vi.fn<(changes: Partial<NoteFields>) => Promise<boolean>>(() =>
-      Promise.resolve(true),
+    onCreate: vi.fn<(fields: NoteFields, options: SaveOptions) => Promise<SaveOutcome>>(() =>
+      Promise.resolve("saved"),
     ),
-    onAddItem: vi.fn<(item: NewItem) => Promise<boolean>>(() => Promise.resolve(true)),
+    onUpdate: vi.fn<(changes: Partial<NoteFields>, options: SaveOptions) => Promise<SaveOutcome>>(
+      () => Promise.resolve("saved"),
+    ),
+    onAddItem: vi.fn<(item: NewItem, options: SaveOptions) => Promise<SaveOutcome>>(() =>
+      Promise.resolve("saved"),
+    ),
+    onUpdateItemText: vi.fn<
+      (id: string, text: string, options: SaveOptions) => Promise<SaveOutcome>
+    >(() => Promise.resolve("saved")),
     onUpdateItem: vi.fn<(id: string, changes: ItemChanges) => Promise<StoredItem | null>>(() =>
       Promise.resolve(null),
     ),
@@ -87,17 +98,20 @@ describe("typing saves on its own", () => {
   test("a new Note is created about a second after typing pauses, with no Save button", async () => {
     const { screen, onCreate, onUpdate } = await renderEditor()
     await expect.element(screen.getByRole("button", { name: /save/i })).not.toBeInTheDocument()
-    await userEvent.type(screen.getByLabelText("Title"), "Groceries")
+    await userEvent.fill(screen.getByLabelText("Title"), "Groceries")
     expect(onCreate).not.toHaveBeenCalled()
     await vi.waitFor(
-      () => expect(onCreate).toHaveBeenCalledWith({ title: "Groceries", body: "" }),
+      () => expect(onCreate).toHaveBeenCalledWith({ title: "Groceries", body: "" }, NOW),
       SAVED_WITHIN,
     )
     expect(onCreate).toHaveBeenCalledTimes(1)
 
     // Once it exists, each field saves on its own.
-    await userEvent.type(screen.getByLabelText("Note"), "Milk")
-    await vi.waitFor(() => expect(onUpdate).toHaveBeenCalledWith({ body: "Milk" }), SAVED_WITHIN)
+    await userEvent.fill(screen.getByLabelText("Note"), "Milk")
+    await vi.waitFor(
+      () => expect(onUpdate).toHaveBeenCalledWith({ body: "Milk" }, NOW),
+      SAVED_WITHIN,
+    )
     expect(onUpdate).toHaveBeenCalledTimes(1)
     expect(onCreate).toHaveBeenCalledTimes(1)
   })
@@ -109,18 +123,282 @@ describe("typing saves on its own", () => {
     })
     await userEvent.fill(screen.getByLabelText("Title"), "Packing list")
     await vi.waitFor(
-      () => expect(onUpdate).toHaveBeenCalledWith({ title: "Packing list" }),
+      () => expect(onUpdate).toHaveBeenCalledWith({ title: "Packing list" }, NOW),
       SAVED_WITHIN,
     )
     expect(onUpdate).toHaveBeenCalledTimes(1)
     expect(onCreate).not.toHaveBeenCalled()
   })
 
-  test("leaving flushes typing that has not saved yet", async () => {
+  test("leaving flushes typing that has not saved yet, sent to outlive the page", async () => {
     const { screen, onCreate } = await renderEditor()
     await userEvent.type(screen.getByLabelText("Note"), "Call the plumber")
     await screen.unmount()
-    expect(onCreate).toHaveBeenCalledWith({ title: "", body: "Call the plumber" })
+    await vi.waitFor(() =>
+      expect(onCreate).toHaveBeenCalledWith({ title: "", body: "Call the plumber" }, LEAVING),
+    )
+    expect(onCreate).toHaveBeenCalledTimes(1)
+  })
+})
+
+const packing = { ...blank, title: "Packing", body: "Socks", editedAt: "2026-10-01T09:00:00.000Z" }
+
+/** Quicker than the ~1 s pause, so a save seen within it went out at once. */
+const AT_ONCE = { timeout: 400 }
+
+function hidePage() {
+  vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden")
+  document.dispatchEvent(new Event("visibilitychange"))
+}
+
+afterEach(() => {
+  vi.restoreAllMocks()
+})
+
+describe("a save that can't reach the server", () => {
+  test("keeps the typed text, marked Not saved, until the next keystroke saves it", async () => {
+    const { screen, onUpdate } = await renderEditor({ note: packing, saved: true })
+    onUpdate.mockResolvedValueOnce("unreached")
+    const title = screen.getByLabelText("Title")
+    await userEvent.type(title, " list")
+    await vi.waitFor(() => expect(onUpdate).toHaveBeenCalledTimes(1), SAVED_WITHIN)
+    await expect.element(title).toHaveValue("Packing list")
+    await expect.element(title).toHaveAccessibleDescription("Not saved")
+    await expect.element(screen.getByLabelText("Note")).not.toHaveAccessibleDescription()
+
+    await userEvent.type(title, "s")
+    await vi.waitFor(
+      () => expect(onUpdate).toHaveBeenLastCalledWith({ title: "Packing lists" }, NOW),
+      SAVED_WITHIN,
+    )
+    await expect.element(title).not.toHaveAccessibleDescription()
+    await expect.element(screen.getByText("Not saved")).not.toBeInTheDocument()
+  })
+
+  test("retries at once when the app regains focus", async () => {
+    const { screen, onUpdate } = await renderEditor({ note: packing, saved: true })
+    onUpdate.mockResolvedValueOnce("unreached")
+    await userEvent.fill(screen.getByLabelText("Note"), "Socks, shoes")
+    await expect.element(screen.getByLabelText("Note")).toHaveAccessibleDescription("Not saved")
+
+    window.dispatchEvent(new Event("focus"))
+    await vi.waitFor(() => expect(onUpdate).toHaveBeenCalledTimes(2), AT_ONCE)
+    expect(onUpdate).toHaveBeenLastCalledWith({ body: "Socks, shoes" }, NOW)
+    await expect.element(screen.getByLabelText("Note")).not.toHaveAccessibleDescription()
+  })
+
+  test("retries at once on reconnecting", async () => {
+    const { screen, onUpdate } = await renderEditor({ note: packing, saved: true })
+    onUpdate.mockResolvedValueOnce("unreached")
+    await userEvent.fill(screen.getByLabelText("Title"), "Trip")
+    await expect.element(screen.getByLabelText("Title")).toHaveAccessibleDescription("Not saved")
+
+    window.dispatchEvent(new Event("online"))
+    await vi.waitFor(() => expect(onUpdate).toHaveBeenCalledTimes(2), AT_ONCE)
+    await expect.element(screen.getByLabelText("Title")).not.toHaveAccessibleDescription()
+  })
+
+  test("a new Note whose first save fails is created by the retry", async () => {
+    const { screen, onCreate } = await renderEditor()
+    onCreate.mockResolvedValueOnce("unreached")
+    await userEvent.type(screen.getByLabelText("Note"), "Milk")
+    await expect.element(screen.getByLabelText("Note")).toHaveAccessibleDescription("Not saved")
+
+    window.dispatchEvent(new Event("online"))
+    await vi.waitFor(() => expect(onCreate).toHaveBeenCalledTimes(2), AT_ONCE)
+    expect(onCreate).toHaveBeenLastCalledWith({ title: "", body: "Milk" }, NOW)
+    await expect.element(screen.getByLabelText("Note")).not.toHaveAccessibleDescription()
+  })
+
+  test("returning to the app retries each Not saved field once", async () => {
+    const { screen, onUpdate } = await renderEditor({ note: packing, saved: true })
+    onUpdate.mockResolvedValueOnce("unreached")
+    await userEvent.fill(screen.getByLabelText("Title"), "Trip")
+    await expect.element(screen.getByLabelText("Title")).toHaveAccessibleDescription("Not saved")
+
+    // Coming back fires both a visibility change and focus; the retry still goes once.
+    onUpdate.mockImplementation(() => new Promise<SaveOutcome>(() => {}))
+    vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible")
+    document.dispatchEvent(new Event("visibilitychange"))
+    window.dispatchEvent(new Event("focus"))
+    await pause(300)
+    expect(onUpdate).toHaveBeenCalledTimes(2)
+  })
+
+  test("a create that throws leaves the Note to be created by the next save", async () => {
+    const { screen, onCreate } = await renderEditor()
+    onCreate.mockImplementationOnce(() => {
+      throw new Error("Already in the collection")
+    })
+    await userEvent.fill(screen.getByLabelText("Title"), "Groceries")
+    await vi.waitFor(() => expect(onCreate).toHaveBeenCalledTimes(1), SAVED_WITHIN)
+    await userEvent.fill(screen.getByLabelText("Note"), "Milk")
+    await vi.waitFor(
+      () => expect(onCreate).toHaveBeenLastCalledWith({ title: "Groceries", body: "Milk" }, NOW),
+      SAVED_WITHIN,
+    )
+  })
+
+  test("a save the server refused is neither marked Not saved nor retried", async () => {
+    const { screen, onUpdate } = await renderEditor({ note: packing, saved: true })
+    onUpdate.mockResolvedValueOnce("refused")
+    await userEvent.fill(screen.getByLabelText("Title"), "Trip")
+    await vi.waitFor(() => expect(onUpdate).toHaveBeenCalledTimes(1), SAVED_WITHIN)
+    window.dispatchEvent(new Event("online"))
+    await pause(300)
+    expect(onUpdate).toHaveBeenCalledTimes(1)
+    await expect.element(screen.getByText("Not saved")).not.toBeInTheDocument()
+  })
+
+  test("leaving tries once more, and nothing is kept for a reload", async () => {
+    const first = await renderEditor({ note: packing, saved: true })
+    first.onUpdate.mockResolvedValue("unreached")
+    await userEvent.fill(first.screen.getByLabelText("Title"), "Trip")
+    await expect
+      .element(first.screen.getByLabelText("Title"))
+      .toHaveAccessibleDescription("Not saved")
+    await first.screen.unmount()
+    expect(first.onUpdate).toHaveBeenLastCalledWith({ title: "Trip" }, LEAVING)
+    expect(first.onUpdate).toHaveBeenCalledTimes(2)
+
+    // After a reload the Note is as the server last stored it, and nothing is replayed.
+    expect(localStorage.length).toBe(0)
+    expect(sessionStorage.length).toBe(0)
+    const second = await renderEditor({ note: packing, saved: true })
+    await expect.element(second.screen.getByLabelText("Title")).toHaveValue("Packing")
+    window.dispatchEvent(new Event("online"))
+    await pause(1_500)
+    expect(second.onUpdate).not.toHaveBeenCalled()
+    expect(first.onUpdate).toHaveBeenCalledTimes(2)
+  })
+})
+
+describe("leaving the page", () => {
+  test("hiding the page sends pending typing at once, to outlive the page", async () => {
+    const { screen, onUpdate } = await renderEditor({ note: packing, saved: true })
+    await userEvent.fill(screen.getByLabelText("Note"), "Socks and shoes")
+    hidePage()
+    await vi.waitFor(
+      () => expect(onUpdate).toHaveBeenCalledWith({ body: "Socks and shoes" }, LEAVING),
+      AT_ONCE,
+    )
+    // It is not sent a second time once the pause would have passed.
+    await pause(1_500)
+    expect(onUpdate).toHaveBeenCalledTimes(1)
+  })
+
+  test("closing or navigating the page away sends pending typing at once", async () => {
+    const { screen, onCreate } = await renderEditor()
+    await userEvent.type(screen.getByLabelText("Title"), "Groceries")
+    window.dispatchEvent(new PageTransitionEvent("pagehide"))
+    await vi.waitFor(
+      () => expect(onCreate).toHaveBeenCalledWith({ title: "Groceries", body: "" }, LEAVING),
+      AT_ONCE,
+    )
+  })
+
+  test("hiding the page sends every field still pausing at once, side by side", async () => {
+    const { screen, onUpdate } = await renderEditor({ note: packing, saved: true })
+    await userEvent.fill(screen.getByLabelText("Title"), "Trip")
+    await userEvent.fill(screen.getByLabelText("Note"), "Socks and shoes")
+    // Neither save settles, as on a page being unloaded: both must already be on their way.
+    onUpdate.mockImplementation(() => new Promise<SaveOutcome>(() => {}))
+    hidePage()
+    await vi.waitFor(() => expect(onUpdate).toHaveBeenCalledTimes(2), AT_ONCE)
+    expect(onUpdate).toHaveBeenCalledWith({ title: "Trip" }, LEAVING)
+    expect(onUpdate).toHaveBeenCalledWith({ body: "Socks and shoes" }, LEAVING)
+  })
+
+  test("leaving sends new typing at once even while an earlier save is on its way", async () => {
+    const earlier = deferredSave()
+    const { screen, onUpdate } = await renderEditor({ note: packing, saved: true })
+    onUpdate.mockImplementationOnce(() => earlier.promise)
+    await userEvent.fill(screen.getByLabelText("Title"), "Trip")
+    await vi.waitFor(() => expect(onUpdate).toHaveBeenCalledTimes(1), SAVED_WITHIN)
+    await userEvent.fill(screen.getByLabelText("Title"), "Trip to the coast")
+    await userEvent.fill(screen.getByLabelText("Note"), "Socks and shoes")
+    window.dispatchEvent(new PageTransitionEvent("pagehide"))
+    await vi.waitFor(() => {
+      expect(onUpdate).toHaveBeenCalledWith({ title: "Trip to the coast" }, LEAVING)
+      expect(onUpdate).toHaveBeenCalledWith({ body: "Socks and shoes" }, LEAVING)
+    }, AT_ONCE)
+
+    // If the page stays, the newest title goes once more after the earlier save, so it wins.
+    earlier.resolve("saved")
+    await vi.waitFor(() =>
+      expect(onUpdate).toHaveBeenLastCalledWith({ title: "Trip to the coast" }, NOW),
+    )
+  })
+
+  test("leaving a new Note sends one create carrying every field", async () => {
+    const { screen, onCreate, onUpdate } = await renderEditor()
+    await userEvent.fill(screen.getByLabelText("Title"), "Groceries")
+    await userEvent.fill(screen.getByLabelText("Note"), "Milk")
+    hidePage()
+    await vi.waitFor(
+      () => expect(onCreate).toHaveBeenCalledWith({ title: "Groceries", body: "Milk" }, LEAVING),
+      AT_ONCE,
+    )
+    await pause(300)
+    expect(onCreate).toHaveBeenCalledTimes(1)
+    expect(onUpdate).not.toHaveBeenCalled()
+  })
+
+  test("a save after returning waits for the send made on leaving", async () => {
+    const leaving = deferredSave()
+    const { screen, onUpdate } = await renderEditor({ note: packing, saved: true })
+    onUpdate.mockImplementationOnce(() => leaving.promise)
+    await userEvent.fill(screen.getByLabelText("Title"), "Trip")
+    hidePage()
+    await vi.waitFor(() => expect(onUpdate).toHaveBeenCalledWith({ title: "Trip" }, LEAVING))
+
+    // Back again, typing more: it saves only once the earlier send has landed.
+    vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible")
+    await userEvent.fill(screen.getByLabelText("Title"), "Trip to the coast")
+    await pause(1_500)
+    expect(onUpdate).toHaveBeenCalledTimes(1)
+    leaving.resolve("saved")
+    await vi.waitFor(() =>
+      expect(onUpdate).toHaveBeenLastCalledWith({ title: "Trip to the coast" }, NOW),
+    )
+  })
+
+  test("typing back to the saved text saves it again while other text is on its way", async () => {
+    const leaving = deferredSave()
+    const { screen, onUpdate } = await renderEditor({ note: packing, saved: true })
+    await userEvent.fill(screen.getByLabelText("Title"), "Trip")
+    await vi.waitFor(
+      () => expect(onUpdate).toHaveBeenCalledWith({ title: "Trip" }, NOW),
+      SAVED_WITHIN,
+    )
+    onUpdate.mockImplementationOnce(() => leaving.promise)
+    await userEvent.fill(screen.getByLabelText("Title"), "Trip to the coast")
+    hidePage()
+    await vi.waitFor(() => expect(onUpdate).toHaveBeenCalledTimes(2))
+
+    vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible")
+    await userEvent.fill(screen.getByLabelText("Title"), "Trip")
+    leaving.resolve("saved")
+    await vi.waitFor(() => expect(onUpdate).toHaveBeenCalledTimes(3), SAVED_WITHIN)
+    expect(onUpdate).toHaveBeenLastCalledWith({ title: "Trip" }, NOW)
+  })
+
+  test("hiding and then unloading the page sends each field once", async () => {
+    const { screen, onUpdate } = await renderEditor({ note: packing, saved: true })
+    onUpdate.mockImplementation(() => new Promise<SaveOutcome>(() => {}))
+    await userEvent.fill(screen.getByLabelText("Title"), "Trip")
+    hidePage()
+    window.dispatchEvent(new PageTransitionEvent("pagehide"))
+    await pause(300)
+    expect(onUpdate).toHaveBeenCalledTimes(1)
+  })
+
+  test("no unsaved-changes prompt holds up leaving", async () => {
+    const { screen } = await renderEditor({ note: packing, saved: true })
+    await userEvent.fill(screen.getByLabelText("Note"), "Socks and shoes")
+    const leaving = new Event("beforeunload", { cancelable: true })
+    window.dispatchEvent(leaving)
+    expect(leaving.defaultPrevented).toBe(false)
   })
 })
 
@@ -148,7 +426,7 @@ describe("an empty new Note", () => {
       saved: true,
     })
     await userEvent.clear(screen.getByLabelText("Note"))
-    await vi.waitFor(() => expect(onUpdate).toHaveBeenCalledWith({ body: "" }), SAVED_WITHIN)
+    await vi.waitFor(() => expect(onUpdate).toHaveBeenCalledWith({ body: "" }, NOW), SAVED_WITHIN)
   })
 })
 
@@ -224,7 +502,7 @@ describe("the foot and the ⋯ menu", () => {
     // The delete waits for the create to land, then deletes what it stored.
     await pause(100)
     expect(onServer).toBeUndefined()
-    create.resolve(true)
+    create.resolve("saved")
     await vi.waitFor(() => expect(onServer).toBe(true))
 
     // Nothing typed before the delete is saved after it.
@@ -241,8 +519,39 @@ describe("the foot and the ⋯ menu", () => {
     await userEvent.type(screen.getByLabelText("Title"), "Groceries")
     await vi.waitFor(() => expect(onCreate).toHaveBeenCalled(), SAVED_WITHIN)
     await confirmDelete(screen)
-    create.resolve(false)
+    create.resolve("refused")
     expect(await onDelete.mock.calls[0]![0]).toBe(false)
+  })
+
+  test("a Note whose create got no answer, deleted, is deleted on the server", async () => {
+    const { screen, onCreate, onDelete } = await renderEditor()
+    onCreate.mockResolvedValue("unreached")
+    await userEvent.fill(screen.getByLabelText("Title"), "Groceries")
+    await vi.waitFor(() => expect(onCreate).toHaveBeenCalled(), SAVED_WITHIN)
+    await expect.element(screen.getByLabelText("Title")).toHaveAccessibleDescription("Not saved")
+    await confirmDelete(screen)
+    // The create may have been stored all the same, so the delete still goes.
+    expect(await onDelete.mock.calls[0]![0]).toBe(true)
+  })
+
+  test("a Note whose create got no answer waits for a retry on its way before deleting", async () => {
+    const retry = deferredSave()
+    const { screen, onCreate, onDelete } = await renderEditor()
+    onCreate.mockResolvedValueOnce("unreached")
+    await userEvent.fill(screen.getByLabelText("Title"), "Groceries")
+    await expect.element(screen.getByLabelText("Title")).toHaveAccessibleDescription("Not saved")
+    onCreate.mockImplementationOnce(() => retry.promise)
+    window.dispatchEvent(new Event("online"))
+    await vi.waitFor(() => expect(onCreate).toHaveBeenCalledTimes(2))
+    await confirmDelete(screen)
+    let onServer: boolean | undefined
+    void onDelete.mock.calls[0]![0].then((stored) => {
+      onServer = stored
+    })
+    await pause(100)
+    expect(onServer).toBeUndefined()
+    retry.resolve("saved")
+    await vi.waitFor(() => expect(onServer).toBe(true))
   })
 
   test("an Audience member Leaves from the ⋯ menu at once, and can't delete", async () => {
@@ -273,14 +582,14 @@ describe("the foot and the ⋯ menu", () => {
     await screen.getByRole("button", { name: "More" }).click()
     await screen.getByRole("menuitem", { name: "Leave note" }).click()
     // Saved at once, not after the usual pause, and the Leave waits for it to land.
-    await vi.waitFor(() => expect(onUpdate).toHaveBeenCalledWith({ title: "Old news" }))
+    await vi.waitFor(() => expect(onUpdate).toHaveBeenCalledWith({ title: "Old news" }, NOW))
     let saved = false
     void onLeave.mock.calls[0]![0].then(() => {
       saved = true
     })
     await pause(100)
     expect(saved).toBe(false)
-    update.resolve(true)
+    update.resolve("saved")
     await vi.waitFor(() => expect(saved).toBe(true))
 
     // Nothing more is saved to a Note they have left, not even on leaving the page.
@@ -381,7 +690,10 @@ describe("the header", () => {
       .element(screen.getByRole("button", { name: "Share", exact: true }))
       .not.toBeInTheDocument()
     await userEvent.type(screen.getByLabelText("Note"), "Eggs")
-    await vi.waitFor(() => expect(onUpdate).toHaveBeenCalledWith({ body: "Eggs" }), SAVED_WITHIN)
+    await vi.waitFor(
+      () => expect(onUpdate).toHaveBeenCalledWith({ body: "Eggs" }, NOW),
+      SAVED_WITHIN,
+    )
 
     await screen.getByRole("button", { name: "More" }).click()
     await expect.element(screen.getByRole("menuitem", { name: "Leave note" })).toBeVisible()

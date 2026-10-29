@@ -1,3 +1,5 @@
+import { isUnreached } from "@/data/error-handler"
+
 /** An optimistic write, until the server accepts or refuses it. */
 export type Settling = { when: (state: "settled") => Promise<unknown> }
 
@@ -8,5 +10,21 @@ export async function settled(transaction: Settling): Promise<boolean> {
     return true
   } catch {
     return false
+  }
+}
+
+/**
+ * How a write ended: stored; refused by the server (rolled back and reported); or unreached,
+ * because the network or a gateway in front of the server failed, so trying again may work.
+ */
+export type WriteOutcome = "saved" | "refused" | "unreached"
+
+/** As `settled`, telling a write that never reached the server from one that was refused. */
+export async function writeOutcome(transaction: Settling): Promise<WriteOutcome> {
+  try {
+    await transaction.when("settled")
+    return "saved"
+  } catch (error) {
+    return isUnreached(error) ? "unreached" : "refused"
   }
 }

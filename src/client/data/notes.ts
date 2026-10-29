@@ -5,10 +5,15 @@
 import { createOptimisticAction, createTransaction, eq, useLiveQuery } from "@tanstack/react-db"
 import { useQuery } from "@tanstack/react-query"
 import { useEffect, useRef } from "react"
-import { api } from "@/data/api"
-import { defineRestCollection, failedWrite, isNotFound } from "@/data/collection-factory"
-import { readJson } from "@/data/error-handler"
-import { settled } from "@/data/settled"
+import { api, sendWrite } from "@/data/api"
+import {
+  defineRestCollection,
+  failedWrite,
+  isNotFound,
+  type WriteOptions,
+} from "@/data/collection-factory"
+import { readJson, reportError } from "@/data/error-handler"
+import { settled, type WriteOutcome, writeOutcome } from "@/data/settled"
 import { nowInstant } from "@shared/dates"
 import { bottomOfUnchecked } from "@shared/notes/items"
 import { titleOrNull } from "@shared/notes/notes"
@@ -33,8 +38,25 @@ export type NoteFields = { title: string; body: string }
 /** What an Item is made with; it starts unchecked. */
 export type NewItem = { id: string; text: string; position: string }
 
-/** The parts of an Item its editor changes, each written on its own. */
-export type ItemChanges = { text?: string; checked?: boolean; position?: string }
+/**
+ * A tick, untick or move of an Item, each written on its own and saved at once. Its text saves
+ * as typed text, through `updateItemText`.
+ */
+export type ItemChanges = { checked?: boolean; position?: string }
+
+/** How a save of typed text is sent: with keepalive while the page is being left. */
+export type SaveOptions = Pick<WriteOptions, "keepalive">
+
+/**
+ * How a save of typed text ended. "unreached" (no network, or a gateway failure) is shown by its
+ * field as "Not saved" and tried again; a refusal is rolled back and reported.
+ */
+export type SaveOutcome = WriteOutcome
+
+/** A save of typed text: a failure to reach the server shows as "Not saved", not as a toast. */
+function typedText(options: SaveOptions): { metadata: WriteOptions } {
+  return { metadata: { ...options, quietWhenUnreached: true } }
+}
 
 function editable(changes: Partial<NoteRow>): UpdateNote {
   const { title, body } = changes
@@ -48,15 +70,22 @@ const notesCollection = defineRestCollection<NoteRow>({
   id: "notes-notes",
   queryKey: ["notes", "notes"],
   fetchRows: async () => (await readJson(await api.notes.notes.$get())).rows,
-  create: async ({ id, kind, title, body }) =>
-    readJson(
-      await api.notes.notes.$post({
-        json: kind === "text" ? { id, kind, title, body: body ?? "" } : { id, kind, title },
-      }),
-    ),
+  create: async ({ id, kind, title, body }, options) => {
+    const json =
+      kind === "text"
+        ? { id, kind, title, body: body ?? "" }
+        : { id, kind: "checklist" as const, title }
+    return readJson(await sendWrite(options, json, (init) => api.notes.notes.$post({ json }, init)))
+  },
   // Only typed fields go through here; the Audience has its own action, `shareNote`.
-  update: async (id, changes) =>
-    readJson(await api.notes.notes[":id"].$patch({ param: { id }, json: editable(changes) })),
+  update: async (id, changes, options) => {
+    const json = editable(changes)
+    return readJson(
+      await sendWrite(options, json, (init) =>
+        api.notes.notes[":id"].$patch({ param: { id }, json }, init),
+      ),
+    )
+  },
   remove: async (id) => readJson(await api.notes.notes[":id"].$delete({ param: { id } })),
   // A Note deleted elsewhere, or no longer visible, leaves the list on the failed write.
   dropOnNotFound: true,
@@ -86,14 +115,24 @@ const itemsCollection = defineRestCollection<ItemRow>({
   id: "notes-items",
   queryKey: ["notes", "items"],
   fetchRows: async () => (await readJson(await api.notes.items.$get())).rows,
-  create: async ({ id, noteId, text }) =>
-    bumpNoteThenItem(await readJson(await api.notes.items.$post({ json: { id, noteId, text } }))),
-  update: async (id, changes) =>
-    bumpNoteThenItem(
+  create: async ({ id, noteId, text }, options) => {
+    const json = { id, noteId, text }
+    return bumpNoteThenItem(
       await readJson(
-        await api.notes.items[":id"].$patch({ param: { id }, json: itemChanges(changes) }),
+        await sendWrite(options, json, (init) => api.notes.items.$post({ json }, init)),
       ),
-    ),
+    )
+  },
+  update: async (id, changes, options) => {
+    const json = itemChanges(changes)
+    return bumpNoteThenItem(
+      await readJson(
+        await sendWrite(options, json, (init) =>
+          api.notes.items[":id"].$patch({ param: { id }, json }, init),
+        ),
+      ),
+    )
+  },
   remove: async (id) =>
     bumpNoteThenItem(await readJson(await api.notes.items[":id"].$delete({ param: { id } }))),
   // An Item deleted elsewhere, or whose Checklist is gone, drops out on the failed write.
@@ -132,81 +171,147 @@ export function useNoteItems(noteId: string) {
 }
 
 /**
- * Saves a Note that so far existed only on this device. True once the server stored it; false
- * after a refusal, which is rolled back and reported.
+ * Saves a Note that so far existed only on this device, as its typed text first saves. A refusal
+ * is rolled back and reported; a save that never reached the server is retried by the editor.
+ * A Note already here was stored by an earlier try whose answer was lost (a refetch brought it
+ * in), so its fields are written instead.
  */
-export function createNote(id: string, kind: NoteKind, creator: NotePerson, fields: NoteFields) {
+export async function createNote(
+  id: string,
+  kind: NoteKind,
+  creator: NotePerson,
+  fields: NoteFields,
+  options: SaveOptions,
+): Promise<SaveOutcome> {
+  if (notesCollection().has(id)) {
+    return updateNote(id, kind === "text" ? fields : { title: fields.title }, options)
+  }
   const now = nowInstant()
-  return settled(
-    notesCollection().insert({
-      id,
-      kind,
-      title: titleOrNull(fields.title),
-      body: kind === "text" ? fields.body : null,
-      creator,
-      // A new Note is private until its Creator shares it.
-      audience: [],
-      unopened: false,
-      createdAt: now,
-      editedAt: now,
-    }),
+  return writeOutcome(
+    notesCollection().insert(
+      {
+        id,
+        kind,
+        title: titleOrNull(fields.title),
+        body: kind === "text" ? fields.body : null,
+        creator,
+        // A new Note is private until its Creator shares it.
+        audience: [],
+        unopened: false,
+        createdAt: now,
+        editedAt: now,
+      },
+      typedText(options),
+    ),
   )
 }
 
-/** Writes only the fields given, each on its own. True once the server stored them. */
-export function updateNote(id: string, changes: Partial<NoteFields>) {
-  return settled(
-    notesCollection().update(id, (draft) => {
+/** Writes only the typed fields given, each on its own; outcomes as for `createNote`. */
+export function updateNote(
+  id: string,
+  changes: Partial<NoteFields>,
+  options: SaveOptions,
+): Promise<SaveOutcome> {
+  return writeOutcome(
+    notesCollection().update(id, typedText(options), (draft) => {
       if (changes.title !== undefined) draft.title = titleOrNull(changes.title)
       if (changes.body !== undefined) draft.body = changes.body
     }),
   )
 }
 
-/** Deletes a Note for good. True once the server deleted it. */
-export function deleteNote(id: string) {
-  return settled(notesCollection().delete(id))
+/**
+ * Deletes a Note for good. True once the server deleted it. A Note not here, whose create may
+ * still have reached the server, is deleted there too; one already gone (404) counts as deleted.
+ */
+export async function deleteNote(id: string) {
+  const notes = notesCollection()
+  if (notes.has(id)) return settled(notes.delete(id))
+  try {
+    await readJson(await api.notes.notes[":id"].$delete({ param: { id } }))
+    return true
+  } catch (error) {
+    if (isNotFound(error)) return true
+    reportError(error, "Deleting")
+    return false
+  }
 }
 
 /**
- * Adds an Item to the bottom of a saved Checklist's unchecked Items; the server has the last word
- * on where. True once stored.
+ * Adds an Item to the bottom of a saved Checklist's unchecked Items, as its typed text first
+ * saves; the server has the last word on where. Outcomes as for `createNote`, and an Item
+ * already here, stored by an earlier try whose answer was lost, has its text written instead.
  */
-export function addItem(noteId: string, { id, text, position }: NewItem) {
-  return settled(
-    itemsCollection().insert({ id, noteId, text, checked: false, checkedAt: null, position }),
+export async function addItem(
+  noteId: string,
+  { id, text, position }: NewItem,
+  options: SaveOptions,
+): Promise<SaveOutcome> {
+  if (itemsCollection().has(id)) return updateItemText(id, text, options)
+  return writeOutcome(
+    itemsCollection().insert(
+      { id, noteId, text, checked: false, checkedAt: null, position },
+      typedText(options),
+    ),
+  )
+}
+
+/** Writes an Item's typed text; outcomes as for `createNote`. */
+export function updateItemText(
+  id: string,
+  text: string,
+  options: SaveOptions,
+): Promise<SaveOutcome> {
+  return writeOutcome(
+    itemsCollection().update(id, typedText(options), (draft) => {
+      draft.text = text
+    }),
   )
 }
 
 /**
- * Writes only the parts given. A tick shows at once and the server stamps its own time; an
- * untick returns the Item to the bottom of the unchecked Items; a position moves it among them.
- * Resolves to the Item as the server stored it, tick time included, or null after a refusal
- * (rolled back and reported).
+ * Writes only the parts given; its text saves through `updateItemText`. A tick shows at once and
+ * the server stamps its own time; an untick returns the Item to the bottom of the unchecked
+ * Items; a position moves it among them. Resolves to the Item as the server stored it, tick time
+ * included, or null after a refusal (rolled back and reported).
  */
-export async function updateItem(id: string, changes: ItemChanges): Promise<Item | null> {
+export async function updateItem(
+  id: string,
+  { checked, position }: ItemChanges,
+): Promise<Item | null> {
   const items = itemsCollection()
   const stored = await settled(
     items.update(id, (draft) => {
-      if (changes.text !== undefined) draft.text = changes.text
-      if (changes.checked === true && !draft.checked) {
+      if (checked === true && !draft.checked) {
         draft.checked = true
         draft.checkedAt = nowInstant()
-      } else if (changes.checked === false && draft.checked) {
+      } else if (checked === false && draft.checked) {
         const checklist = [...items.values()].filter((item) => item.noteId === draft.noteId)
         draft.checked = false
         draft.checkedAt = null
         draft.position = bottomOfUnchecked(checklist)
       }
-      if (changes.position !== undefined) draft.position = changes.position
+      if (position !== undefined) draft.position = position
     }),
   )
   return stored ? (items.get(id) ?? null) : null
 }
 
-/** Deletes one Item. True once the server deleted it. */
-export function deleteItem(id: string) {
-  return settled(itemsCollection().delete(id))
+/**
+ * Deletes one Item. True once the server deleted it. An Item not here, whose add may still have
+ * reached the server, is deleted there too; one already gone (404) counts as deleted.
+ */
+export async function deleteItem(id: string) {
+  const items = itemsCollection()
+  if (items.has(id)) return settled(items.delete(id))
+  try {
+    await readJson(await api.notes.items[":id"].$delete({ param: { id } }))
+    return true
+  } catch (error) {
+    if (isNotFound(error)) return true
+    reportError(error, "Deleting")
+    return false
+  }
 }
 
 /**

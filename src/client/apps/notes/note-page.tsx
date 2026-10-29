@@ -10,6 +10,7 @@ import {
   leaveNote,
   shareNote,
   updateItem,
+  updateItemText,
   updateNote,
   useNote,
   useNoteItems,
@@ -83,9 +84,10 @@ export function NotePage({
       viewerId={session.user.id}
       people={people.data}
       onShare={(audience) => void shareNote(noteId, audience)}
-      onCreate={(fields) => createNote(noteId, kind, creator, fields)}
-      onUpdate={(changes) => updateNote(noteId, changes)}
-      onAddItem={(item) => addItem(noteId, item)}
+      onCreate={(fields, options) => createNote(noteId, kind, creator, fields, options)}
+      onUpdate={(changes, options) => updateNote(noteId, changes, options)}
+      onAddItem={(item, options) => addItem(noteId, item, options)}
+      onUpdateItemText={updateItemText}
       onUpdateItem={updateItem}
       onDeleteItem={deleteItem}
       onClearChecked={(ids) => clearChecked(noteId, ids)}
