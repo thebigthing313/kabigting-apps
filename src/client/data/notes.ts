@@ -7,6 +7,7 @@ import { defineRestCollection } from "@/data/collection-factory"
 import { readJson } from "@/data/error-handler"
 import { settled } from "@/data/settled"
 import { nowInstant } from "@shared/dates"
+import { titleOrNull } from "@shared/notes/notes"
 import type { NotePerson, NoteRow, UpdateNote } from "@shared/notes/schemas"
 
 export type Note = NoteRow
@@ -63,7 +64,7 @@ export function createTextNote(id: string, creator: NotePerson, fields: NoteFiel
     notesCollection().insert({
       id,
       kind: "text",
-      title: fields.title === "" ? null : fields.title,
+      title: titleOrNull(fields.title),
       body: fields.body,
       creator,
       createdAt: now,
@@ -76,7 +77,7 @@ export function createTextNote(id: string, creator: NotePerson, fields: NoteFiel
 export function updateNote(id: string, changes: Partial<NoteFields>) {
   return settled(
     notesCollection().update(id, (draft) => {
-      if (changes.title !== undefined) draft.title = changes.title === "" ? null : changes.title
+      if (changes.title !== undefined) draft.title = titleOrNull(changes.title)
       if (changes.body !== undefined) draft.body = changes.body
     }),
   )

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest"
-import { isEmptyNote, notePreview, orderNotes } from "./notes.ts"
+import { isEmptyNote, notePreview, orderNotes, titleOrNull } from "./notes.ts"
 
 describe("orderNotes", () => {
   test("puts the newest edit first", () => {
@@ -75,5 +75,18 @@ describe("isEmptyNote", () => {
   test("a title or any body text is content", () => {
     expect(isEmptyNote({ title: "Packing", body: "" })).toBe(false)
     expect(isEmptyNote({ title: null, body: "x" })).toBe(false)
+  })
+})
+
+describe("titleOrNull", () => {
+  test("an empty title is no title", () => {
+    expect(titleOrNull("")).toBeNull()
+    expect(titleOrNull(null)).toBeNull()
+    expect(titleOrNull(undefined)).toBeNull()
+  })
+
+  test("any other title is kept exactly, spaces included", () => {
+    expect(titleOrNull(" Groceries ")).toBe(" Groceries ")
+    expect(titleOrNull(" ")).toBe(" ")
   })
 })

@@ -55,6 +55,11 @@ export function notePreview(note: NoteContent): NotePreview {
   }
 }
 
+/** A title as stored: an empty one means none. Anything else is kept exactly as typed. */
+export function titleOrNull(title: string | null | undefined): string | null {
+  return title ? title : null
+}
+
 /** A Note with no title and nothing but whitespace in its body is empty. */
 export function isEmptyNote(note: NoteContent): boolean {
   return isBlank(note.title) && isBlank(note.body)

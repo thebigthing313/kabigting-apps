@@ -25,8 +25,11 @@ import type { NoteKind } from "@shared/notes/schemas"
 export type NoteEditorProps = Pick<NoteDraftOptions, "saved" | "onCreate" | "onUpdate"> & {
   /** The Note as last loaded; `editedAt` is null until it is first saved. */
   note: { kind: NoteKind; title: string | null; body: string | null; editedAt: string | null }
-  /** Deletes the Note; called once the Creator has confirmed. */
-  onDelete: () => void
+  /**
+   * Called once the Creator confirms a delete; from then on nothing more is saved. `onServer`
+   * resolves, after any save in flight settles, to whether the Note is on the server to delete.
+   */
+  onDelete: (onServer: Promise<boolean>) => void
   onBack: () => void
 }
 
@@ -35,7 +38,7 @@ export type NoteEditorProps = Pick<NoteDraftOptions, "saved" | "onCreate" | "onU
  * as typed, and when it was last edited. Typing saves on its own; there is no Save button.
  */
 export function NoteEditor({ note, saved, onCreate, onUpdate, onDelete, onBack }: NoteEditorProps) {
-  const { fields, change, cancel } = useNoteDraft({
+  const { fields, change, discard } = useNoteDraft({
     initial: { title: note.title ?? "", body: note.body ?? "" },
     saved,
     onCreate,
@@ -96,9 +99,8 @@ export function NoteEditor({ note, saved, onCreate, onUpdate, onDelete, onBack }
               variant="destructive"
               className="h-11"
               onClick={() => {
-                cancel()
                 setConfirming(false)
-                onDelete()
+                onDelete(discard())
               }}
             >
               Delete

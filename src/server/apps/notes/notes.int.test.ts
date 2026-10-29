@@ -134,12 +134,26 @@ describe("create", () => {
     expect((await create({ id: newId(), kind: "checklist", title: "Later" })).status).toBe(400)
   })
 
-  test("an id already in use is a conflict and changes nothing", async () => {
-    const note = await created({ title: "Original" })
-    const response = await create({ id: note.id, kind: "text", title: "Overwrite" }, someoneElse)
-    expect(response.status).toBe(409)
-    expect(await listed(note.id)).toMatchObject({ title: "Original" })
+  test("a retried create succeeds with the stored Note, unchanged", async () => {
+    const note = await created({ title: "Original", body: "Kept" })
+    const retry = await create({ id: note.id, kind: "text", title: "Retried", body: "Again" })
+    expect(retry.status).toBe(201)
+    expect(noteRow.parse(await retry.json())).toEqual(note)
+    expect(await listed(note.id)).toEqual(note)
   })
+
+  for (const [who, as] of [
+    ["another Account", () => someoneElse],
+    ["the Admin", () => admin.headers],
+  ] as const) {
+    test(`${who} reusing the id of a Note it can't see gets 404 and changes nothing`, async () => {
+      const note = await created({ title: "Original" })
+      const response = await create({ id: note.id, kind: "text", title: "Overwrite" }, as())
+      expect(response.status).toBe(404)
+      expect(await response.json()).toMatchObject({ error: { code: "not_found" } })
+      expect(await listed(note.id)).toEqual(note)
+    })
+  }
 })
 
 describe("field updates", () => {

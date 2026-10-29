@@ -27,20 +27,32 @@ export type NoteDraftOptions = Handlers & {
 function createAutosave(initial: NoteFields, saved: boolean, first: Handlers) {
   let latest = initial
   let exists = saved
+  let discarded = false
   let handlers = first
   const timers = new Map<Field, ReturnType<typeof setTimeout>>()
-  // Saves run one at a time, so a field's update never overtakes the create.
+  // Saves run one at a time, so a field's update never overtakes the create, and a delete can
+  // wait for the save in flight.
   let queue: Promise<unknown> = Promise.resolve()
 
   function save(field: Field) {
-    queue = queue.then(async () => {
-      if (exists) {
-        await handlers.onUpdate({ [field]: latest[field] })
-      } else if (!isEmptyNote(latest)) {
-        // The create carries every field typed so far.
-        exists = await handlers.onCreate({ ...latest })
-      }
-    })
+    queue = queue
+      .then(async () => {
+        // A save queued before the Note was deleted must not land after the delete.
+        if (discarded) return
+        if (exists) {
+          await handlers.onUpdate({ [field]: latest[field] })
+        } else if (!isEmptyNote(latest)) {
+          // The create carries every field typed so far.
+          exists = await handlers.onCreate({ ...latest })
+        }
+      })
+      // A failed save is reported where it failed; the saves behind it still run.
+      .catch(() => {})
+  }
+
+  function dropPending() {
+    for (const timer of timers.values()) clearTimeout(timer)
+    timers.clear()
   }
 
   return {
@@ -71,10 +83,15 @@ function createAutosave(initial: NoteFields, saved: boolean, first: Handlers) {
       timers.clear()
     },
 
-    /** Drops typing that has not saved yet, such as when the Note is being deleted. */
-    cancel() {
-      for (const timer of timers.values()) clearTimeout(timer)
-      timers.clear()
+    /**
+     * Stops saving for good, as the Note is being deleted: typing not yet saved is dropped and
+     * no queued save runs. Resolves, once the save in flight has settled, to whether the Note
+     * is on the server, so a create that lands mid-delete is deleted too.
+     */
+    discard(): Promise<boolean> {
+      discarded = true
+      dropPending()
+      return queue.then(() => exists)
     },
   }
 }
@@ -98,6 +115,6 @@ export function useNoteDraft({ initial, saved, onCreate, onUpdate }: NoteDraftOp
   return {
     fields,
     change: (field: Field, value: string) => setFields(autosave.change(field, value)),
-    cancel: () => autosave.cancel(),
+    discard: () => autosave.discard(),
   }
 }

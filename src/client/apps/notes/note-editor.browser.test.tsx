@@ -11,13 +11,30 @@ const SAVED_WITHIN = { timeout: 2_500 }
 
 const blank = { kind: "text", title: null, body: "", editedAt: null } as const
 
+/** A save the test settles by hand, to act while it is in flight. */
+function deferredSave() {
+  const settle: { resolve?: (stored: boolean) => void } = {}
+  const promise = new Promise<boolean>((resolve) => {
+    settle.resolve = resolve
+  })
+  return { promise, resolve: (stored: boolean) => settle.resolve?.(stored) }
+}
+
+const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+
+async function confirmDelete(screen: Awaited<ReturnType<typeof render>>) {
+  await screen.getByRole("button", { name: "More" }).click()
+  await screen.getByRole("menuitem", { name: "Delete note" }).click()
+  await screen.getByRole("button", { name: "Delete" }).click()
+}
+
 function callbacks() {
   return {
     onCreate: vi.fn<(fields: NoteFields) => Promise<boolean>>(() => Promise.resolve(true)),
     onUpdate: vi.fn<(changes: Partial<NoteFields>) => Promise<boolean>>(() =>
       Promise.resolve(true),
     ),
-    onDelete: vi.fn<() => void>(),
+    onDelete: vi.fn<(onServer: Promise<boolean>) => void>(),
     onBack: vi.fn<() => void>(),
   }
 }
@@ -82,7 +99,7 @@ describe("an empty new Note", () => {
     const { screen, onCreate } = await renderEditor()
     await userEvent.type(screen.getByLabelText("Note"), "x")
     await userEvent.clear(screen.getByLabelText("Note"))
-    await new Promise((resolve) => setTimeout(resolve, 1_500))
+    await pause(1_500)
     await screen.unmount()
     expect(onCreate).not.toHaveBeenCalled()
   })
@@ -134,8 +151,59 @@ describe("the foot and the ⋯ menu", () => {
     await screen.getByRole("menuitem", { name: "Delete note" }).click()
     await screen.getByRole("button", { name: "Delete" }).click()
     expect(onDelete).toHaveBeenCalledTimes(1)
-    // Typing still waiting to save is dropped with the Note.
+    // The Note is on the server, so it is deleted there.
+    expect(await onDelete.mock.calls[0]![0]).toBe(true)
+    // Typing still waiting to save is dropped with the Note: nothing saves after the delete.
+    await pause(1_500)
+    await screen.unmount()
+    const deletedAt = onDelete.mock.invocationCallOrder[0]!
+    expect(onUpdate.mock.invocationCallOrder.filter((order) => order > deletedAt)).toEqual([])
+  })
+
+  test("deleting a new Note that was never saved has nothing to delete on the server", async () => {
+    const { screen, onDelete, onCreate } = await renderEditor()
+    await confirmDelete(screen)
+    expect(await onDelete.mock.calls[0]![0]).toBe(false)
+    await screen.unmount()
+    expect(onCreate).not.toHaveBeenCalled()
+  })
+
+  test("delete while the first save is in flight leaves no Note", async () => {
+    const create = deferredSave()
+    const { screen, onCreate, onUpdate, onDelete } = await renderEditor()
+    onCreate.mockImplementation(() => create.promise)
+    await userEvent.type(screen.getByLabelText("Title"), "Groceries")
+    await vi.waitFor(() => expect(onCreate).toHaveBeenCalled(), SAVED_WITHIN)
+    // More typing waits behind the create; then the Note is deleted.
+    await userEvent.type(screen.getByLabelText("Note"), "Milk")
+    await confirmDelete(screen)
+    expect(onDelete).toHaveBeenCalledTimes(1)
+    let onServer: boolean | undefined
+    void onDelete.mock.calls[0]![0].then((stored) => {
+      onServer = stored
+    })
+
+    // The delete waits for the create to land, then deletes what it stored.
+    await pause(100)
+    expect(onServer).toBeUndefined()
+    create.resolve(true)
+    await vi.waitFor(() => expect(onServer).toBe(true))
+
+    // Nothing typed before the delete is saved after it.
+    await pause(1_500)
     await screen.unmount()
     expect(onUpdate).not.toHaveBeenCalled()
+    expect(onCreate).toHaveBeenCalledTimes(1)
+  })
+
+  test("a first save that fails while deleting leaves nothing to delete", async () => {
+    const create = deferredSave()
+    const { screen, onCreate, onDelete } = await renderEditor()
+    onCreate.mockImplementation(() => create.promise)
+    await userEvent.type(screen.getByLabelText("Title"), "Groceries")
+    await vi.waitFor(() => expect(onCreate).toHaveBeenCalled(), SAVED_WITHIN)
+    await confirmDelete(screen)
+    create.resolve(false)
+    expect(await onDelete.mock.calls[0]![0]).toBe(false)
   })
 })

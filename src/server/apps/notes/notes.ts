@@ -6,6 +6,7 @@ import { ApiError } from "#server/core/errors.ts"
 import { validate } from "#server/core/validate.ts"
 import type { Db } from "#server/db/client.ts"
 import { auth_user, notes } from "#server/db/schema/index.ts"
+import { titleOrNull } from "#shared/notes/notes.ts"
 import { createNote, noteParams, updateNote, type NoteRow } from "#shared/notes/schemas.ts"
 
 function notFound(): never {
@@ -36,11 +37,6 @@ async function readNote(db: Db, accountId: string, noteId: string): Promise<Note
   return row ?? notFound()
 }
 
-/** An empty title is stored as none. */
-function titleOrNull(title: string | null | undefined): string | null {
-  return title ? title : null
-}
-
 /** Notes: each visible only as `visibleTo` allows; the Creator alone deletes. */
 export function noteRoutes(db: Db) {
   return new Hono<AppEnv>()
@@ -48,13 +44,13 @@ export function noteRoutes(db: Db) {
     .post("/", validate("json", createNote), async (c) => {
       const { id, kind, title, body } = c.req.valid("json")
       const accountId = c.get("account").id
-      // The client supplies the id; an existing id is a conflict, never an overwrite.
-      const [inserted] = await db
+      // The client supplies the id. An id already in use is never overwritten: a create retried
+      // after a lost response gets the stored Note back, and a Note the caller can't see answers
+      // 404 like any other, so its existence never leaks.
+      await db
         .insert(notes)
         .values({ id, kind, title: titleOrNull(title), body: body ?? "", creatorId: accountId })
         .onConflictDoNothing({ target: notes.id })
-        .returning({ id: notes.id })
-      if (!inserted) throw new ApiError("conflict", "A Note with this id already exists")
       return c.json(await readNote(db, accountId, id), 201)
     })
     .patch("/:id", validate("param", noteParams), validate("json", updateNote), async (c) => {
