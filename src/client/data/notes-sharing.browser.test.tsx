@@ -1,11 +1,12 @@
 // Sharing through the real hooks and collections, against a fake server that answers the Notes
 // routes the way the real one does.
-import { Toaster, toast } from "sonner"
+import { Toaster } from "sonner"
 import { afterEach, beforeEach, expect, test, vi } from "vitest"
 import { cleanup, render } from "vitest-browser-react"
 import { cleanupCollections } from "@/data/collection-factory"
 import { type Note, shareNote, useNotes } from "@/data/notes"
 import { queryClient } from "@/data/query-client"
+import { dismissToasts } from "@/test/toasts"
 
 const NOTE_ID = "0190f5d2-0000-7000-8000-000000000201"
 const me = { id: "me", name: "Mara" }
@@ -50,9 +51,7 @@ beforeEach(() => {
 })
 
 afterEach(async () => {
-  // Sonner replays every toast still showing to the next Toaster mounted, so one test's
-  // toast would appear in the next. Dismissed toasts aren't replayed.
-  toast.dismiss()
+  dismissToasts()
   // Each test starts again from the server's answer, as after signing in again.
   await cleanup()
   await cleanupCollections()
