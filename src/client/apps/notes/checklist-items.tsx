@@ -24,7 +24,7 @@ export type ChecklistItemsProps = ItemHandlers & {
   autoFocusAdd?: boolean
 }
 
-function ItemRow({
+function EditableItem({
   item,
   onEnter,
   onChangeItem,
@@ -93,7 +93,7 @@ export function ChecklistItems({
       {unchecked.length > 0 && (
         <ul aria-label="To do" className="flex flex-col">
           {unchecked.map((item) => (
-            <ItemRow key={item.id} item={item} onEnter={focusAddRow} {...handlers} />
+            <EditableItem key={item.id} item={item} onEnter={focusAddRow} {...handlers} />
           ))}
         </ul>
       )}
@@ -131,7 +131,7 @@ export function ChecklistItems({
           {showChecked && (
             <ul aria-label="Checked" className="flex flex-col">
               {checked.map((item) => (
-                <ItemRow key={item.id} item={item} onEnter={focusAddRow} {...handlers} />
+                <EditableItem key={item.id} item={item} onEnter={focusAddRow} {...handlers} />
               ))}
             </ul>
           )}

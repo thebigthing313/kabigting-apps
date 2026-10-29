@@ -3,8 +3,9 @@ import { describe, expect, test, vi } from "vitest"
 import { userEvent } from "vitest/browser"
 import { render } from "vitest-browser-react"
 import { NoteEditor, type NoteEditorProps } from "@/apps/notes/note-editor"
-import type { DraftItem } from "@/apps/notes/use-note-draft"
+import type { DraftItem, StoredItem } from "@/apps/notes/use-note-draft"
 import type { ItemChanges, NewItem, NoteFields } from "@/data/notes"
+import { instantAt } from "@shared/dates"
 
 /** Comfortably past the ~1 s pause after which typing saves. */
 const SAVED_WITHIN = { timeout: 2_500 }
@@ -27,8 +28,10 @@ function callbacks() {
       Promise.resolve(true),
     ),
     onAddItem: vi.fn<(item: NewItem) => Promise<boolean>>(() => Promise.resolve(true)),
-    onUpdateItem: vi.fn<(id: string, changes: ItemChanges) => Promise<boolean>>(() =>
-      Promise.resolve(true),
+    // The server stamps a tick with its own time.
+    onUpdateItem: vi.fn<(id: string, changes: ItemChanges) => Promise<StoredItem | null>>(
+      (_id, changes) =>
+        Promise.resolve({ checkedAt: changes.checked ? instantAt(Date.now()) : null }),
     ),
     onDeleteItem: vi.fn<(id: string) => Promise<boolean>>(() => Promise.resolve(true)),
     onDelete: vi.fn<(onServer: Promise<boolean>) => void>(),
@@ -50,6 +53,18 @@ async function renderChecklist(props: Partial<NoteEditorProps> = {}) {
 
 async function renderSaved(items: DraftItem[]) {
   return renderChecklist({ note: saved, saved: true, items })
+}
+
+/** The time on a server whose clock runs an hour ahead of this device's. */
+const serverNow = () => instantAt(Date.now() + 60 * 60_000)
+
+/** A save the test settles by hand, to act while it is in flight. */
+function deferredSave() {
+  const settle: { resolve?: (stored: boolean) => void } = {}
+  const promise = new Promise<boolean>((resolve) => {
+    settle.resolve = resolve
+  })
+  return { promise, resolve: (stored: boolean) => settle.resolve?.(stored) }
 }
 
 describe("a new Checklist", () => {
@@ -213,6 +228,32 @@ describe("ticking", () => {
     )
     expect(listed("To do")).toEqual(["Milk", "Eggs", "Jam"])
     await expect.element(screen.getByRole("button", { name: /checked/ })).not.toBeInTheDocument()
+  })
+
+  test("checked Items order by the server's tick time, not this device's clock", async () => {
+    // This device's clock runs an hour behind the server's.
+    const { screen, listed, onUpdateItem } = await renderSaved([
+      item("Milk", "c"),
+      item("Jam", "i", serverNow()),
+    ])
+    onUpdateItem.mockImplementation(() => Promise.resolve({ checkedAt: serverNow() }))
+    await screen.getByRole("checkbox", { name: "Milk" }).click()
+    await vi.waitFor(() => expect(listed("Checked")).toEqual(["Milk", "Jam"]), AT_ONCE)
+  })
+
+  test("an Item ticked while it is still being added is ticked once it lands", async () => {
+    const add = deferredSave()
+    const { screen, onAddItem, onUpdateItem } = await renderSaved([])
+    onAddItem.mockImplementation(() => add.promise)
+    await userEvent.type(screen.getByRole("textbox", { name: "Add item" }), "Milk{Enter}")
+    await screen.getByRole("checkbox", { name: "Milk" }).click()
+    await pause(100)
+    expect(onUpdateItem).not.toHaveBeenCalled()
+    add.resolve(true)
+    await vi.waitFor(() => expect(onUpdateItem).toHaveBeenCalled(), AT_ONCE)
+    await pause(100)
+    expect(onAddItem).toHaveBeenCalledTimes(1)
+    expect(onUpdateItem.mock.calls).toEqual([[expect.any(String), { checked: true }]])
   })
 
   test("an Item ticked right after typing saves its text first", async () => {

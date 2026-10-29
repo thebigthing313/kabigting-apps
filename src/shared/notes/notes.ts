@@ -65,11 +65,11 @@ function checklistPreview(
   title: string | null,
   items: readonly (ItemPlacing & { text: string })[],
 ): NotePreview {
-  const toDo = orderItems(items)
+  const unchecked = orderItems(items)
     .unchecked.map((item) => oneLine(item.text))
     .filter((text) => text !== "")
-  if (!isBlank(title)) return { heading: oneLine(title ?? ""), snippet: cut(toDo.join(", ")) }
-  const [first, ...rest] = toDo
+  if (!isBlank(title)) return { heading: oneLine(title ?? ""), snippet: cut(unchecked.join(", ")) }
+  const [first, ...rest] = unchecked
   return { heading: first ?? "Untitled", snippet: cut(rest.join(", ")) }
 }
 

@@ -4,7 +4,7 @@ import { render } from "vitest-browser-react"
 import { NotesList } from "@/apps/notes/notes-list"
 import type { Item, Note } from "@/data/notes"
 import { instantAt } from "@shared/dates"
-import type { NewNoteKind } from "@shared/notes/schemas"
+import type { NoteKind } from "@shared/notes/schemas"
 
 const minutesAgo = (minutes: number) => instantAt(Date.now() - minutes * 60_000)
 
@@ -22,7 +22,7 @@ function note(overrides: Partial<Note>): Note {
 }
 
 async function renderList(notes: Note[], items: Item[] = []) {
-  const onNew = vi.fn<(kind: NewNoteKind) => void>()
+  const onNew = vi.fn<(kind: NoteKind) => void>()
   const onOpen = vi.fn<(id: string) => void>()
   const screen = await render(
     <NotesList notes={notes} items={items} onNew={onNew} onOpen={onOpen} />,

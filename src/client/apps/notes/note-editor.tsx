@@ -50,7 +50,7 @@ export function NoteEditor({
   ...handlers
 }: NoteEditorProps) {
   const {
-    draft: { fields, items: draftItems },
+    draft: { fields, items: draftItems, newItemText },
     change,
     discard,
     ...checklist
@@ -91,7 +91,7 @@ export function NoteEditor({
       {note.kind === "checklist" ? (
         <ChecklistItems
           items={draftItems}
-          newItemText={checklist.newItemText}
+          newItemText={newItemText}
           onTypeNewItem={checklist.typeNewItem}
           onAddItem={checklist.addItem}
           onChangeItem={checklist.changeItem}

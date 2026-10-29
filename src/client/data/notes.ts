@@ -8,7 +8,7 @@ import { defineRestCollection } from "@/data/collection-factory"
 import { readJson } from "@/data/error-handler"
 import { settled } from "@/data/settled"
 import { nowInstant } from "@shared/dates"
-import { appendPosition } from "@shared/notes/items"
+import { bottomOfUnchecked } from "@shared/notes/items"
 import { titleOrNull } from "@shared/notes/notes"
 import type {
   ItemRow,
@@ -58,10 +58,10 @@ const notesCollection = defineRestCollection<NoteRow>({
 })
 
 /**
- * Every Item write is an edit to its Checklist, so the Checklist takes the server's new edited
- * at and rises to the top of the list. Returns the Item as stored.
+ * Every Item write is an edit to its Checklist: first the Checklist takes the server's new
+ * edited at, rising to the top of the list, then the Item as stored is returned.
  */
-async function stored({ item, noteEditedAt }: ItemWrite): Promise<ItemRow> {
+async function bumpNoteThenItem({ item, noteEditedAt }: ItemWrite): Promise<ItemRow> {
   const notes = notesCollection()
   if (notes.has(item.noteId))
     await notes.utils.writeUpdate({ id: item.noteId, editedAt: noteEditedAt })
@@ -81,15 +81,15 @@ const itemsCollection = defineRestCollection<ItemRow>({
   queryKey: ["notes", "items"],
   fetchRows: async () => (await readJson(await api.notes.items.$get())).rows,
   create: async ({ id, noteId, text }) =>
-    stored(await readJson(await api.notes.items.$post({ json: { id, noteId, text } }))),
+    bumpNoteThenItem(await readJson(await api.notes.items.$post({ json: { id, noteId, text } }))),
   update: async (id, changes) =>
-    stored(
+    bumpNoteThenItem(
       await readJson(
         await api.notes.items[":id"].$patch({ param: { id }, json: itemChanges(changes) }),
       ),
     ),
   remove: async (id) =>
-    stored(await readJson(await api.notes.items[":id"].$delete({ param: { id } }))),
+    bumpNoteThenItem(await readJson(await api.notes.items[":id"].$delete({ param: { id } }))),
   // An Item deleted elsewhere, or whose Checklist is gone, drops out on the failed write.
   dropOnNotFound: true,
 })
@@ -171,26 +171,26 @@ export function addItem(noteId: string, { id, text, position }: NewItem) {
 
 /**
  * Writes only the parts given. A tick shows at once and the server stamps its own time; an
- * untick returns the Item to the bottom of the unchecked Items. True once stored.
+ * untick returns the Item to the bottom of the unchecked Items. Resolves to the Item as the
+ * server stored it, tick time included, or null after a refusal (rolled back and reported).
  */
-export function updateItem(id: string, changes: ItemChanges) {
+export async function updateItem(id: string, changes: ItemChanges): Promise<Item | null> {
   const items = itemsCollection()
-  return settled(
+  const stored = await settled(
     items.update(id, (draft) => {
       if (changes.text !== undefined) draft.text = changes.text
       if (changes.checked === true && !draft.checked) {
         draft.checked = true
         draft.checkedAt = nowInstant()
       } else if (changes.checked === false && draft.checked) {
-        const unchecked = [...items.values()].filter(
-          (item) => item.noteId === draft.noteId && !item.checked,
-        )
+        const checklist = [...items.values()].filter((item) => item.noteId === draft.noteId)
         draft.checked = false
         draft.checkedAt = null
-        draft.position = appendPosition(unchecked.map((item) => item.position))
+        draft.position = bottomOfUnchecked(checklist)
       }
     }),
   )
+  return stored ? (items.get(id) ?? null) : null
 }
 
 /** Deletes one Item. True once the server deleted it. */

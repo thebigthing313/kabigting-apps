@@ -60,11 +60,21 @@ export function appendPosition(positions: readonly string[]): string {
   return last.slice(0, index) + DIGITS.charAt(DIGITS.indexOf(last.charAt(index)) + 1)
 }
 
-/** What a Checklist row counts: "N to do · N done". */
+/**
+ * Where an Item goes to join the bottom of a Checklist's unchecked Items: when added, or when
+ * unticked. Pass the Checklist's Items; checked ones are passed over.
+ */
+export function bottomOfUnchecked(
+  items: readonly { checked: boolean; position: string }[],
+): string {
+  return appendPosition(items.filter((item) => !item.checked).map((item) => item.position))
+}
+
+/** How many of a Checklist's Items are unchecked and checked, for "N to do · N done". */
 export function checklistCounts(items: readonly { checked: boolean }[]): {
-  toDo: number
-  done: number
+  unchecked: number
+  checked: number
 } {
-  const done = items.filter((item) => item.checked).length
-  return { toDo: items.length - done, done }
+  const checked = items.filter((item) => item.checked).length
+  return { unchecked: items.length - checked, checked }
 }

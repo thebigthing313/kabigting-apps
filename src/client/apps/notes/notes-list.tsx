@@ -11,7 +11,7 @@ import type { Item, Note } from "@/data/notes"
 import { timeAgo } from "@shared/dates"
 import { checklistCounts } from "@shared/notes/items"
 import { notePreview, orderNotes } from "@shared/notes/notes"
-import type { NewNoteKind } from "@shared/notes/schemas"
+import type { NoteKind } from "@shared/notes/schemas"
 
 const NO_ITEMS: readonly Item[] = []
 
@@ -26,7 +26,7 @@ export function NotesList({
   /** Every Checklist's Items, for the rows' previews and counts. */
   items: readonly Item[]
   /** Starts a new Note of the kind picked; its kind never changes afterwards. */
-  onNew: (kind: NewNoteKind) => void
+  onNew: (kind: NoteKind) => void
   onOpen: (id: string) => void
 }) {
   const now = useNow()
@@ -81,7 +81,7 @@ export function NotesList({
                       <span className="truncate text-sm text-muted-foreground">{snippet}</span>
                     )}
                     <span className="text-xs text-muted-foreground">
-                      {counts && `${counts.toDo} to do · ${counts.done} done · `}
+                      {counts && `${counts.unchecked} to do · ${counts.checked} done · `}
                       {timeAgo(note.editedAt, now)}
                     </span>
                   </span>

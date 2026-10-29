@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest"
-import { appendPosition, checklistCounts, orderItems } from "./items.ts"
+import { appendPosition, bottomOfUnchecked, checklistCounts, orderItems } from "./items.ts"
 
 function item(id: string, overrides: { position?: string; checkedAt?: string | null } = {}) {
   const checkedAt = overrides.checkedAt ?? null
@@ -70,11 +70,27 @@ describe("appendPosition", () => {
   })
 })
 
+describe("bottomOfUnchecked", () => {
+  test("goes after every unchecked Item, whatever the checked ones hold", () => {
+    const next = bottomOfUnchecked([
+      item("milk", { position: "c" }),
+      item("eggs", { position: "s" }),
+      item("jam", { position: "z", checkedAt: "2026-10-01T09:00:00.000Z" }),
+    ])
+    expect(next > "s").toBe(true)
+    expect(next < "z").toBe(true)
+  })
+
+  test("starts in the middle when nothing is unchecked", () => {
+    expect(bottomOfUnchecked([item("jam", { checkedAt: "2026-10-01T09:00:00.000Z" })])).toBe("i")
+  })
+})
+
 describe("checklistCounts", () => {
-  test("counts what is left to do and what is done", () => {
+  test("counts the unchecked and the checked Items", () => {
     expect(
       checklistCounts([item("a"), item("b", { checkedAt: "2026-10-01T09:00:00.000Z" }), item("c")]),
-    ).toEqual({ toDo: 2, done: 1 })
-    expect(checklistCounts([])).toEqual({ toDo: 0, done: 0 })
+    ).toEqual({ unchecked: 2, checked: 1 })
+    expect(checklistCounts([])).toEqual({ unchecked: 0, checked: 0 })
   })
 })

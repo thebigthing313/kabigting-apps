@@ -92,8 +92,6 @@ export const itemRows = z.object({ rows: z.array(itemRow) })
 export const itemWrite = z.object({ item: itemRow, noteEditedAt: instant })
 
 export type CreateNote = z.infer<typeof createNote>
-/** The kinds of Note the New menu can start. */
-export type NewNoteKind = NoteKind
 export type UpdateNote = z.infer<typeof updateNote>
 export type NotePerson = z.infer<typeof notePerson>
 export type NoteRow = z.infer<typeof noteRow>

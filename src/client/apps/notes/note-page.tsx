@@ -11,7 +11,7 @@ import {
   useNote,
   useNoteItems,
 } from "@/data/notes"
-import type { NewNoteKind } from "@shared/notes/schemas"
+import type { NoteKind } from "@shared/notes/schemas"
 
 const appRoute = getRouteApi("/_app")
 
@@ -19,13 +19,7 @@ const appRoute = getRouteApi("/_app")
  * One Note's page. `newKind` marks a Note just started from the New menu: until its first save
  * with content it exists only here, so leaving it empty leaves nothing behind.
  */
-export function NotePage({
-  noteId,
-  newKind,
-}: {
-  noteId: string
-  newKind?: NewNoteKind | undefined
-}) {
+export function NotePage({ noteId, newKind }: { noteId: string; newKind?: NoteKind | undefined }) {
   const { session } = appRoute.useRouteContext()
   const { note, isLoading } = useNote(noteId)
   const { data: items, isLoading: itemsLoading } = useNoteItems(noteId)

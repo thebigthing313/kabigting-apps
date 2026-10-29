@@ -178,6 +178,18 @@ describe("adding Items", () => {
     expect(texts((await itemsOf(note.id)).unchecked)).toEqual(["Milk"])
   })
 
+  test("reusing an Item's id under another Checklist is 404 and changes neither", async () => {
+    const first = await checklist("First")
+    const second = await checklist("Second")
+    const { item, noteEditedAt } = await added(first.id, "Milk")
+    const reused = await addItem({ id: item.id, noteId: second.id, text: "Milk" })
+    expect(reused.status).toBe(404)
+    expect((await itemsOf(second.id)).unchecked).toEqual([])
+    expect((await itemsOf(first.id)).unchecked).toEqual([item])
+    expect(await listedNote(first.id)).toMatchObject({ editedAt: noteEditedAt })
+    expect(await listedNote(second.id)).toMatchObject({ editedAt: second.editedAt })
+  })
+
   test("to a Note that is gone is 404", async () => {
     expect((await addItem({ noteId: newId(), text: "Milk" })).status).toBe(404)
   })
@@ -282,6 +294,18 @@ describe("edited at", () => {
       previous = Date.parse(write.noteEditedAt)
     }
     expect(await listedNote(note.id)).toMatchObject({ editedAt: writes.at(-1)!.noteEditedAt })
+  })
+
+  test("a write that changes nothing leaves it alone", async () => {
+    const note = await checklist()
+    const { item } = await added(note.id, "Milk")
+    const ticked = await patched(item.id, { checked: true })
+    const again = await patched(item.id, { checked: true })
+    const sameText = await patched(item.id, { text: "Milk", checked: true })
+    expect(again.noteEditedAt).toBe(ticked.noteEditedAt)
+    expect(sameText.noteEditedAt).toBe(ticked.noteEditedAt)
+    expect(again.item).toEqual(ticked.item)
+    expect(await listedNote(note.id)).toMatchObject({ editedAt: ticked.noteEditedAt })
   })
 
   test("a refused Item write leaves it alone", async () => {

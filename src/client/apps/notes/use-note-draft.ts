@@ -2,7 +2,7 @@ import { useEffect, useState } from "react"
 import type { ItemChanges, NewItem, NoteFields } from "@/data/notes"
 import { nowInstant } from "@shared/dates"
 import { newId } from "@shared/ids"
-import { appendPosition, orderItems } from "@shared/notes/items"
+import { bottomOfUnchecked } from "@shared/notes/items"
 import { isBlankItem, isEmptyNote } from "@shared/notes/notes"
 
 /** How long typing must pause before a field saves. */
@@ -19,8 +19,14 @@ export type DraftItem = {
   position: string
 }
 
-/** Everything an editor holds: the typed fields and, for a Checklist, its Items. */
-export type NoteDraft = { fields: NoteFields; items: DraftItem[] }
+/**
+ * Everything an editor holds: the typed fields and, for a Checklist, its Items and what is typed
+ * in its "Add item" row, not yet an Item.
+ */
+export type NoteDraft = { fields: NoteFields; items: DraftItem[]; newItemText: string }
+
+/** What the server stored for an Item: its tick time is the server's, not this device's. */
+export type StoredItem = { checkedAt: string | null }
 
 type Handlers = {
   /** Stores a new Note with everything typed so far; resolves true once stored. */
@@ -29,17 +35,20 @@ type Handlers = {
   onUpdate: (changes: Partial<NoteFields>) => Promise<boolean>
   /** Stores a new Item in the saved Checklist; resolves true once stored. */
   onAddItem: (item: NewItem) => Promise<boolean>
-  /** Stores one change to one Item; resolves true once stored. */
-  onUpdateItem: (id: string, changes: ItemChanges) => Promise<boolean>
+  /** Stores one change to one Item; resolves to the Item as stored, or null after a refusal. */
+  onUpdateItem: (id: string, changes: ItemChanges) => Promise<StoredItem | null>
   /** Deletes one Item; resolves true once deleted. */
   onDeleteItem: (id: string) => Promise<boolean>
 }
 
 export type NoteDraftOptions = Handlers & {
-  initial: NoteDraft
+  initial: Omit<NoteDraft, "newItemText">
   /** Whether the Note exists on the server yet. A new one exists only here until it has content. */
   saved: boolean
 }
+
+/** Where changes go while no editor listens. */
+function unheard(): void {}
 
 /** A timer key: a field, or one Item's text. */
 type SaveKey = Field | `item:${string}`
@@ -53,6 +62,10 @@ function createAutosave(initial: NoteDraft, saved: boolean, first: Handlers) {
   let exists = saved
   /** The Items the server holds; the rest exist only here so far. */
   const storedItems = new Set(initial.items.map((item) => item.id))
+  /** Items whose add is queued or in flight. */
+  const addingItems = new Set<string>()
+  /** Told of changes the server makes after a save, such as an Item's tick time. */
+  let onSaved: (draft: NoteDraft) => void = unheard
   let discarded = false
   let handlers = first
   const timers = new Map<SaveKey, ReturnType<typeof setTimeout>>()
@@ -89,15 +102,21 @@ function createAutosave(initial: NoteDraft, saved: boolean, first: Handlers) {
 
   /** Saves an Item's latest text: the first save with text adds it. Blank text waits. */
   function saveItemText(id: string) {
+    const adds = !storedItems.has(id)
+    if (adds) addingItems.add(id)
     enqueue(async () => {
-      // An Item deleted meanwhile is never brought back by a late save.
-      const item = findItem(id)
-      if (!item || isBlankItem(item)) return
-      if (storedItems.has(id)) {
-        await handlers.onUpdateItem(id, { text: item.text })
-      } else if (await ensureNote()) {
-        const { text, position } = item
-        if (await handlers.onAddItem({ id, text, position })) storedItems.add(id)
+      try {
+        // An Item deleted meanwhile is never brought back by a late save.
+        const item = findItem(id)
+        if (!item || isBlankItem(item)) return
+        if (storedItems.has(id)) {
+          await handlers.onUpdateItem(id, { text: item.text })
+        } else if (await ensureNote()) {
+          const { text, position } = item
+          if (await handlers.onAddItem({ id, text, position })) storedItems.add(id)
+        }
+      } finally {
+        if (adds) addingItems.delete(id)
       }
     })
   }
@@ -118,10 +137,13 @@ function createAutosave(initial: NoteDraft, saved: boolean, first: Handlers) {
     )
   }
 
-  /** Runs an Item's pending text save now, ahead of a change that must follow it. */
+  /**
+   * Runs an Item's pending text save now, ahead of a change that must follow it. An Item that is
+   * neither stored nor being added (its add failed) is added again.
+   */
   function settleItemText(id: string) {
     const key: SaveKey = `item:${id}`
-    if (!timers.has(key) && storedItems.has(id)) return
+    if (!timers.has(key) && (storedItems.has(id) || addingItems.has(id))) return
     clearTimeout(timers.get(key))
     timers.delete(key)
     saveItemText(id)
@@ -140,22 +162,34 @@ function createAutosave(initial: NoteDraft, saved: boolean, first: Handlers) {
     })
   }
 
-  /** What is typed in the "Add item" row, not yet an Item. */
-  let adding = ""
-
   function addTyped(id: string) {
-    const text = adding
-    adding = ""
+    const text = latest.newItemText
+    latest = { ...latest, newItemText: "" }
     if (isBlankItem({ text })) return
-    const unchecked = orderItems(latest.items).unchecked
-    const position = appendPosition(unchecked.map((item) => item.position))
+    const position = bottomOfUnchecked(latest.items)
     setItems([...latest.items, { id, text, checked: false, checkedAt: null, position }])
     saveItemText(id)
+  }
+
+  /** Takes the server's tick time for an Item that is still checked here. */
+  function takeTickTime(id: string, stored: StoredItem) {
+    const item = findItem(id)
+    if (!item?.checked || stored.checkedAt === null || stored.checkedAt === item.checkedAt) return
+    setItems(
+      latest.items.map((each) =>
+        each.id === id ? { ...each, checkedAt: stored.checkedAt } : each,
+      ),
+    )
+    onSaved(latest)
   }
 
   return {
     setHandlers(next: Handlers) {
       handlers = next
+    },
+
+    listen(listener: (draft: NoteDraft) => void) {
+      onSaved = listener
     },
 
     /** Takes a field's new text and saves it once typing pauses. */
@@ -166,8 +200,9 @@ function createAutosave(initial: NoteDraft, saved: boolean, first: Handlers) {
     },
 
     /** Takes what is typed in the "Add item" row, added on Enter, on leaving the row or the page. */
-    typeNewItem(text: string) {
-      adding = text
+    typeNewItem(text: string): NoteDraft {
+      latest = { ...latest, newItemText: text }
+      return latest
     },
 
     /**
@@ -193,7 +228,8 @@ function createAutosave(initial: NoteDraft, saved: boolean, first: Handlers) {
     toggleItem(id: string, checked: boolean): NoteDraft {
       const item = findItem(id)
       if (!item || item.checked === checked || isBlankItem(item)) return latest
-      const unchecked = orderItems(latest.items).unchecked
+      const position = bottomOfUnchecked(latest.items)
+      // Shown at once with this device's time, then the server's, which orders checked Items.
       setItems(
         latest.items.map((each) =>
           each.id !== id
@@ -204,14 +240,16 @@ function createAutosave(initial: NoteDraft, saved: boolean, first: Handlers) {
                   ...each,
                   checked,
                   checkedAt: null,
-                  position: appendPosition(unchecked.map((other) => other.position)),
+                  position,
                 },
         ),
       )
       // Text still waiting to save goes first, so the Item exists to be ticked.
       settleItemText(id)
       enqueue(async () => {
-        if (storedItems.has(id)) await handlers.onUpdateItem(id, { checked })
+        if (!storedItems.has(id)) return
+        const stored = await handlers.onUpdateItem(id, { checked })
+        if (stored) takeTickTime(id, stored)
       })
       return latest
     },
@@ -261,28 +299,27 @@ function createAutosave(initial: NoteDraft, saved: boolean, first: Handlers) {
  * Leaving flushes what is pending.
  */
 export function useNoteDraft({ initial, saved, ...handlers }: NoteDraftOptions) {
-  const [draft, setDraft] = useState(initial)
-  const [newItemText, setNewItemText] = useState("")
-  const [autosave] = useState(() => createAutosave(initial, saved, handlers))
+  const [first] = useState(() => ({ ...initial, newItemText: "" }))
+  const [draft, setDraft] = useState(first)
+  const [autosave] = useState(() => createAutosave(first, saved, handlers))
 
   // Later saves use the latest render's callbacks.
   useEffect(() => {
     autosave.setHandlers(handlers)
   })
-  useEffect(() => () => autosave.flush(), [autosave])
+  useEffect(() => {
+    autosave.listen(setDraft)
+    return () => {
+      autosave.listen(unheard)
+      autosave.flush()
+    }
+  }, [autosave])
 
   return {
     draft,
     change: (field: Field, value: string) => setDraft(autosave.change(field, value)),
-    newItemText,
-    typeNewItem: (text: string) => {
-      autosave.typeNewItem(text)
-      setNewItemText(text)
-    },
-    addItem: () => {
-      setDraft(autosave.addItem(newId()))
-      setNewItemText("")
-    },
+    typeNewItem: (text: string) => setDraft(autosave.typeNewItem(text)),
+    addItem: () => setDraft(autosave.addItem(newId())),
     changeItem: (id: string, text: string) => setDraft(autosave.changeItem(id, text)),
     toggleItem: (id: string, checked: boolean) => setDraft(autosave.toggleItem(id, checked)),
     deleteItem: (id: string) => setDraft(autosave.deleteItem(id)),
