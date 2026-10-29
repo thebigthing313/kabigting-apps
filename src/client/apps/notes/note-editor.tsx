@@ -24,7 +24,10 @@ import {
 import { timeAgo } from "@shared/dates"
 import type { AudienceMember, NoteKind, NotePerson } from "@shared/notes/schemas"
 
-export type NoteEditorProps = Omit<NoteDraftOptions, "initial"> & {
+/** A Text note, or a Checklist not yet loaded, has no Items. */
+const NO_ITEMS: readonly DraftItem[] = []
+
+export type NoteEditorProps = Omit<NoteDraftOptions, "loaded"> & {
   /** The Note as last loaded; `editedAt` is null until it is first saved. */
   note: {
     kind: NoteKind
@@ -34,7 +37,10 @@ export type NoteEditorProps = Omit<NoteDraftOptions, "initial"> & {
     creator: NotePerson
     audience: readonly AudienceMember[]
   }
-  /** A Checklist's Items as last loaded. */
+  /**
+   * A Checklist's Items as last loaded. The editor takes in later loads of the Note and its
+   * Items, quietly, except where typing here has not saved yet.
+   */
   items?: readonly DraftItem[]
   /** The signed-in Account: the Creator gets Share and Delete, everyone else Leave. */
   viewerId: string
@@ -63,7 +69,7 @@ export type NoteEditorProps = Omit<NoteDraftOptions, "initial"> & {
  */
 export function NoteEditor({
   note,
-  items = [],
+  items = NO_ITEMS,
   saved,
   viewerId,
   people,
@@ -80,7 +86,7 @@ export function NoteEditor({
     discard,
     ...checklist
   } = useNoteDraft({
-    initial: { fields: { title: note.title ?? "", body: note.body ?? "" }, items: [...items] },
+    loaded: { fields: { title: note.title ?? "", body: note.body ?? "" }, items },
     saved,
     ...handlers,
   })

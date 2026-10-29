@@ -12,7 +12,7 @@ import {
   isNotFound,
   type WriteOptions,
 } from "@/data/collection-factory"
-import { readJson, reportError } from "@/data/error-handler"
+import { isUnreached, readJson, reportError } from "@/data/error-handler"
 import { settled, type WriteOutcome, writeOutcome } from "@/data/settled"
 import { nowInstant } from "@shared/dates"
 import { bottomOfUnchecked } from "@shared/notes/items"
@@ -206,12 +206,43 @@ export async function createNote(
   )
 }
 
+/**
+ * Saves typed text whose Note or Item is no longer here, as a refetch found it gone: the server
+ * has the last word. Gone there too (404), the save is refused and reported, so the typing that
+ * goes with it doesn't vanish unexplained; still there after all, it is taken back in.
+ */
+async function saveWhereGone(send: () => Promise<void>): Promise<SaveOutcome> {
+  try {
+    await send()
+    return "saved"
+  } catch (error) {
+    if (isUnreached(error)) return "unreached"
+    reportError(error, "Saving")
+    return "refused"
+  }
+}
+
 /** Writes only the typed fields given, each on its own; outcomes as for `createNote`. */
 export function updateNote(
   id: string,
   changes: Partial<NoteFields>,
   options: SaveOptions,
 ): Promise<SaveOutcome> {
+  const notes = notesCollection()
+  if (!notes.has(id)) {
+    const json = editable({
+      ...(changes.title === undefined ? {} : { title: titleOrNull(changes.title) }),
+      ...(changes.body === undefined ? {} : { body: changes.body }),
+    })
+    return saveWhereGone(async () => {
+      const stored = await readJson(
+        await sendWrite(options, json, (init) =>
+          api.notes.notes[":id"].$patch({ param: { id }, json }, init),
+        ),
+      )
+      await notes.utils.writeUpsert(stored)
+    })
+  }
   return writeOutcome(
     notesCollection().update(id, typedText(options), (draft) => {
       if (changes.title !== undefined) draft.title = titleOrNull(changes.title)
@@ -262,8 +293,20 @@ export function updateItemText(
   text: string,
   options: SaveOptions,
 ): Promise<SaveOutcome> {
+  const items = itemsCollection()
+  if (!items.has(id)) {
+    const json = { text }
+    return saveWhereGone(async () => {
+      const stored = await readJson(
+        await sendWrite(options, json, (init) =>
+          api.notes.items[":id"].$patch({ param: { id }, json }, init),
+        ),
+      )
+      await items.utils.writeUpsert(await bumpNoteThenItem(stored))
+    })
+  }
   return writeOutcome(
-    itemsCollection().update(id, typedText(options), (draft) => {
+    items.update(id, typedText(options), (draft) => {
       draft.text = text
     }),
   )

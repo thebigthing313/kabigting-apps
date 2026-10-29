@@ -23,6 +23,9 @@ export type DraftItem = {
  */
 export type NoteDraft = { fields: NoteFields; items: DraftItem[]; newItemText: string }
 
+/** A Note as last loaded from the server, or as this device last wrote it there. */
+export type LoadedNote = { fields: NoteFields; items: readonly DraftItem[] }
+
 /** What the server stored for an Item: its tick time is the server's, not this device's. */
 export type StoredItem = { checkedAt: string | null }
 
@@ -53,7 +56,11 @@ type Handlers = {
 }
 
 export type NoteDraftOptions = Handlers & {
-  initial: Omit<NoteDraft, "newItemText">
+  /**
+   * The Note as last loaded. The editor starts from it, then takes in each change to it, such as
+   * someone else's edit brought by a refetch, except where typing here has not saved yet.
+   */
+  loaded: LoadedNote
   /** Whether the Note exists on the server yet. A new one exists only here until it has content. */
   saved: boolean
 }
@@ -92,6 +99,18 @@ function createAutosave(
   onNotSaved: (keys: ReadonlySet<SaveKey>) => void,
 ) {
   let latest = initial
+  /** The Note as last loaded, to tell what a later load changed. */
+  let loaded: LoadedNote = initial
+  /** Items deleted or cleared here: a load that still holds one never brings it back. */
+  const removedHere = new Set<string>()
+  /**
+   * Items gone from the server while text typed into them had not saved. Each stays, keeping the
+   * text, until its save settles, and then goes: that save can only fail, as nothing writes an
+   * Item back once it is deleted.
+   */
+  const goneWhileTyping = new Set<string>()
+  /** Items with a move queued or on its way. */
+  const moving = new Set<string>()
   let exists = saved
   /** The Items the server holds; the rest exist only here so far. */
   const storedItems = new Set(initial.items.map((item) => item.id))
@@ -205,17 +224,109 @@ function createAutosave(
     return handlers.onUpdateItemText(id, text, options)
   }
 
+  /** An Item gone from the server goes from here too, once its text here has settled. */
+  function textSettled(key: SaveKey): void {
+    if (key === "title" || key === "body") return
+    const id = key.slice("item:".length)
+    if (!goneWhileTyping.has(id) || saver.holdsUnsaved(key)) return
+    dropGone(id)
+    onChanged(latest)
+  }
+
   const saver = createTypedTextSaver<SaveKey>({
     read: (key) =>
       key === "title" || key === "body"
         ? latest.fields[key]
         : (findItem(key.slice("item:".length))?.text ?? ""),
     onNotSaved,
+    onSettled: textSettled,
     save: (key, text, options) =>
       key === "title" || key === "body"
         ? saveField(key, text, options)
         : saveItemText(key.slice("item:".length), text, options),
   })
+
+  /** Drops an Item the server no longer holds: nothing more saves or retries it. */
+  function dropGone(id: string) {
+    goneWhileTyping.delete(id)
+    storedItems.delete(id)
+    unsureItems.delete(id)
+    saver.forget(itemKey(id))
+    setItems(latest.items.filter((item) => item.id !== id))
+  }
+
+  /** Takes in an Item a load holds that the one before didn't. */
+  function takeArrived(item: DraftItem) {
+    goneWhileTyping.delete(item.id)
+    if (findItem(item.id)) {
+      // One being added is this device's own, shown before it lands. Any other is stored after
+      // all, such as one whose add got no answer.
+      if (!addingItems.has(item.id)) {
+        storedItems.add(item.id)
+        unsureItems.delete(item.id)
+      }
+      return
+    }
+    // Deleted here, and the load came before the server heard: it stays deleted.
+    if (removedHere.has(item.id)) return
+    // Someone else's.
+    storedItems.add(item.id)
+    saver.received(itemKey(item.id), item.text)
+    setItems([...latest.items, toDraftItem(item, undefined)])
+  }
+
+  /**
+   * Takes in what a load changed in an Item: its text, unless text typed here has not saved yet,
+   * and its tick and place, unless a tick or move made here is still on its way.
+   */
+  function takeChanges(item: DraftItem, earlier: DraftItem) {
+    const key = itemKey(item.id)
+    if (item.text !== earlier.text && !saver.holdsUnsaved(key)) {
+      saver.received(key, item.text)
+      patchItem(item.id, { text: item.text })
+    }
+    const placed =
+      item.checked !== earlier.checked ||
+      item.checkedAt !== earlier.checkedAt ||
+      item.position !== earlier.position
+    if (placed && !ticking.has(item.id) && !moving.has(item.id)) {
+      const { checked, checkedAt, position } = item
+      patchItem(item.id, { checked, checkedAt, position })
+    }
+  }
+
+  /**
+   * Takes in a later load of the Note, such as a refetch with someone else's edits: whatever it
+   * changed, except text typed here that has not saved yet (still pausing, on its way or "Not
+   * saved"), which stays as typed and saves over it, the last write winning.
+   */
+  function receive(next: LoadedNote) {
+    const before = latest
+    const previous = loaded
+    loaded = next
+    for (const field of ["title", "body"] as const) {
+      const text = next.fields[field]
+      if (text === previous.fields[field] || saver.holdsUnsaved(field)) continue
+      saver.received(field, text)
+      if (latest.fields[field] !== text) {
+        latest = { ...latest, fields: { ...latest.fields, [field]: text } }
+      }
+    }
+    const earlier = new Map(previous.items.map((item) => [item.id, item]))
+    for (const item of next.items) {
+      const was = earlier.get(item.id)
+      if (!was) takeArrived(item)
+      else if (findItem(item.id)) takeChanges(item, was)
+    }
+    // Items deleted elsewhere, or dropped as their writes found them gone.
+    const held = new Set(next.items.map((item) => item.id))
+    for (const { id } of previous.items) {
+      if (held.has(id) || !findItem(id) || addingItems.has(id)) continue
+      if (saver.holdsUnsaved(itemKey(id))) goneWhileTyping.add(id)
+      else dropGone(id)
+    }
+    if (latest !== before) onChanged(latest)
+  }
 
   /**
    * Saves an Item's text now, ahead of a change that must follow it, unless it is already
@@ -233,6 +344,8 @@ function createAutosave(
   function removeItem(id: string) {
     const key = itemKey(id)
     saver.forget(key)
+    removedHere.add(id)
+    goneWhileTyping.delete(id)
     setItems(latest.items.filter((item) => item.id !== id))
     saver.run(key, async () => {
       // An add on its way lands first, so the Item it stores is deleted too. One whose add got
@@ -245,7 +358,15 @@ function createAutosave(
       if (deleted) {
         storedItems.delete(id)
         unsureItems.delete(id)
+        return
       }
+      // A refused delete is undone, as its toast says: the Item comes back as last loaded. One
+      // not loaded now, such as one found gone, stays away; one the next load holds comes back.
+      removedHere.delete(id)
+      const back = loaded.items.find((item) => item.id === id)
+      if (!back || findItem(id)) return
+      setItems([...latest.items, toDraftItem(back, undefined)])
+      onChanged(latest)
     })
   }
 
@@ -296,7 +417,11 @@ function createAutosave(
         .filter((item) => saver.hasUnsaved(itemKey(item.id)))
         .map((item) => [item.id, item.text]),
     )
-    for (const id of ids) saver.forget(itemKey(id))
+    for (const id of ids) {
+      saver.forget(itemKey(id))
+      removedHere.add(id)
+      goneWhileTyping.delete(id)
+    }
     setItems(latest.items.filter((item) => !ids.has(item.id)))
     saver.run([...ids].map(itemKey), async () => {
       // Adds on their way land first, so the Items they store are cleared too.
@@ -309,6 +434,7 @@ function createAutosave(
         const returned = result === null ? cleared : result.kept
         const survivors = new Set(returned.map((item) => item.id))
         for (const id of sent) if (!survivors.has(id)) storedItems.delete(id)
+        for (const id of survivors) removedHere.delete(id)
         const here = new Set(latest.items.map((item) => item.id))
         const back = returned
           .filter((item) => !here.has(item.id))
@@ -353,6 +479,8 @@ function createAutosave(
     listen(listener: (draft: NoteDraft) => void) {
       onChanged = listener
     },
+
+    receive,
 
     /** Takes a field's new text and saves it once typing pauses. */
     change(field: Field, value: string): NoteDraft {
@@ -423,17 +551,22 @@ function createAutosave(
       patchItem(id, { position })
       // Text still waiting to save goes first, so the Item exists to be moved.
       settleItemText(id)
+      moving.add(id)
       saver.run(itemKey(id), async () => {
-        // An Item not stored yet takes its position with it when its add lands.
-        await addingItems.get(id)
-        if (!storedItems.has(id)) return
-        const moved = await new Promise<StoredItem | null>((resolve) =>
-          resolve(handlers.onUpdateItem(id, { position })),
-        ).catch(() => null)
-        if (moved) return
-        if (findItem(id)?.position !== position) return
-        patchItem(id, { position: before })
-        onChanged(latest)
+        try {
+          // An Item not stored yet takes its position with it when its add lands.
+          await addingItems.get(id)
+          if (!storedItems.has(id)) return
+          const moved = await new Promise<StoredItem | null>((resolve) =>
+            resolve(handlers.onUpdateItem(id, { position })),
+          ).catch(() => null)
+          if (moved) return
+          if (findItem(id)?.position !== position) return
+          patchItem(id, { position: before })
+          onChanged(latest)
+        } finally {
+          moving.delete(id)
+        }
       })
       return latest
     },
@@ -506,8 +639,12 @@ function createAutosave(
  * Hiding or leaving the page, or unmounting, sends what is not yet saved at once; Leaving the
  * Note saves it, then stops.
  */
-export function useNoteDraft({ initial, saved, ...handlers }: NoteDraftOptions) {
-  const [first] = useState(() => ({ ...initial, newItemText: "" }))
+export function useNoteDraft({ loaded, saved, ...handlers }: NoteDraftOptions) {
+  const [first] = useState(() => ({
+    fields: loaded.fields,
+    items: [...loaded.items],
+    newItemText: "",
+  }))
   const [draft, setDraft] = useState(first)
   const [notSaved, setNotSaved] = useState<ReadonlySet<SaveKey>>(() => new Set())
   const [autosave] = useState(() => createAutosave(first, saved, handlers, setNotSaved))
@@ -520,6 +657,12 @@ export function useNoteDraft({ initial, saved, ...handlers }: NoteDraftOptions) 
     autosave.listen(setDraft)
     return () => autosave.listen(unheard)
   }, [autosave])
+  // Each later load, such as a refetch on focus or reconnect, is taken in quietly.
+  const { title, body } = loaded.fields
+  const { items } = loaded
+  useEffect(() => {
+    autosave.receive({ fields: { title, body }, items })
+  }, [autosave, title, body, items])
   useTypedTextLifecycle(autosave)
 
   return {

@@ -19,6 +19,8 @@ export type TypedTextSaving<Key extends string> = {
   save: (key: Key, text: string, options: SaveOptions) => Promise<SaveOutcome>
   /** Told whenever the set of "Not saved" fields changes. */
   onNotSaved: (keys: ReadonlySet<Key>) => void
+  /** Told each time a save of the field settles, however it ended. */
+  onSettled?: (key: Key) => void
 }
 
 /**
@@ -31,6 +33,7 @@ export function createTypedTextSaver<Key extends string>({
   read,
   save,
   onNotSaved,
+  onSettled = () => {},
 }: TypedTextSaving<Key>) {
   let stopped = false
   /** Set by `finish`: what is already queued runs, but nothing new is taken. */
@@ -95,6 +98,7 @@ export function createTypedTextSaver<Key extends string>({
         key,
         (sending.get(key) ?? []).filter((each) => each !== entry),
       )
+      onSettled(key)
     }
   }
 
@@ -174,6 +178,27 @@ export function createTypedTextSaver<Key extends string>({
     /** Whether the field holds text not yet saved: still pausing, or "Not saved". */
     hasUnsaved(key: Key) {
       return timers.has(key) || notSaved.has(key)
+    },
+
+    /**
+     * Whether the field holds text the server may not have: typing still pausing, a save queued
+     * or on its way, or "Not saved". Text from elsewhere must not replace it.
+     */
+    holdsUnsaved(key: Key) {
+      return (
+        timers.has(key) ||
+        waiting.has(key) ||
+        notSaved.has(key) ||
+        (sending.get(key) ?? []).length > 0
+      )
+    },
+
+    /**
+     * The server holds `text` for the field, saved from elsewhere: typing it again here is
+     * saved like any other change.
+     */
+    received(key: Key, text: string) {
+      confirmed.set(key, text)
     },
 
     /** Saves the field now, in order, instead of after its pause. */
