@@ -16,6 +16,7 @@ function note(overrides: Partial<Note>): Note {
     body: "",
     creator: { id: "me", name: "Someone" },
     audience: [],
+    unopened: false,
     createdAt: minutesAgo(600),
     editedAt: minutesAgo(600),
     ...overrides,
@@ -125,6 +126,39 @@ describe("the list", () => {
     await expect
       .element(row)
       .toHaveTextContent("GroceriesMilk, Bread, Eggs3 to do · 1 done · Only you · 5 minutes ago")
+  })
+
+  test("marks an Unopened Note New and puts it first; the viewer's own Notes never are", async () => {
+    const ben = { id: "ben", name: "Ben" }
+    const me = { id: "me", name: "Me" }
+    const { screen } = await renderList([
+      note({ id: "0190a000-0000-7000-8000-00000000000a", title: "Mine", editedAt: minutesAgo(1) }),
+      note({
+        id: "0190a000-0000-7000-8000-00000000000b",
+        title: "Opened",
+        creator: ben,
+        audience: [me],
+        editedAt: minutesAgo(2),
+      }),
+      note({
+        id: "0190a000-0000-7000-8000-00000000000c",
+        title: "Just shared",
+        creator: ben,
+        audience: [me],
+        unopened: true,
+        editedAt: minutesAgo(300),
+      }),
+    ])
+    const rows = screen.getByRole("listitem")
+    await expect.element(rows.nth(0)).toBeVisible()
+    expect(rows.elements().map((row) => row.textContent)).toEqual([
+      "Just sharedNewBShared by Ben · 5 hours ago",
+      "MineOnly you · 1 minute ago",
+      "OpenedBShared by Ben · 2 minutes ago",
+    ])
+    await expect.element(rows.nth(0).getByText("New", { exact: true })).toBeVisible()
+    expect(rows.nth(1).getByText("New", { exact: true }).elements()).toEqual([])
+    expect(rows.nth(2).getByText("New", { exact: true }).elements()).toEqual([])
   })
 
   test("with no Notes, says so", async () => {

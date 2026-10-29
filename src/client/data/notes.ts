@@ -142,6 +142,7 @@ export function createNote(id: string, kind: NoteKind, creator: NotePerson, fiel
       creator,
       // A new Note is private until its Creator shares it.
       audience: [],
+      unopened: false,
       createdAt: now,
       editedAt: now,
     }),
@@ -236,6 +237,38 @@ const replaceAudience = createOptimisticAction<{ id: string; audience: readonly 
  */
 export function shareNote(id: string, audience: readonly NotePerson[]) {
   return settled(replaceAudience({ id, audience }))
+}
+
+/**
+ * Opening a Note: its own route, so an action of its own. The Note stops being Unopened at once.
+ * A failure undoes that without a toast, as the viewer did nothing to report on, and the next open
+ * tries again; a Note that is gone (404) leaves the list.
+ */
+const markOpened = createOptimisticAction<string>({
+  onMutate: (id) => {
+    notesCollection().update(id, (draft) => {
+      draft.unopened = false
+    })
+  },
+  mutationFn: async (id) => {
+    const notes = notesCollection()
+    try {
+      const row = await readJson(await api.notes.notes[":id"].open.$post({ param: { id } }))
+      await notes.utils.writeUpsert(row)
+    } catch (error) {
+      if (error instanceof ApiRequestError && error.status === 404)
+        await notes.utils.writeDelete(id)
+      throw error
+    }
+  },
+})
+
+/**
+ * Tells the server the viewer opened a saved Note, so it is no longer Unopened for them. A no-op
+ * for its Creator. True once the server stored it.
+ */
+export function openNote(id: string) {
+  return settled(markOpened(id))
 }
 
 /**

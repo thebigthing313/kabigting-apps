@@ -28,6 +28,21 @@ describe("orderNotes", () => {
     expect(orderNotes(notes).map((note) => note.id.slice(-1))).toEqual(["2", "1"])
     expect(notes[0]!.id.slice(-1)).toBe("1")
   })
+
+  test("puts Unopened Notes above all others, each group newest edit first", () => {
+    const notes = [
+      { id: "opened-new", unopened: false, editedAt: "2026-10-05T09:00:00.000Z" },
+      { id: "unopened-old", unopened: true, editedAt: "2026-10-01T09:00:00.000Z" },
+      { id: "opened-old", unopened: false, editedAt: "2026-10-02T09:00:00.000Z" },
+      { id: "unopened-new", unopened: true, editedAt: "2026-10-03T09:00:00.000Z" },
+    ]
+    expect(orderNotes(notes).map((note) => note.id)).toEqual([
+      "unopened-new",
+      "unopened-old",
+      "opened-new",
+      "opened-old",
+    ])
+  })
 })
 
 describe("notePreview", () => {
