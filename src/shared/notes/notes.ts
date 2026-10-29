@@ -2,6 +2,7 @@
  * The Notes App's pure rules, shared by the server and the client: how Notes are ordered, how a
  * row previews a Note, and when a Note counts as empty.
  */
+import { orderItems, type ItemPlacing } from "./items.ts"
 
 /** The parts of a Note that hold what was typed. A Checklist has no body. */
 export type NoteContent = { title: string | null; body: string | null }
@@ -39,10 +40,15 @@ export function orderNotes<Note extends { id: string; editedAt: string }>(
 
 /**
  * The title, or for an untitled Note its first line of text, with the start of what follows as
- * the snippet. A Note with nothing in it reads as "Untitled".
+ * the snippet. A Checklist's text is its unchecked Items, in order. A Note with nothing in it
+ * reads as "Untitled".
  */
-export function notePreview(note: NoteContent): NotePreview {
-  const body = note.body ?? ""
+export function notePreview(
+  note: NoteContent,
+  items: readonly (ItemPlacing & { text: string })[] = [],
+): NotePreview {
+  if (note.body === null) return checklistPreview(note.title, items)
+  const body = note.body
   if (!isBlank(note.title)) {
     return { heading: oneLine(note.title ?? ""), snippet: cut(oneLine(body)) }
   }
@@ -55,12 +61,32 @@ export function notePreview(note: NoteContent): NotePreview {
   }
 }
 
+function checklistPreview(
+  title: string | null,
+  items: readonly (ItemPlacing & { text: string })[],
+): NotePreview {
+  const toDo = orderItems(items)
+    .unchecked.map((item) => oneLine(item.text))
+    .filter((text) => text !== "")
+  if (!isBlank(title)) return { heading: oneLine(title ?? ""), snippet: cut(toDo.join(", ")) }
+  const [first, ...rest] = toDo
+  return { heading: first ?? "Untitled", snippet: cut(rest.join(", ")) }
+}
+
 /** A title as stored: an empty one means none. Anything else is kept exactly as typed. */
 export function titleOrNull(title: string | null | undefined): string | null {
   return title ? title : null
 }
 
-/** A Note with no title and nothing but whitespace in its body is empty. */
-export function isEmptyNote(note: NoteContent): boolean {
-  return isBlank(note.title) && isBlank(note.body)
+/**
+ * A Note with no title, nothing but whitespace in its body and only blank Items, if any, is
+ * empty.
+ */
+export function isEmptyNote(note: NoteContent, items: readonly { text: string }[] = []): boolean {
+  return isBlank(note.title) && isBlank(note.body) && items.every((item) => isBlank(item.text))
+}
+
+/** A blank Item, nothing but whitespace, is dropped rather than kept. */
+export function isBlankItem(item: { text: string }): boolean {
+  return isBlank(item.text)
 }

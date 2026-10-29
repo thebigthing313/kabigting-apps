@@ -1,7 +1,16 @@
 import { getRouteApi, Link, useNavigate } from "@tanstack/react-router"
 import { NoteEditor } from "@/apps/notes/note-editor"
 import { Skeleton } from "@/components/ui/skeleton"
-import { createTextNote, deleteNote, updateNote, useNote } from "@/data/notes"
+import {
+  addItem,
+  createNote,
+  deleteItem,
+  deleteNote,
+  updateItem,
+  updateNote,
+  useNote,
+  useNoteItems,
+} from "@/data/notes"
 import type { NewNoteKind } from "@shared/notes/schemas"
 
 const appRoute = getRouteApi("/_app")
@@ -19,10 +28,11 @@ export function NotePage({
 }) {
   const { session } = appRoute.useRouteContext()
   const { note, isLoading } = useNote(noteId)
+  const { data: items, isLoading: itemsLoading } = useNoteItems(noteId)
   const navigate = useNavigate()
   const back = () => void navigate({ to: "/notes" })
 
-  if (isLoading) return <Skeleton className="mx-auto h-64 w-full max-w-2xl" />
+  if (isLoading || itemsLoading) return <Skeleton className="mx-auto h-64 w-full max-w-2xl" />
   if (!note && newKind === undefined) {
     return (
       <div className="mx-auto flex max-w-2xl flex-col gap-2 text-muted-foreground">
@@ -35,15 +45,20 @@ export function NotePage({
     )
   }
 
+  const kind = note?.kind ?? newKind ?? "text"
   const creator = { id: session.user.id, name: session.user.name }
   return (
     <NoteEditor
       // A fresh editor per Note, so one Note's typing never carries into another.
       key={noteId}
-      note={note ?? { kind: newKind ?? "text", title: null, body: "", editedAt: null }}
+      note={note ?? { kind, title: null, body: kind === "text" ? "" : null, editedAt: null }}
+      items={items}
       saved={note !== undefined}
-      onCreate={(fields) => createTextNote(noteId, creator, fields)}
+      onCreate={(fields) => createNote(noteId, kind, creator, fields)}
       onUpdate={(changes) => updateNote(noteId, changes)}
+      onAddItem={(item) => addItem(noteId, item)}
+      onUpdateItem={updateItem}
+      onDeleteItem={deleteItem}
       onDelete={(onServer) => {
         back()
         // Once any save in flight lands, delete the Note if it reached the server; one that
