@@ -6,6 +6,8 @@ export const API_ERROR_STATUS = {
   forbidden_admin: 403,
   /** A Note's Audience member tried what only its Creator may do. */
   forbidden_creator: 403,
+  /** A Note's Creator tried to Leave it, which only an Audience member may do. */
+  creator_cannot_leave: 403,
   validation_failed: 400,
   not_found: 404,
   conflict: 409,

@@ -86,6 +86,8 @@ function createAutosave(initial: NoteDraft, saved: boolean, first: Handlers) {
   /** Told of changes the server makes after a save, such as an Item's tick time. */
   let onSaved: (draft: NoteDraft) => void = unheard
   let discarded = false
+  /** Set once the viewer Leaves: saves already queued still run, but none is queued after. */
+  let stopped = false
   let handlers = first
   const timers = new Map<SaveKey, ReturnType<typeof setTimeout>>()
   // Saves run one at a time, so a field's update never overtakes the create, an Item never
@@ -93,6 +95,7 @@ function createAutosave(initial: NoteDraft, saved: boolean, first: Handlers) {
   let queue: Promise<unknown> = Promise.resolve()
 
   function enqueue(write: () => Promise<unknown>) {
+    if (stopped) return
     queue = queue
       .then(async () => {
         // A save queued before the Note was deleted must not land after the delete.
@@ -228,6 +231,16 @@ function createAutosave(initial: NoteDraft, saved: boolean, first: Handlers) {
     })
   }
 
+  /** Saves everything still waiting for its pause, now, and drops blank Items. */
+  function flush() {
+    addTyped(newId())
+    const pending = [...timers.keys()]
+    for (const timer of timers.values()) clearTimeout(timer)
+    timers.clear()
+    for (const key of pending) save(key)
+    for (const item of latest.items) if (isBlankItem(item)) removeItem(item.id)
+  }
+
   /** Changes one Item, leaving the rest as they are. */
   function patchItem(id: string, changes: Partial<DraftItem>) {
     setItems(latest.items.map((each) => (each.id === id ? { ...each, ...changes } : each)))
@@ -336,21 +349,24 @@ function createAutosave(initial: NoteDraft, saved: boolean, first: Handlers) {
       return latest
     },
 
-    /** An Item left blank is dropped. */
-    leaveItem(id: string): NoteDraft {
+    /** An Item left blank is dropped once focus moves off it. */
+    blurItem(id: string): NoteDraft {
       const item = findItem(id)
       if (item && isBlankItem(item)) removeItem(id)
       return latest
     },
 
-    /** Saves everything still waiting for its pause, now, and drops blank Items. */
-    flush() {
-      addTyped(newId())
-      const pending = [...timers.keys()]
-      for (const timer of timers.values()) clearTimeout(timer)
-      timers.clear()
-      for (const key of pending) save(key)
-      for (const item of latest.items) if (isBlankItem(item)) removeItem(item.id)
+    flush,
+
+    /**
+     * Saves everything still waiting for its pause, now, then stops saving for good, as the
+     * viewer is Leaving the Note: nothing typed after is saved. Resolves once those saves have
+     * settled, so none of them races the Leave.
+     */
+    saveAndStop(): Promise<unknown> {
+      flush()
+      stopped = true
+      return queue
     },
 
     /**
@@ -372,7 +388,7 @@ function createAutosave(initial: NoteDraft, saved: boolean, first: Handlers) {
  * saves about a second after typing pauses, independently of the others; adding, ticking, moving
  * and deleting an Item save at once. A new Note is created by its first save with content, so one
  * left empty, or with only blank Items, is never stored; a saved Note stays even when emptied.
- * Leaving flushes what is pending.
+ * Navigating away from the page flushes what is pending; Leaving the Note saves it, then stops.
  */
 export function useNoteDraft({ initial, saved, ...handlers }: NoteDraftOptions) {
   const [first] = useState(() => ({ ...initial, newItemText: "" }))
@@ -401,7 +417,8 @@ export function useNoteDraft({ initial, saved, ...handlers }: NoteDraftOptions) 
     moveItem: (id: string, toIndex: number) => setDraft(autosave.moveItem(id, toIndex)),
     deleteItem: (id: string) => setDraft(autosave.deleteItem(id)),
     clearChecked: () => setDraft(autosave.clearChecked()),
-    leaveItem: (id: string) => setDraft(autosave.leaveItem(id)),
+    blurItem: (id: string) => setDraft(autosave.blurItem(id)),
     discard: () => autosave.discard(),
+    saveAndStop: () => autosave.saveAndStop(),
   }
 }
