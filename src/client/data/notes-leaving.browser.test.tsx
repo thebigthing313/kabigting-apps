@@ -1,6 +1,6 @@
 // Leaving through the real hooks and collections, against a fake server that answers the Notes
 // routes the way the real one does.
-import { Toaster } from "sonner"
+import { Toaster, toast } from "sonner"
 import { afterEach, beforeEach, expect, test, vi } from "vitest"
 import { cleanup, render } from "vitest-browser-react"
 import { cleanupCollections } from "@/data/collection-factory"
@@ -65,6 +65,9 @@ beforeEach(() => {
 })
 
 afterEach(async () => {
+  // Sonner replays every toast still showing to the next Toaster mounted, so one test's
+  // toast would appear in the next. Dismissed toasts aren't replayed.
+  toast.dismiss()
   // Each test starts again from the server's answer, as after signing in again.
   await cleanup()
   await cleanupCollections()
