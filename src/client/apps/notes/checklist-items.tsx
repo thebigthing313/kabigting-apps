@@ -38,6 +38,8 @@ export type ChecklistItemsProps = ItemHandlers & {
   onTypeNewItem: (text: string) => void
   /** Adds what is typed in the "Add item" row. */
   onAddItem: () => void
+  /** Deletes every checked Item. */
+  onClearChecked: () => void
   /** An unchecked Item was dropped at `toIndex` among the unchecked Items. */
   onMoveItem: (id: string, toIndex: number) => void
   autoFocusAdd?: boolean
@@ -215,13 +217,14 @@ function UncheckedItems({
 /**
  * A Checklist's Items: the unchecked ones in order, each with a drag handle, and an "Add item"
  * row under them, then the checked ones, struck through and not draggable, folded under a
- * collapsible "N checked" section.
+ * collapsible "N checked" section with Clear checked beside it.
  */
 export function ChecklistItems({
   items,
   newItemText,
   onTypeNewItem,
   onAddItem,
+  onClearChecked,
   onMoveItem,
   autoFocusAdd = false,
   ...handlers
@@ -264,15 +267,20 @@ export function ChecklistItems({
       </div>
       {checked.length > 0 && (
         <section className="mt-2 flex flex-col border-t pt-1">
-          <button
-            type="button"
-            aria-expanded={showChecked}
-            onClick={() => setShowChecked((shown) => !shown)}
-            className="flex min-h-11 items-center gap-2 text-sm text-muted-foreground"
-          >
-            <ChevronDownIcon className={cn("size-4 transition", !showChecked && "-rotate-90")} />
-            {checked.length} checked
-          </button>
+          <div className="flex items-center">
+            <button
+              type="button"
+              aria-expanded={showChecked}
+              onClick={() => setShowChecked((shown) => !shown)}
+              className="flex min-h-11 flex-1 items-center gap-2 text-sm text-muted-foreground"
+            >
+              <ChevronDownIcon className={cn("size-4 transition", !showChecked && "-rotate-90")} />
+              {checked.length} checked
+            </button>
+            <Button variant="ghost" className="h-11" onClick={onClearChecked}>
+              Clear checked
+            </Button>
+          </div>
           {showChecked && (
             <ul aria-label="Checked" className="flex flex-col">
               {checked.map((item) => (

@@ -1,6 +1,7 @@
 /** Wire schemas for the Notes App's API. */
 import { z } from "zod"
 import { id, instant } from "../schemas/primitives.ts"
+import { MAX_QUERY_IDS } from "../schemas/query.ts"
 
 /** A Note's kind, fixed when it is made. */
 export const NOTE_KINDS = ["text", "checklist"] as const
@@ -112,6 +113,25 @@ export const itemRows = z.object({ rows: z.array(itemRow) })
  */
 export const itemWrite = z.object({ item: itemRow, noteEditedAt: instant })
 
+/**
+ * Clear checked: the ids of the Items the clearer saw checked. Only those still checked in this
+ * Checklist are deleted, so an Item someone unticked meanwhile survives.
+ */
+export const clearChecked = z.strictObject({
+  itemIds: z.array(id).min(1).max(MAX_QUERY_IDS),
+})
+
+/**
+ * What Clear checked answers: the ids it deleted; the Items sent that are in the Checklist but no
+ * longer checked, as stored; and the Checklist's edited at, which moves only when something was
+ * deleted. Ids sent that are in no Item of this Checklist are ignored.
+ */
+export const clearedChecked = z.object({
+  cleared: z.array(id),
+  kept: z.array(itemRow),
+  noteEditedAt: instant,
+})
+
 export type CreateNote = z.infer<typeof createNote>
 export type UpdateNote = z.infer<typeof updateNote>
 export type ReplaceAudience = z.infer<typeof replaceAudience>
@@ -121,3 +141,5 @@ export type CreateItem = z.infer<typeof createItem>
 export type UpdateItem = z.infer<typeof updateItem>
 export type ItemRow = z.infer<typeof itemRow>
 export type ItemWrite = z.infer<typeof itemWrite>
+export type ClearChecked = z.infer<typeof clearChecked>
+export type ClearedChecked = z.infer<typeof clearedChecked>

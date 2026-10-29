@@ -2,17 +2,18 @@
 // the signed-in Account. Each refetch returns the complete visible set, so a Note or Item that
 // stops being visible (a member removed from its Audience, say) drops out silently; refetches
 // follow the Shell's focus and reconnect defaults.
-import { createOptimisticAction, eq, useLiveQuery } from "@tanstack/react-db"
+import { createOptimisticAction, createTransaction, eq, useLiveQuery } from "@tanstack/react-db"
 import { useQuery } from "@tanstack/react-query"
 import { useEffect, useRef } from "react"
 import { api } from "@/data/api"
-import { defineRestCollection } from "@/data/collection-factory"
-import { ApiRequestError, readJson, reportError } from "@/data/error-handler"
+import { defineRestCollection, failedWrite } from "@/data/collection-factory"
+import { readJson } from "@/data/error-handler"
 import { settled } from "@/data/settled"
 import { nowInstant } from "@shared/dates"
 import { bottomOfUnchecked } from "@shared/notes/items"
 import { titleOrNull } from "@shared/notes/notes"
 import type {
+  ClearedChecked,
   ItemRow,
   ItemWrite,
   NoteKind,
@@ -208,22 +209,20 @@ export function deleteItem(id: string) {
 }
 
 /**
- * Sends a request on one Note's own route, then takes the Note as the server answers it. A Note
- * that is gone (404) leaves the list. A failure is rethrown so the action rolls back, after
- * `report` (if given) has had its say.
+ * Sends a request on one Note's own route, then takes the Note as the server answers it. A failure
+ * goes through `failedWrite`: reported as `action` (quietly when null), a Note that is gone (404)
+ * leaves the list, and the error is rethrown so the action rolls back.
  */
 async function writeThroughNoteRoute(
   id: string,
   request: () => Promise<Response & { json(): Promise<NoteRow> }>,
-  report?: (error: unknown) => void,
+  action: string | null,
 ) {
   const notes = notesCollection()
   try {
     await notes.utils.writeUpsert(await readJson(await request()))
   } catch (error) {
-    report?.(error)
-    if (error instanceof ApiRequestError && error.status === 404) await notes.utils.writeDelete(id)
-    throw error
+    await failedWrite(error, action, () => notes.utils.writeDelete(id))
   }
 }
 
@@ -243,10 +242,78 @@ const replaceAudience = createOptimisticAction<{ id: string; audience: readonly 
     await writeThroughNoteRoute(
       id,
       () => api.notes.notes[":id"].audience.$put({ param: { id }, json: { accountIds } }),
-      (error) => reportError(error, "Sharing"),
+      "Sharing",
     )
   },
 })
+
+/** Drops Items the server says are gone; one a refetch already dropped is skipped. */
+async function dropItems(ids: Iterable<string>) {
+  const items = itemsCollection()
+  for (const id of ids) {
+    try {
+      await items.utils.writeDelete(id)
+    } catch {
+      // Already gone.
+    }
+  }
+}
+
+/**
+ * Sends a clear and writes its outcome into the synced Items: the Items the server kept, as
+ * someone unticked them first, return as stored, and the Checklist takes the server's edited at.
+ * A Checklist that is gone leaves the list with its Items. Resolves to the Items kept.
+ */
+async function sendClear(noteId: string, itemIds: string[]): Promise<Item[]> {
+  const items = itemsCollection()
+  const notes = notesCollection()
+  let result: ClearedChecked
+  try {
+    result = await readJson(
+      await api.notes.notes[":id"]["clear-checked"].$post({
+        param: { id: noteId },
+        json: { itemIds },
+      }),
+    )
+  } catch (error) {
+    return failedWrite(error, "Clearing", async () => {
+      const ofNote = [...items.values()].filter((item) => item.noteId === noteId)
+      await dropItems(new Set([...itemIds, ...ofNote.map((item) => item.id)]))
+      if (notes.has(noteId)) await notes.utils.writeDelete(noteId)
+    })
+  }
+  // Every Item sent that the server didn't keep is gone, whether this clear deleted it or it was
+  // gone already.
+  const kept = new Set(result.kept.map((item) => item.id))
+  await dropItems(itemIds.filter((id) => !kept.has(id)))
+  if (result.kept.length > 0) await items.utils.writeUpsert(result.kept)
+  if (notes.has(noteId)) {
+    await notes.utils.writeUpdate({ id: noteId, editedAt: result.noteEditedAt })
+  }
+  return result.kept
+}
+
+/**
+ * Clear checked, optimistically: deletes the Items given, those seen checked in one Checklist, at
+ * once, and the server deletes those still checked. Resolves to the Items it kept, as stored, or
+ * null after a refusal, which brings the Items back with a toast. Send at least one id.
+ */
+export async function clearChecked(
+  noteId: string,
+  itemIds: string[],
+): Promise<{ kept: Item[] } | null> {
+  let kept: Item[] = []
+  const transaction = createTransaction({
+    mutationFn: async () => {
+      kept = await sendClear(noteId, itemIds)
+    },
+  })
+  transaction.mutate(() => {
+    const items = itemsCollection()
+    items.delete(itemIds.filter((id) => items.has(id)))
+  })
+  return (await settled(transaction)) ? { kept } : null
+}
 
 /**
  * Replaces who a Note is shared with (Creator only). True once the server stored it; false after
@@ -268,7 +335,11 @@ const markOpened = createOptimisticAction<string>({
     })
   },
   mutationFn: async (id) => {
-    await writeThroughNoteRoute(id, () => api.notes.notes[":id"].open.$post({ param: { id } }))
+    await writeThroughNoteRoute(
+      id,
+      () => api.notes.notes[":id"].open.$post({ param: { id } }),
+      null,
+    )
   },
 })
 
