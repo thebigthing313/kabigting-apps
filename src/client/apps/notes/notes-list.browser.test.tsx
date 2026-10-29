@@ -207,8 +207,8 @@ describe("the list", () => {
 })
 
 describe("the tabs", () => {
-  const me = { id: "me", name: "Me" }
-  const ben = { id: "ben", name: "Ben" }
+  const me = { id: "me", name: "Me", hasAccess: true }
+  const ben = { id: "ben", name: "Ben", hasAccess: true }
   const groceries = "GroceriesShared with Ben · 10 minutes ago"
   const wifi = "Wi-FiBShared by Ben · 20 minutes ago"
   const onlyMine = "PrivateOnly you · 30 minutes ago"
