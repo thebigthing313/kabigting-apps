@@ -14,6 +14,7 @@ import { Route as ChangePasswordRouteImport } from './routes/change-password'
 import { Route as SignInRouteImport } from './routes/sign-in'
 import { Route as AppIndexRouteImport } from './routes/_app/index'
 import { Route as AppFinancesRouteRouteImport } from './routes/_app/finances/route'
+import { Route as AppNotesPrototypeRouteImport } from './routes/_app/notes-prototype'
 import { Route as AppAdminAccountsRouteImport } from './routes/_app/admin/accounts'
 import { Route as AppFinancesIndexRouteImport } from './routes/_app/finances/index'
 import { Route as AppFinancesSummaryRouteImport } from './routes/_app/finances/summary'
@@ -46,6 +47,11 @@ const AppIndexRoute = AppIndexRouteImport.update({
 const AppFinancesRouteRoute = AppFinancesRouteRouteImport.update({
   id: '/finances',
   path: '/finances',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppNotesPrototypeRoute = AppNotesPrototypeRouteImport.update({
+  id: '/notes-prototype',
+  path: '/notes-prototype',
   getParentRoute: () => AppRoute,
 } as any)
 const AppAdminAccountsRoute = AppAdminAccountsRouteImport.update({
@@ -104,6 +110,7 @@ export interface FileRoutesByFullPath {
   '/change-password': typeof ChangePasswordRoute
   '/sign-in': typeof SignInRoute
   '/finances': typeof AppFinancesRouteRouteWithChildren
+  '/notes-prototype': typeof AppNotesPrototypeRoute
   '/admin/accounts': typeof AppAdminAccountsRoute
   '/finances/summary': typeof AppFinancesSummaryRoute
   '/finances/': typeof AppFinancesIndexRoute
@@ -117,6 +124,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/change-password': typeof ChangePasswordRoute
   '/sign-in': typeof SignInRoute
+  '/notes-prototype': typeof AppNotesPrototypeRoute
   '/': typeof AppIndexRoute
   '/admin/accounts': typeof AppAdminAccountsRoute
   '/finances/summary': typeof AppFinancesSummaryRoute
@@ -134,6 +142,7 @@ export interface FileRoutesById {
   '/change-password': typeof ChangePasswordRoute
   '/sign-in': typeof SignInRoute
   '/_app/finances': typeof AppFinancesRouteRouteWithChildren
+  '/_app/notes-prototype': typeof AppNotesPrototypeRoute
   '/_app/': typeof AppIndexRoute
   '/_app/admin/accounts': typeof AppAdminAccountsRoute
   '/_app/finances/summary': typeof AppFinancesSummaryRoute
@@ -152,6 +161,7 @@ export interface FileRouteTypes {
     | '/change-password'
     | '/sign-in'
     | '/finances'
+    | '/notes-prototype'
     | '/admin/accounts'
     | '/finances/summary'
     | '/finances/'
@@ -165,6 +175,7 @@ export interface FileRouteTypes {
   to:
     | '/change-password'
     | '/sign-in'
+    | '/notes-prototype'
     | '/'
     | '/admin/accounts'
     | '/finances/summary'
@@ -181,6 +192,7 @@ export interface FileRouteTypes {
     | '/change-password'
     | '/sign-in'
     | '/_app/finances'
+    | '/_app/notes-prototype'
     | '/_app/'
     | '/_app/admin/accounts'
     | '/_app/finances/summary'
@@ -234,6 +246,13 @@ declare module '@tanstack/react-router' {
       path: '/finances'
       fullPath: '/finances'
       preLoaderRoute: typeof AppFinancesRouteRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/notes-prototype': {
+      id: '/_app/notes-prototype'
+      path: '/notes-prototype'
+      fullPath: '/notes-prototype'
+      preLoaderRoute: typeof AppNotesPrototypeRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/admin/accounts': {
@@ -329,12 +348,14 @@ const AppFinancesRouteRouteWithChildren =
 
 interface AppRouteChildren {
   AppFinancesRouteRoute: typeof AppFinancesRouteRouteWithChildren
+  AppNotesPrototypeRoute: typeof AppNotesPrototypeRoute
   AppIndexRoute: typeof AppIndexRoute
   AppAdminAccountsRoute: typeof AppAdminAccountsRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
   AppFinancesRouteRoute: AppFinancesRouteRouteWithChildren,
+  AppNotesPrototypeRoute: AppNotesPrototypeRoute,
   AppIndexRoute: AppIndexRoute,
   AppAdminAccountsRoute: AppAdminAccountsRoute,
 }
