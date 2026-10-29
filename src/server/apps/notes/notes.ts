@@ -2,6 +2,7 @@ import { and, asc, desc, eq, exists, inArray, isNull, notInArray, sql, type SQL 
 import { Hono } from "hono"
 import { addableAmong } from "#server/apps/notes/people.ts"
 import { visibleTo } from "#server/apps/notes/visibility.ts"
+import { holdsAppAccess } from "#server/core/app-access.ts"
 import type { AppEnv } from "#server/core/context.ts"
 import { ApiError } from "#server/core/errors.ts"
 import { validate } from "#server/core/validate.ts"
@@ -13,7 +14,7 @@ import {
   noteParams,
   replaceAudience,
   updateNote,
-  type NotePerson,
+  type AudienceMember,
   type NoteRow,
 } from "#shared/notes/schemas.ts"
 
@@ -26,18 +27,26 @@ function creatorOnly(action: string): never {
   throw new ApiError("forbidden_creator", `Only the note's creator can ${action}`)
 }
 
-/** Each Note's Audience, in the order its members were added. */
-async function audiencesOf(db: Db, noteIds: string[]): Promise<Map<string, NotePerson[]>> {
-  const audiences = new Map<string, NotePerson[]>()
+/**
+ * Each Note's Audience, in the order its members were added, each saying whether they hold App
+ * access to Notes now. Members who lost it, or became Removed Accounts, stay in the Audience.
+ */
+async function audiencesOf(db: Db, noteIds: string[]): Promise<Map<string, AudienceMember[]>> {
+  const audiences = new Map<string, AudienceMember[]>()
   if (noteIds.length === 0) return audiences
   const rows = await db
-    .select({ noteId: noteAudience.noteId, id: auth_user.id, name: auth_user.name })
+    .select({
+      noteId: noteAudience.noteId,
+      id: auth_user.id,
+      name: auth_user.name,
+      hasAccess: holdsAppAccess("notes").mapWith(Boolean),
+    })
     .from(noteAudience)
     .innerJoin(auth_user, eq(auth_user.id, noteAudience.accountId))
     .where(inArray(noteAudience.noteId, noteIds))
     .orderBy(asc(noteAudience.addedAt), asc(auth_user.name))
-  for (const { noteId, id, name } of rows) {
-    audiences.set(noteId, [...(audiences.get(noteId) ?? []), { id, name }])
+  for (const { noteId, ...member } of rows) {
+    audiences.set(noteId, [...(audiences.get(noteId) ?? []), member])
   }
   return audiences
 }

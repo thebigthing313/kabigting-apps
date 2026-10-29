@@ -17,6 +17,7 @@ import type {
   ItemRow,
   ItemWrite,
   NoteKind,
+  AudienceMember,
   NotePerson,
   NoteRow,
   UpdateItem,
@@ -231,7 +232,10 @@ async function writeThroughNoteRoute(
  * new Audience shows at once; a refusal rolls it back with a toast, and a Note that is gone (404)
  * leaves the list.
  */
-const replaceAudience = createOptimisticAction<{ id: string; audience: readonly NotePerson[] }>({
+const replaceAudience = createOptimisticAction<{
+  id: string
+  audience: readonly AudienceMember[]
+}>({
   onMutate: ({ id, audience }) => {
     notesCollection().update(id, (draft) => {
       draft.audience = [...audience]
@@ -319,7 +323,7 @@ export async function clearChecked(
  * Replaces who a Note is shared with (Creator only). True once the server stored it; false after
  * a refusal, which is rolled back and reported.
  */
-export function shareNote(id: string, audience: readonly NotePerson[]) {
+export function shareNote(id: string, audience: readonly AudienceMember[]) {
   return settled(replaceAudience({ id, audience }))
 }
 

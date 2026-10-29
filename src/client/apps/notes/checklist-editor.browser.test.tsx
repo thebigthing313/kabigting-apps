@@ -185,7 +185,7 @@ describe("ticking", () => {
   test("an Audience member ticks an Item of a Checklist someone else made", async () => {
     const ana = { id: "ana", name: "Ana" }
     const { screen, onUpdateItem } = await renderChecklist({
-      note: { ...saved, creator: ana, audience: [me] },
+      note: { ...saved, creator: ana, audience: [{ ...me, hasAccess: true }] },
       saved: true,
       items: [item("Milk", "c")],
     })

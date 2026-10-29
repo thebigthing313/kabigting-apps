@@ -71,8 +71,8 @@ describe("the list", () => {
   })
 
   test("each row says who the Note is shared with", async () => {
-    const ben = { id: "ben", name: "Ben" }
-    const cy = { id: "cy", name: "Cy" }
+    const ben = { id: "ben", name: "Ben", hasAccess: true }
+    const cy = { id: "cy", name: "Cy", hasAccess: true }
     const { screen } = await renderList([
       note({ id: "0190a000-0000-7000-8000-00000000000a", title: "Private" }),
       note({ id: "0190a000-0000-7000-8000-00000000000b", title: "Mine", audience: [ben, cy] }),
@@ -80,7 +80,7 @@ describe("the list", () => {
         id: "0190a000-0000-7000-8000-00000000000c",
         title: "Theirs",
         creator: ben,
-        audience: [{ id: "me", name: "Me" }],
+        audience: [{ id: "me", name: "Me", hasAccess: true }],
       }),
     ])
     const rows = screen.getByRole("listitem")
@@ -130,7 +130,7 @@ describe("the list", () => {
 
   test("gives an Unopened Note the New badge and puts it first; the viewer's own Notes never are Unopened", async () => {
     const ben = { id: "ben", name: "Ben" }
-    const me = { id: "me", name: "Me" }
+    const me = { id: "me", name: "Me", hasAccess: true }
     const { screen } = await renderList([
       note({ id: "0190a000-0000-7000-8000-00000000000a", title: "Mine", editedAt: minutesAgo(1) }),
       note({

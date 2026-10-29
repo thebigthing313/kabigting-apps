@@ -50,6 +50,10 @@ export function createApp({ db, auth, appVersion, staticRoot }: AppOptions) {
 
   app.use("/api/*", loadSession(auth))
   app.use("/api/*", mustChangePassword)
+  // The Admin manages Accounts through the Shell's own `/api/admin` routes only. Better Auth's
+  // admin endpoints stay closed: impersonating an Account or setting its password would let the
+  // Admin act as anyone, around App access and every Note's Audience.
+  app.all("/api/auth/admin/*", (c) => errorResponse(c, "not_found", "No such API route"))
   app.on(["GET", "POST"], "/api/auth/*", (c) => auth.handler(c.req.raw))
   app.route("/", apiRoutes({ db, auth }))
   app.all("/api/*", (c) => errorResponse(c, "not_found", "No such API route"))

@@ -22,7 +22,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { timeAgo } from "@shared/dates"
-import type { NoteKind, NotePerson } from "@shared/notes/schemas"
+import type { AudienceMember, NoteKind, NotePerson } from "@shared/notes/schemas"
 
 export type NoteEditorProps = Omit<NoteDraftOptions, "initial"> & {
   /** The Note as last loaded; `editedAt` is null until it is first saved. */
@@ -32,7 +32,7 @@ export type NoteEditorProps = Omit<NoteDraftOptions, "initial"> & {
     body: string | null
     editedAt: string | null
     creator: NotePerson
-    audience: readonly NotePerson[]
+    audience: readonly AudienceMember[]
   }
   /** A Checklist's Items as last loaded. */
   items?: readonly DraftItem[]
@@ -41,7 +41,7 @@ export type NoteEditorProps = Omit<NoteDraftOptions, "initial"> & {
   /** Who the Creator can share with; undefined while loading. */
   people: readonly NotePerson[] | undefined
   /** The Creator's new Audience, saved at once. */
-  onShare: (audience: NotePerson[]) => void
+  onShare: (audience: AudienceMember[]) => void
   /**
    * Called once the Creator confirms a delete; from then on nothing more is saved. `onServer`
    * resolves, after any save in flight settles, to whether the Note is on the server to delete.

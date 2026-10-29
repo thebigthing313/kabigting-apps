@@ -82,7 +82,7 @@ describe("sharing with an Audience", () => {
   test("a member sees and edits the Note, with the Creator's and each member's name", async () => {
     const note = await created()
     const sharedNote = await shared(note.id, [member.id])
-    expect(sharedNote.audience).toEqual([{ id: member.id, name: member.name }])
+    expect(sharedNote.audience).toEqual([{ id: member.id, name: member.name, hasAccess: true }])
 
     const seen = await listed(note.id, member)
     expect(seen).toMatchObject({
@@ -139,7 +139,7 @@ describe("who sees a Note", () => {
     await shared(note.id, [member.id, other.id])
     expect(await listed(note.id, member)).toBeDefined()
     expect((await shared(note.id, [other.id])).audience).toEqual([
-      { id: other.id, name: other.name },
+      { id: other.id, name: other.name, hasAccess: true },
     ])
     expect(await listed(note.id, member)).toBeUndefined()
     expect((await patch(note.id, { body: "Still here?" }, member)).status).toBe(404)
