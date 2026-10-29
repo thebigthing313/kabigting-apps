@@ -1,5 +1,5 @@
 {
-  "id": "239ef0ca-6dfa-4400-ad4d-96c9e704f86f",
+  "id": "ba8eafe5-5a09-4f49-93d6-9c773f8ec9e2",
   "prevId": "72701407-a51d-4f27-8244-e92b18e60fad",
   "version": "7",
   "dialect": "postgresql",
@@ -1808,42 +1808,55 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.note_audience": {
-      "name": "note_audience",
+    "public.note_items": {
+      "name": "note_items",
       "schema": "",
       "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "uuidv7()"
+        },
         "note_id": {
           "name": "note_id",
           "type": "uuid",
           "primaryKey": false,
           "notNull": true
         },
-        "account_id": {
-          "name": "account_id",
+        "text": {
+          "name": "text",
           "type": "text",
           "primaryKey": false,
           "notNull": true
         },
-        "added_at": {
-          "name": "added_at",
-          "type": "timestamp with time zone",
+        "checked": {
+          "name": "checked",
+          "type": "boolean",
           "primaryKey": false,
           "notNull": true,
-          "default": "now()"
+          "default": false
         },
-        "opened_at": {
-          "name": "opened_at",
+        "checked_at": {
+          "name": "checked_at",
           "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false
+        },
+        "position": {
+          "name": "position",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
         }
       },
       "indexes": {
-        "note_audience_account_id": {
-          "name": "note_audience_account_id",
+        "note_items_note_id": {
+          "name": "note_items_note_id",
           "columns": [
             {
-              "expression": "account_id",
+              "expression": "note_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -1856,9 +1869,9 @@
         }
       },
       "foreignKeys": {
-        "note_audience_note_id_notes_id_fk": {
-          "name": "note_audience_note_id_notes_id_fk",
-          "tableFrom": "note_audience",
+        "note_items_note_id_notes_id_fk": {
+          "name": "note_items_note_id_notes_id_fk",
+          "tableFrom": "note_items",
           "tableTo": "notes",
           "columnsFrom": [
             "note_id"
@@ -1868,33 +1881,17 @@
           ],
           "onDelete": "cascade",
           "onUpdate": "no action"
-        },
-        "note_audience_account_id_auth_user_id_fk": {
-          "name": "note_audience_account_id_auth_user_id_fk",
-          "tableFrom": "note_audience",
-          "tableTo": "auth_user",
-          "columnsFrom": [
-            "account_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
         }
       },
-      "compositePrimaryKeys": {
-        "note_audience_note_id_account_id_pk": {
-          "name": "note_audience_note_id_account_id_pk",
-          "columns": [
-            "note_id",
-            "account_id"
-          ]
-        }
-      },
+      "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "note_items_checked_at": {
+          "name": "note_items_checked_at",
+          "value": "\"note_items\".\"checked\" = (\"note_items\".\"checked_at\" is not null)"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.notes": {

@@ -3,7 +3,8 @@ import { describe, expect, test, vi } from "vitest"
 import { userEvent } from "vitest/browser"
 import { render } from "vitest-browser-react"
 import { NoteEditor, type NoteEditorProps } from "@/apps/notes/note-editor"
-import type { NoteFields } from "@/data/notes"
+import type { StoredItem } from "@/apps/notes/use-note-draft"
+import type { ItemChanges, NewItem, NoteFields } from "@/data/notes"
 import { instantAt } from "@shared/dates"
 import type { NotePerson } from "@shared/notes/schemas"
 
@@ -49,6 +50,11 @@ function callbacks() {
     onUpdate: vi.fn<(changes: Partial<NoteFields>) => Promise<boolean>>(() =>
       Promise.resolve(true),
     ),
+    onAddItem: vi.fn<(item: NewItem) => Promise<boolean>>(() => Promise.resolve(true)),
+    onUpdateItem: vi.fn<(id: string, changes: ItemChanges) => Promise<StoredItem | null>>(() =>
+      Promise.resolve(null),
+    ),
+    onDeleteItem: vi.fn<(id: string) => Promise<boolean>>(() => Promise.resolve(true)),
     onDelete: vi.fn<(onServer: Promise<boolean>) => void>(),
     onBack: vi.fn<() => void>(),
     onShare: vi.fn<(audience: NotePerson[]) => void>(),

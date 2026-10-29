@@ -1,8 +1,9 @@
 import { ArrowLeftIcon, MoreVerticalIcon, UsersIcon } from "lucide-react"
 import { useState } from "react"
+import { ChecklistItems } from "@/apps/notes/checklist-items"
 import { Avatar, AvatarStack, useNow } from "@/apps/notes/note-parts"
 import { AudienceSheet, ShareSheet } from "@/apps/notes/share-sheet"
-import { useNoteDraft, type NoteDraftOptions } from "@/apps/notes/use-note-draft"
+import { useNoteDraft, type DraftItem, type NoteDraftOptions } from "@/apps/notes/use-note-draft"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -23,7 +24,7 @@ import {
 import { timeAgo } from "@shared/dates"
 import type { NoteKind, NotePerson } from "@shared/notes/schemas"
 
-export type NoteEditorProps = Pick<NoteDraftOptions, "saved" | "onCreate" | "onUpdate"> & {
+export type NoteEditorProps = Omit<NoteDraftOptions, "initial"> & {
   /** The Note as last loaded; `editedAt` is null until it is first saved. */
   note: {
     kind: NoteKind
@@ -33,6 +34,8 @@ export type NoteEditorProps = Pick<NoteDraftOptions, "saved" | "onCreate" | "onU
     creator: NotePerson
     audience: readonly NotePerson[]
   }
+  /** A Checklist's Items as last loaded. */
+  items?: readonly DraftItem[]
   /** The signed-in Account: the Creator gets Share and Delete, everyone else neither. */
   viewerId: string
   /** Who the Creator can share with; undefined while loading. */
@@ -48,26 +51,31 @@ export type NoteEditorProps = Pick<NoteDraftOptions, "saved" | "onCreate" | "onU
 }
 
 /**
- * A Note as its own page: a back arrow, who it is shared with, the ⋯ menu, a large title, the
- * plain-text body exactly as typed, and when it was last edited. Typing saves on its own; there
- * is no Save button. Everyone who sees it edits it; only its Creator shares or deletes it.
+ * A Note as its own page: a back arrow, who it is shared with, the ⋯ menu, a large title, then
+ * the plain-text body exactly as typed or the Checklist's Items, and when it was last edited.
+ * Typing saves on its own; there is no Save button. Everyone who sees it edits it; only its
+ * Creator shares or deletes it.
  */
 export function NoteEditor({
   note,
+  items = [],
   saved,
   viewerId,
   people,
-  onCreate,
-  onUpdate,
   onShare,
   onDelete,
   onBack,
+  ...handlers
 }: NoteEditorProps) {
-  const { fields, change, discard } = useNoteDraft({
-    initial: { title: note.title ?? "", body: note.body ?? "" },
+  const {
+    draft: { fields, items: draftItems, newItemText },
+    change,
+    discard,
+    ...checklist
+  } = useNoteDraft({
+    initial: { fields: { title: note.title ?? "", body: note.body ?? "" }, items: [...items] },
     saved,
-    onCreate,
-    onUpdate,
+    ...handlers,
   })
   const [confirming, setConfirming] = useState(false)
   const [sharing, setSharing] = useState(false)
@@ -125,15 +133,29 @@ export function NoteEditor({
         maxLength={200}
         className="bg-transparent text-2xl font-semibold outline-none placeholder:text-muted-foreground/60"
       />
-      {/* A plain textarea: the body is shown exactly as typed, never as Markdown or links. */}
-      <textarea
-        aria-label="Note"
-        value={fields.body}
-        onChange={(event) => change("body", event.target.value)}
-        placeholder="Note"
-        autoFocus={!saved}
-        className="min-h-[50vh] resize-none bg-transparent text-base leading-relaxed whitespace-pre-wrap outline-none placeholder:text-muted-foreground/60"
-      />
+      {note.kind === "checklist" ? (
+        <ChecklistItems
+          items={draftItems}
+          newItemText={newItemText}
+          onTypeNewItem={checklist.typeNewItem}
+          onAddItem={checklist.addItem}
+          onChangeItem={checklist.changeItem}
+          onToggleItem={checklist.toggleItem}
+          onDeleteItem={checklist.deleteItem}
+          onLeaveItem={checklist.leaveItem}
+          autoFocusAdd={!saved}
+        />
+      ) : (
+        // A plain textarea: the body is shown exactly as typed, never as Markdown or links.
+        <textarea
+          aria-label="Note"
+          value={fields.body}
+          onChange={(event) => change("body", event.target.value)}
+          placeholder="Note"
+          autoFocus={!saved}
+          className="min-h-[50vh] resize-none bg-transparent text-base leading-relaxed whitespace-pre-wrap outline-none placeholder:text-muted-foreground/60"
+        />
+      )}
       {note.editedAt !== null && (
         <p className="text-xs text-muted-foreground">Edited {timeAgo(note.editedAt, now)}</p>
       )}

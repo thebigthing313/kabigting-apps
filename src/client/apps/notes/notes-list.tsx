@@ -1,4 +1,4 @@
-import { FileTextIcon, PlusIcon, UsersIcon } from "lucide-react"
+import { FileTextIcon, ListChecksIcon, PlusIcon, UsersIcon } from "lucide-react"
 import { Avatar, KindIcon, useNow } from "@/apps/notes/note-parts"
 import { Button } from "@/components/ui/button"
 import {
@@ -7,27 +7,37 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import type { Note } from "@/data/notes"
+import type { Item, Note } from "@/data/notes"
 import { timeAgo } from "@shared/dates"
+import { checklistCounts } from "@shared/notes/items"
 import { notePreview, orderNotes, sharingLine } from "@shared/notes/notes"
-import type { NewNoteKind } from "@shared/notes/schemas"
+import type { NoteKind } from "@shared/notes/schemas"
+
+const NO_ITEMS: readonly Item[] = []
 
 /** Notes home: the New menu over one list of every Note the viewer can see, newest edit first. */
 export function NotesList({
   notes,
   viewerId,
+  items,
   onNew,
   onOpen,
 }: {
   notes: readonly Note[]
   /** The signed-in Account, so each row can say who else sees it. */
   viewerId: string
+  /** Every Checklist's Items, for the rows' previews and counts. */
+  items: readonly Item[]
   /** Starts a new Note of the kind picked; its kind never changes afterwards. */
-  onNew: (kind: NewNoteKind) => void
+  onNew: (kind: NoteKind) => void
   onOpen: (id: string) => void
 }) {
   const now = useNow()
   const ordered = orderNotes(notes)
+  const itemsByNote = new Map<string, Item[]>()
+  for (const item of items) {
+    itemsByNote.set(item.noteId, [...(itemsByNote.get(item.noteId) ?? []), item])
+  }
   return (
     <div className="mx-auto flex max-w-2xl flex-col gap-4">
       <div className="flex items-center gap-2">
@@ -40,6 +50,9 @@ export function NotesList({
             <DropdownMenuItem onClick={() => onNew("text")}>
               <FileTextIcon /> Text note
             </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => onNew("checklist")}>
+              <ListChecksIcon /> Checklist
+            </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
@@ -51,7 +64,9 @@ export function NotesList({
       ) : (
         <ul className="divide-y rounded-xl border">
           {ordered.map((note) => {
-            const { heading, snippet } = notePreview(note)
+            const noteItems = itemsByNote.get(note.id) ?? NO_ITEMS
+            const { heading, snippet } = notePreview(note, noteItems)
+            const counts = note.kind === "checklist" ? checklistCounts(noteItems) : null
             return (
               <li key={note.id}>
                 <button
@@ -75,6 +90,7 @@ export function NotesList({
                         <UsersIcon aria-hidden className="size-3.5" />
                       ) : null}
                       <span className="truncate">
+                        {counts && `${counts.unchecked} to do · ${counts.checked} done · `}
                         {sharingLine(note, viewerId)} · {timeAgo(note.editedAt, now)}
                       </span>
                     </span>

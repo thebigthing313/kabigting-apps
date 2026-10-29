@@ -55,6 +55,37 @@ describe("notePreview", () => {
     expect(notePreview({ title: null, body: "" })).toEqual({ heading: "Untitled", snippet: "" })
   })
 
+  test("a Checklist shows its unchecked Items in order, under its title or as its heading", () => {
+    const items = [
+      { id: "1", text: "Eggs", position: "s", checked: false, checkedAt: null },
+      { id: "2", text: "Milk", position: "c", checked: false, checkedAt: null },
+      { id: "3", text: "Jam", position: "a", checked: true, checkedAt: "2026-10-01T09:00:00.000Z" },
+      { id: "4", text: "Bread", position: "i", checked: false, checkedAt: null },
+    ]
+    expect(notePreview({ title: "Shop", body: null }, items)).toEqual({
+      heading: "Shop",
+      snippet: "Milk, Bread, Eggs",
+    })
+    expect(notePreview({ title: null, body: null }, items)).toEqual({
+      heading: "Milk",
+      snippet: "Bread, Eggs",
+    })
+  })
+
+  test("a Checklist with nothing left to do reads as its title, or Untitled", () => {
+    const done = [
+      { id: "1", text: "Jam", position: "a", checked: true, checkedAt: "2026-10-01T09:00:00.000Z" },
+    ]
+    expect(notePreview({ title: "Shop", body: null }, done)).toEqual({
+      heading: "Shop",
+      snippet: "",
+    })
+    expect(notePreview({ title: null, body: null }, done)).toEqual({
+      heading: "Untitled",
+      snippet: "",
+    })
+  })
+
   test("a long snippet is cut short", () => {
     const { snippet } = notePreview({ title: "Long", body: "word ".repeat(200) })
     expect(snippet.length).toBeLessThanOrEqual(160)
@@ -70,6 +101,11 @@ describe("isEmptyNote", () => {
 
   test("whitespace alone is still empty", () => {
     expect(isEmptyNote({ title: "  ", body: "\n\t \n" })).toBe(true)
+  })
+
+  test("a Checklist with only blank Items is empty; one Item with text is content", () => {
+    expect(isEmptyNote({ title: null, body: null }, [{ text: "" }, { text: "  " }])).toBe(true)
+    expect(isEmptyNote({ title: null, body: null }, [{ text: "" }, { text: "Milk" }])).toBe(false)
   })
 
   test("a title or any body text is content", () => {

@@ -81,6 +81,7 @@ test("migrations apply to an empty database and create every table", async () =>
     "finances_transfers",
     "finances_wallets",
     "note_audience",
+    "note_items",
     "notes",
     "temporary_password",
   ])

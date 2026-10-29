@@ -1,6 +1,13 @@
 import { afterAll, beforeAll, describe, expect, test } from "vitest"
 import { newId } from "#shared/ids.ts"
-import { notePeople, noteRow, noteRows, type NoteRow } from "#shared/notes/schemas.ts"
+import {
+  itemRows,
+  itemWrite,
+  notePeople,
+  noteRow,
+  noteRows,
+  type NoteRow,
+} from "#shared/notes/schemas.ts"
 import { createTestServer, json, type TestServer } from "#server/test/server.ts"
 
 type Signed = { headers: Headers; id: string; name: string }
@@ -216,5 +223,97 @@ describe("the people a Creator can pick", () => {
       expect(await response.json()).toMatchObject({ error: { code: "validation_failed" } })
     }
     expect(await listed(note.id, creator)).toMatchObject({ audience: [{ id: member.id }] })
+  })
+})
+
+function addItem(noteId: string, text: string, as: Signed) {
+  return server.app.request(
+    "/api/notes/items",
+    json("POST", { id: newId(), noteId, text }, as.headers),
+  )
+}
+
+function patchItem(itemId: string, body: unknown, as: Signed) {
+  return server.app.request(`/api/notes/items/${itemId}`, json("PATCH", body, as.headers))
+}
+
+function removeItem(itemId: string, as: Signed) {
+  return server.app.request(`/api/notes/items/${itemId}`, {
+    method: "DELETE",
+    headers: as.headers,
+  })
+}
+
+async function items(as: Signed) {
+  const response = await server.app.request("/api/notes/items", { headers: as.headers })
+  expect(response.status).toBe(200)
+  return itemRows.parse(await response.json()).rows
+}
+
+/** A Checklist its Creator has shared with the member. */
+async function checklist() {
+  const note = await created(creator, { kind: "checklist", title: "Groceries", body: undefined })
+  await shared(note.id, [member.id])
+  return note
+}
+
+describe("a shared Checklist's Items", () => {
+  test("a member reads, adds, edits, ticks and deletes them", async () => {
+    const note = await checklist()
+    const byCreator = await addItem(note.id, "Milk", creator)
+    expect(byCreator.status).toBe(201)
+    const milk = itemWrite.parse(await byCreator.json()).item
+    expect((await items(member)).find((item) => item.id === milk.id)).toMatchObject({
+      text: "Milk",
+    })
+
+    const byMember = await addItem(note.id, "Eggs", member)
+    expect(byMember.status).toBe(201)
+    const eggs = itemWrite.parse(await byMember.json()).item
+
+    expect((await patchItem(milk.id, { text: "Oat milk" }, member)).status).toBe(200)
+    const tick = await patchItem(milk.id, { checked: true }, member)
+    expect(tick.status).toBe(200)
+    expect(itemWrite.parse(await tick.json()).item).toMatchObject({
+      text: "Oat milk",
+      checked: true,
+    })
+    expect((await removeItem(eggs.id, member)).status).toBe(200)
+
+    const seen = (await items(creator)).filter((item) => item.noteId === note.id)
+    expect(seen).toEqual([
+      expect.objectContaining({ id: milk.id, text: "Oat milk", checked: true }),
+    ])
+  })
+
+  for (const [who, as] of [
+    ["an Account not in the Audience", () => other],
+    ["the Admin, not in the Audience", () => admin],
+  ] as const) {
+    test(`${who} gets 404 for every Item read and write`, async () => {
+      const note = await checklist()
+      const response = await addItem(note.id, "Bread", creator)
+      const bread = itemWrite.parse(await response.json()).item
+      expect((await items(as())).map((item) => item.noteId)).not.toContain(note.id)
+      const answers = [
+        await addItem(note.id, "Sneaky", as()),
+        await patchItem(bread.id, { text: "Mine" }, as()),
+        await patchItem(bread.id, { checked: true }, as()),
+        await removeItem(bread.id, as()),
+      ]
+      expect(answers.map((answer) => answer.status)).toEqual([404, 404, 404, 404])
+      expect((await items(creator)).filter((item) => item.noteId === note.id)).toEqual([
+        expect.objectContaining({ id: bread.id, text: "Bread", checked: false }),
+      ])
+    })
+  }
+
+  test("a member removed from the Audience loses its Items too", async () => {
+    const note = await checklist()
+    const response = await addItem(note.id, "Jam", creator)
+    const jam = itemWrite.parse(await response.json()).item
+    await shared(note.id, [])
+    expect((await items(member)).map((item) => item.noteId)).not.toContain(note.id)
+    expect((await patchItem(jam.id, { checked: true }, member)).status).toBe(404)
   })
 })

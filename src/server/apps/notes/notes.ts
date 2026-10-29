@@ -79,14 +79,17 @@ export function noteRoutes(db: Db) {
   return new Hono<AppEnv>()
     .get("/", async (c) => c.json({ rows: await readNotes(db, c.get("account").id) }))
     .post("/", validate("json", createNote), async (c) => {
-      const { id, kind, title, body } = c.req.valid("json")
+      const input = c.req.valid("json")
+      const { id, kind, title } = input
       const accountId = c.get("account").id
+      // A Text note always has a body, empty or not; a Checklist never does.
+      const body = input.kind === "text" ? (input.body ?? "") : null
       // The client supplies the id. An id already in use is never overwritten: a create retried
       // after a lost response gets the stored Note back, and a Note the caller can't see answers
       // 404 like any other, so its existence never leaks.
       await db
         .insert(notes)
-        .values({ id, kind, title: titleOrNull(title), body: body ?? "", creatorId: accountId })
+        .values({ id, kind, title: titleOrNull(title), body, creatorId: accountId })
         .onConflictDoNothing({ target: notes.id })
       return c.json(await readNote(db, accountId, id), 201)
     })
@@ -103,9 +106,20 @@ export function noteRoutes(db: Db) {
           ...(body === undefined ? {} : { body }),
           editedAt: sql`now()`,
         })
-        .where(and(eq(notes.id, noteId), visibleTo(accountId)))
+        .where(
+          and(
+            eq(notes.id, noteId),
+            visibleTo(accountId),
+            // Only a Text note has a body.
+            body === undefined ? undefined : eq(notes.kind, "text"),
+          ),
+        )
         .returning({ id: notes.id })
-      if (!updated) notFound()
+      if (!updated) {
+        // A Note the caller can't see is 404; one they can see wasn't written for its kind.
+        await readNote(db, accountId, noteId)
+        throw new ApiError("validation_failed", "A Checklist has no body")
+      }
       return c.json(await readNote(db, accountId, noteId))
     })
     .delete("/:id", validate("param", noteParams), async (c) => {
