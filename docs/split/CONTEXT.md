@@ -44,9 +44,10 @@ equally among the Members ticked. The paid side and the owed side each have one,
 _Avoid_: Split type, method
 
 **Payment**:
-Money one Member hands another to settle up: a positive Amount from one Member to a different one.
-Unlike in Finances, where money between Wallets is a Transfer, here a Payment is between people.
-_Avoid_: Settle-up, reimbursement, Transfer
+Money one Member hands another, whether to settle up or as a loan: a positive Amount from one
+Member to a different one. Unlike in Finances, where money between Wallets is a Transfer, here a
+Payment is between people.
+_Avoid_: Settle-up, reimbursement, loan, Transfer
 
 **Balance**:
 A Member's one overall standing: their Paid shares, less their Owed shares, plus the Payments they
