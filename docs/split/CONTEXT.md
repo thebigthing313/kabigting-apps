@@ -21,8 +21,8 @@ _Avoid_: Inactive member, deleted member
 ### Money
 
 **Expense**:
-One shared cost entered once, with a total, a date, a description and a Category, made of Paid
-shares and Owed shares that each sum to the total. A negative total is a Refund.
+One shared cost entered once, with a total, a date, a description, a Category and an optional note,
+made of Paid shares and Owed shares that each sum to the total. A negative total is a Refund.
 _Avoid_: Bill, Transaction, split (as a noun)
 
 **Refund**:
@@ -45,8 +45,8 @@ _Avoid_: Split type, method
 
 **Payment**:
 Money one Member hands another, whether to settle up or as a loan: a positive Amount from one
-Member to a different one. Unlike in Finances, where money between Wallets is a Transfer, here a
-Payment is between people.
+Member to a different one, with an optional note. Unlike in Finances, where money between Wallets
+is a Transfer, here a Payment is between people.
 _Avoid_: Settle-up, reimbursement, loan, Transfer
 
 **Balance**:
