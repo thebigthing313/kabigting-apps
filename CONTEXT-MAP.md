@@ -7,3 +7,5 @@ another context uses the same word for something else.
 - **Finances** — [`docs/finances/CONTEXT.md`](docs/finances/CONTEXT.md): the household finances App.
   Here **Account** means a payee or income source, not a sign-in.
 - **Notes** — [`docs/notes/CONTEXT.md`](docs/notes/CONTEXT.md): shared notes and checklists.
+- **Split** — [`docs/split/CONTEXT.md`](docs/split/CONTEXT.md): shared expenses between household
+  Members. Here **Payment** means money handed between Members, not a Finances Transfer.
