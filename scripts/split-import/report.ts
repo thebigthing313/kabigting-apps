@@ -16,11 +16,12 @@ function money(cents: number | null): string {
 
 function memberRow(member: MemberCheck): string {
   const access = member.access === null ? "?" : member.access ? "yes" : "no"
-  const difference =
+  const cents =
     member.computed === null || member.splitwise === null
-      ? "?"
-      : format(member.computed - member.splitwise, { sign: "always" })
-  const mark = difference === "$0.00" ? "" : "  DIFFERS"
+      ? null
+      : member.computed - member.splitwise
+  const difference = cents === null ? "?" : format(cents, { sign: "always" })
+  const mark = cents === 0 ? "" : "  DIFFERS"
   return `  ${pad(member.number, 6)} ${access.padEnd(6)} ${pad(money(member.computed), 14)} ${pad(money(member.splitwise), 14)} ${pad(difference, 14)}${mark}`
 }
 
@@ -41,7 +42,7 @@ export function formatReport(plan: ImportPlan): string[] {
       (line) =>
         `  ${line.year} ${line.category.padEnd(20)} ${pad(line.count, 6)} ${pad(format(line.total), 14)}`,
     ),
-    "Members, numbered in mapping order:",
+    "Members, numbered by Splitwise user id, ascending:",
     `  ${pad("member", 6)} ${"access".padEnd(6)} ${pad("computed", 14)} ${pad("Splitwise", 14)} ${pad("difference", 14)}`,
     ...report.members.map(memberRow),
     ...(report.failures.length === 0

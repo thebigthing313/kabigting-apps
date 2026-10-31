@@ -151,6 +151,8 @@ describe("expense rows", () => {
       {
         row: 1,
         date: "2025-03-14",
+        addedAt: "2025-03-14T17:05:00Z",
+        changedAt: "2025-03-14T17:05:00Z",
         description: "Made-up groceries",
         note: "Made-up note",
         category: "Groceries",
@@ -294,6 +296,46 @@ describe("the date", () => {
     expect(result.report.failures).toContain("Row 1: date is not a UTC instant")
   })
 
+  test("when it was added and last changed are Splitwise's created_at and updated_at", () => {
+    const result = plan([
+      row({ created_at: "2022-03-04T02:00:00Z", updated_at: "2022-03-05T15:00:00Z" }),
+      row({ created_at: "2022-03-04T02:00:00Z", updated_at: null }),
+      paymentRow(BO, ADA, 1_500, { created_at: "2022-03-06T12:00:00Z", updated_at: undefined }),
+    ])
+    expect(result.report.failures).toEqual([])
+    expect(result.expenses.map((e) => [e.addedAt, e.changedAt])).toEqual([
+      ["2022-03-04T02:00:00Z", "2022-03-05T15:00:00Z"],
+      ["2022-03-04T02:00:00Z", "2022-03-04T02:00:00Z"],
+    ])
+    expect(result.payments.map((p) => [p.addedAt, p.changedAt])).toEqual([
+      ["2022-03-06T12:00:00Z", "2022-03-06T12:00:00Z"],
+    ])
+  })
+
+  test("a missing or malformed created_at, or a malformed updated_at, fails the row", () => {
+    const zero = new Map([
+      [ADA, 0],
+      [BO, 0],
+      [CY, 0],
+    ])
+    const result = plan(
+      [
+        row({ created_at: undefined }),
+        row({ created_at: "last Tuesday" }),
+        paymentRow(BO, ADA, 1_500, { created_at: null }),
+        row({ updated_at: "2022-03-05" }),
+      ],
+      zero,
+    )
+    expect(result.report.failures).toEqual([
+      "Row 1: created_at is missing or not a UTC instant",
+      "Row 2: created_at is missing or not a UTC instant",
+      "Row 3: created_at is missing or not a UTC instant",
+      "Row 4: updated_at is not a UTC instant",
+    ])
+    expect(formatReport(result).join(" ")).not.toContain("last Tuesday")
+  })
+
   test("the year an entry counts in is its household date's", () => {
     const result = plan([row({ date: "2026-01-01T04:30:00Z" })])
     expect([...result.report.years.keys()]).toEqual(["2025"])
@@ -352,7 +394,15 @@ describe("payment rows", () => {
     const result = plan([row(), paymentRow(BO, ADA, 1_500, { date: "2025-04-01T02:00:00Z" })])
     expect(result.report.failures).toEqual([])
     expect(result.payments).toEqual([
-      { row: 2, date: "2025-03-31", fromId: "acct-bo", toId: "acct-ada", amount: 1_500 },
+      {
+        row: 2,
+        date: "2025-03-31",
+        addedAt: "2025-03-14T17:05:00Z",
+        changedAt: "2025-03-14T17:05:00Z",
+        fromId: "acct-bo",
+        toId: "acct-ada",
+        amount: 1_500,
+      },
     ])
     expect(result.expenses).toHaveLength(1)
     expect(result.report.years.get("2025")).toEqual({ expenses: 1, refunds: 0, payments: 1 })

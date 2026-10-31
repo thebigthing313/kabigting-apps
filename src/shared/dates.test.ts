@@ -3,6 +3,8 @@ import {
   addDays,
   addMonthsClamped,
   dateOfInstant,
+  formatInstantDate,
+  instantToDate,
   daysBetween,
   formatDisplayDate,
   formatMonth,
@@ -108,6 +110,21 @@ describe("dateOfInstant", () => {
     ["2026-11-02T04:59:59Z", "2026-11-01"],
   ])("puts %s on household date %s", (instant, date) => {
     expect(dateOfInstant(instant)).toBe(date)
+  })
+})
+
+describe("instantToDate", () => {
+  test("keeps the instant, whatever its offset", () => {
+    expect(instantToDate("2022-03-03T23:30:00-05:00").toISOString()).toBe(
+      "2022-03-04T04:30:00.000Z",
+    )
+  })
+})
+
+describe("formatInstantDate", () => {
+  test("gives the household date with its year", () => {
+    // 03:00 UTC on Mar 4 is still Mar 3 in New York.
+    expect(formatInstantDate("2022-03-04T03:00:00Z")).toBe("Mar 3, 2022")
   })
 })
 

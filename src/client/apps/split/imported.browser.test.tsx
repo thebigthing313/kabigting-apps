@@ -1,4 +1,5 @@
-// Entries the Splitwise import wrote say so, with the date, in place of who added them: on Home's
+// Entries the Splitwise import wrote say so, with the date they were added there, in place of who
+// added them: on Home's
 // cards, on the Expense's Review and on the Payment form. Members, amounts and dates are made up.
 import "@/styles.css"
 import { describe, expect, test, vi } from "vitest"
@@ -17,8 +18,8 @@ const members: Member[] = [
 ]
 const GROCERIES = "0190a000-0000-7000-8000-000000000001"
 const categories: Category[] = [{ id: GROCERIES, name: "Groceries", archived: false }]
-// 02:00 UTC on Oct 31 is still Oct 30 in the household zone.
-const IMPORTED_AT = "2026-10-31T02:00:00.000Z"
+// Added in Splitwise at 02:00 UTC on Mar 4, 2022, still Mar 3 in the household zone.
+const ADDED_AT = "2022-03-04T02:00:00.000Z"
 
 /** Exact dollars, as the import stores both sides. */
 function exactSide(exact: Record<string, number>): Side {
@@ -39,9 +40,9 @@ function imported(overrides: Partial<Expense> = {}): Expense {
     paidShares: { ana: 7_000 },
     owedShares: { ana: 3_000, ben: 4_000 },
     addedBy: "admin",
-    addedAt: IMPORTED_AT,
+    addedAt: ADDED_AT,
     changedBy: "admin",
-    changedAt: IMPORTED_AT,
+    changedAt: ADDED_AT,
     imported: true,
     ...overrides,
   }
@@ -56,9 +57,9 @@ const importedPayment: Payment = {
   amount: 2_500,
   note: "",
   addedBy: "admin",
-  addedAt: IMPORTED_AT,
+  addedAt: ADDED_AT,
   changedBy: "admin",
-  changedAt: IMPORTED_AT,
+  changedAt: ADDED_AT,
   imported: true,
 }
 
@@ -83,18 +84,18 @@ describe("an imported entry", () => {
     const cards = screen.getByRole("article")
     await expect.element(cards.nth(0)).toBeVisible()
     for (const card of cards.elements()) {
-      expect(card.textContent).toMatch(/Imported from Splitwise on Oct 30$/)
+      expect(card.textContent).toMatch(/Imported from Splitwise · added Mar 3, 2022$/)
       expect(card.textContent).not.toContain("Added by")
     }
   })
 
-  test("a later change still shows who made it", async () => {
+  test("a change made in Splitwise gives its date, a change made here who made it", async () => {
     const screen = await render(
       <HomeView
         viewerId="ana"
         members={members}
-        expenses={[imported({ changedBy: "ben", changedAt: "2026-11-02T15:00:00.000Z" })]}
-        payments={[]}
+        expenses={[imported({ changedAt: "2022-03-05T15:00:00.000Z" })]}
+        payments={[{ ...importedPayment, changedBy: "ben", changedAt: "2026-11-02T15:00:00.000Z" }]}
         categories={categories}
         tab="activity"
         onTabChange={() => {}}
@@ -106,7 +107,14 @@ describe("an imported entry", () => {
       />,
     )
     await expect
-      .element(screen.getByText("Imported from Splitwise on Oct 30 · changed by Ben on Nov 2"))
+      .element(
+        screen.getByText("Imported from Splitwise · added Mar 3, 2022 · changed Mar 5, 2022"),
+      )
+      .toBeVisible()
+    await expect
+      .element(
+        screen.getByText("Imported from Splitwise · added Mar 3, 2022 · changed by Ben on Nov 2"),
+      )
       .toBeVisible()
   })
 
@@ -123,7 +131,9 @@ describe("an imported entry", () => {
       />,
     )
     await expect.element(screen.getByRole("heading", { name: "Edit Expense" })).toBeVisible()
-    await expect.element(screen.getByText("Imported from Splitwise on Oct 30")).toBeVisible()
+    await expect
+      .element(screen.getByText("Imported from Splitwise · added Mar 3, 2022"))
+      .toBeVisible()
     await expect.element(screen.getByText("You paid $70.00")).toBeVisible()
     await expect.element(screen.getByText("You owe $30.00; Ben owes $40.00")).toBeVisible()
   })
@@ -140,6 +150,8 @@ describe("an imported entry", () => {
         editing={{ payment: importedPayment, onDelete: () => {} }}
       />,
     )
-    await expect.element(screen.getByText("Imported from Splitwise on Oct 30")).toBeVisible()
+    await expect
+      .element(screen.getByText("Imported from Splitwise · added Mar 3, 2022"))
+      .toBeVisible()
   })
 })

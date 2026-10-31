@@ -67,8 +67,9 @@ export const splitExpenses = pgTable(
       .references(() => auth_user.id),
     changedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
     /**
-     * Written by the Splitwise import: shown as "Imported from Splitwise" in place of who added
-     * it. Who added it is then the Admin, and when is when it was added in Splitwise.
+     * Written by the Splitwise import, and shown as "Imported from Splitwise" in place of who
+     * added it. Who added and changed it are then the Admin who ran the import; when it was added
+     * and last changed are Splitwise's `created_at` and `updated_at`.
      */
     imported: boolean().notNull().default(false),
   },
@@ -129,8 +130,9 @@ export const splitPayments = pgTable(
       .references(() => auth_user.id),
     changedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
     /**
-     * Written by the Splitwise import: shown as "Imported from Splitwise" in place of who added
-     * it. Who added it is then the Admin, and when is when it was added in Splitwise.
+     * Written by the Splitwise import, and shown as "Imported from Splitwise" in place of who
+     * added it. Who added and changed it are then the Admin who ran the import; when it was added
+     * and last changed are Splitwise's `created_at` and `updated_at`.
      */
     imported: boolean().notNull().default(false),
   },

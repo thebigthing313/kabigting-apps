@@ -1,7 +1,8 @@
 /**
  * The git-ignored file that says which Account each Splitwise user is:
- * `{ "<splitwise user id>": "<account email>" }`. Members are numbered in its order (JavaScript
- * lists integer keys in ascending order). Messages name an entry by its number, never its values.
+ * `{ "<splitwise user id>": "<account email>" }`. Entries, and so Members, are numbered by
+ * Splitwise user id, ascending: JavaScript lists an object's integer keys in that order, whatever
+ * order the file gives them in. Messages name an entry by its number, never its values.
  */
 import { z } from "zod"
 
@@ -16,6 +17,42 @@ export type MappingEntry = { number: number; splitwiseId: string; email: string 
 
 const mappingFile = z.record(z.string(), z.unknown())
 const email = z.email()
+
+// A JSON string token, escapes included.
+const JSON_STRING = /"(?:[^"\\]|\\.)*"/g
+
+/**
+ * Every object key in JSON text, in order, repeats included: `JSON.parse` keeps only the last of
+ * a repeated key. A string is a key when the next character after it, past spaces, is a colon.
+ */
+function keysIn(text: string): string[] {
+  const keys: string[] = []
+  for (const match of text.matchAll(JSON_STRING)) {
+    const after = text.slice(match.index + match[0].length).trimStart()
+    if (after.startsWith(":")) keys.push(String(JSON.parse(match[0])))
+  }
+  return keys
+}
+
+/** The mapping from the file's text. A Splitwise user id given twice fails, by entry number. */
+export function parseMappingText(text: string): MappingEntry[] {
+  let file: unknown
+  try {
+    file = JSON.parse(text)
+  } catch {
+    throw new MappingInvalid("The mapping file is not valid JSON")
+  }
+  const entries = parseMapping(file)
+  const keys = keysIn(text)
+  const repeated = keys.find((key, index) => keys.indexOf(key) !== index)
+  if (repeated !== undefined) {
+    const entry = entries.find((each) => each.splitwiseId === repeated)
+    throw new MappingInvalid(
+      `Mapping entry ${entry?.number ?? "?"}: the Splitwise user id is given more than once`,
+    )
+  }
+  return entries
+}
 
 export function parseMapping(file: unknown): MappingEntry[] {
   const parsed = mappingFile.safeParse(file)

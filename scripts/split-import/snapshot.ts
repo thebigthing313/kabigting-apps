@@ -23,6 +23,8 @@ const expenseRow = z.object({
   cost: z.string(),
   currency_code: z.string(),
   date: z.string(),
+  created_at: z.string().nullish(),
+  updated_at: z.string().nullish(),
   description: z.string().nullable(),
   details: z.string().nullish(),
   category: z.object({ name: z.string() }).nullish(),
@@ -55,6 +57,10 @@ export type SplitwiseRow = {
   currency: string
   /** A UTC instant. */
   date: string
+  /** When it was added in Splitwise, a UTC instant; checked when planned. */
+  createdAt: string | null
+  /** When it was last changed in Splitwise, if Splitwise says. */
+  updatedAt: string | null
   description: string
   details: string
   /** Absent on some payment rows. */
@@ -143,6 +149,8 @@ export function readSnapshot(file: unknown): Snapshot {
       cost: data.cost,
       currency: data.currency_code,
       date: data.date,
+      createdAt: data.created_at ?? null,
+      updatedAt: data.updated_at ?? null,
       description: data.description ?? "",
       details: data.details ?? "",
       category: data.category?.name ?? null,

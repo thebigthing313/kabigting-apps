@@ -3,7 +3,7 @@
 import { mkdtemp, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { eq } from "drizzle-orm"
+import { eq, sql } from "drizzle-orm"
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "vitest"
 import { newId } from "#shared/ids.ts"
 import { householdBalances } from "#shared/split/rules.ts"
@@ -22,9 +22,11 @@ import {
 import { createTestServer, json, type TestServer } from "#server/test/server.ts"
 import { runImport } from "./run.ts"
 
-const NOW = new Date(Date.UTC(2026, 9, 31, 12))
 const DESCRIPTION = "Imaginary noodle night"
 const DETAILS = "made-up details"
+// When the made-up rows were added and changed in Splitwise.
+const ADDED_AT = "2025-03-15T02:35:00.000Z"
+const CHANGED_AT = "2025-03-16T10:00:00.000Z"
 
 // Made-up Splitwise user ids.
 const ADA = 801
@@ -62,7 +64,7 @@ function row(id: number, changes: Record<string, unknown>) {
     cost: "30.0",
     currency_code: "USD",
     date: "2025-03-15T02:30:00Z",
-    created_at: "2025-03-15T02:35:00Z",
+    created_at: ADDED_AT,
     deleted_at: null,
     category: { id: 13, name: "Dining out" },
     users: [],
@@ -81,6 +83,7 @@ function snapshot(
   const rows = [
     row(9001, {
       details: DETAILS,
+      updated_at: CHANGED_AT,
       users: [user(ADA, "30.0", "0.0"), user(BO, "0.0", "10.0"), user(CY, "0.0", "20.0")],
     }),
     row(9002, {
@@ -149,7 +152,7 @@ async function run(...args: string[]) {
   try {
     await runImport(
       [...args, snapshotFile],
-      { connect: () => ({ db: server.db, close: async () => {} }), mapFile, now: NOW },
+      { connect: () => ({ db: server.db, close: async () => {} }), mapFile },
       (line) => lines.push(line),
     )
   } catch (error) {
@@ -227,9 +230,9 @@ describe("split:import", () => {
       paidShares: { [ada.id]: 3_000 },
       owedShares: { [bo.id]: 1_000, [cy.id]: 2_000 },
       addedBy: admin.id,
-      addedAt: NOW.toISOString(),
+      addedAt: ADDED_AT,
       changedBy: admin.id,
-      changedAt: NOW.toISOString(),
+      changedAt: CHANGED_AT,
       imported: true,
     })
     const payments = paymentRows.parse(await get("payments")).rows
@@ -241,6 +244,8 @@ describe("split:import", () => {
         amount: 1_000,
         note: "",
         addedBy: admin.id,
+        addedAt: ADDED_AT,
+        changedAt: ADDED_AT,
         imported: true,
       }),
     ])
@@ -294,7 +299,29 @@ describe("split:import", () => {
     expect(created.status).toBe(201)
     expect((await failedRun()).message).toMatch(/Categories beyond the seeded twelve/)
     expect(await stored()).toEqual({ expenses: 0, payments: 0 })
+
+    // A dry run says so, so "No mismatches." can't mislead; with --wipe it says what would go.
+    const dryRun = await run("--dry-run")
+    expect(dryRun).toContain("No mismatches.")
+    expect(dryRun).toContain(
+      "A real run would be refused: Split already holds data (Categories beyond the seeded twelve); pass --wipe.",
+    )
+    expect(await run("--dry-run", "--wipe")).toContain(
+      "A real run with --wipe would first delete what Split holds (Categories beyond the seeded twelve).",
+    )
+    expect(await server.db.$count(splitCategories)).toBe(13)
+  })
+
+  test("--wipe puts every seeded Category back in use", async () => {
+    await clearSplit()
+    await server.db
+      .update(splitCategories)
+      .set({ archived: true })
+      .where(eq(splitCategories.name, "Groceries"))
     await run("--wipe")
+    const categories = await server.db.select().from(splitCategories)
+    expect(categories).toHaveLength(12)
+    expect(categories.every((category) => !category.archived)).toBe(true)
   })
 
   test("the Balance check blocks the write on a one-cent difference, wipe or not", async () => {
@@ -320,7 +347,7 @@ describe("split:import", () => {
       .set({ name: "Made-up cleaning" })
       .where(eq(splitCategories.name, "Household supplies"))
     try {
-      expect((await failedRun("--wipe")).message).toMatch(/missing from Split/)
+      expect((await failedRun("--wipe")).message).toMatch(/no Category named Household supplies/)
       const after = expenseRows.parse(await get("expenses")).rows.map((expense) => expense.id)
       expect(after.toSorted()).toEqual(before.toSorted())
     } finally {
@@ -345,6 +372,66 @@ describe("split:import", () => {
     } finally {
       await writeFile(mapFile, JSON.stringify({ [ADA]: ada.email, [BO]: bo.email, [CY]: cy.email }))
     }
+  })
+})
+
+/**
+ * Neither the error nor the printed report shows what a leaked query or its parameters would: the
+ * made-up descriptions, notes, emails or ids. The error shows no amount either; the report itself
+ * gives totals per Category, never a row's.
+ */
+function expectNothingPrivate(failed: { message: string; output: string }, accountId: string) {
+  for (const secret of [
+    DESCRIPTION,
+    DETAILS,
+    "@example.com",
+    accountId,
+    "Failed query",
+    "params",
+  ]) {
+    expect(`${failed.message} ${failed.output}`).not.toContain(secret)
+  }
+  for (const amount of ["3000", "1000", "30.0", "10.0", "9.0"]) {
+    expect(failed.message).not.toContain(amount)
+  }
+}
+
+describe("a database error", () => {
+  test("while reading the mapped Accounts prints fixed text and its code only", async () => {
+    await clearSplit()
+    await server.db.execute(sql`alter table auth_user rename to auth_user_away`)
+    try {
+      const failed = await failedRun()
+      expect(failed.message).toBe(
+        "The import failed with a database error; nothing was written (code 42P01).",
+      )
+      expectNothingPrivate(failed, ada.id)
+    } finally {
+      await server.db.execute(sql`alter table auth_user_away rename to auth_user`)
+    }
+    expect(await stored()).toEqual({ expenses: 0, payments: 0 })
+  })
+
+  test("while writing prints fixed text and its code only, and writes nothing", async () => {
+    await clearSplit()
+    // Refuses the dinner's row, so the insert fails partway through the transaction.
+    await server.db.execute(
+      sql.raw(
+        `alter table split_expenses add constraint made_up_refusal check (description <> '${DESCRIPTION}')`,
+      ),
+    )
+    try {
+      const failed = await failedRun()
+      expect(failed.message).toBe(
+        "The import failed with a database error; nothing was written (code 23514).",
+      )
+      expectNothingPrivate(failed, ada.id)
+      expect(failed.output).toContain("No mismatches.")
+    } finally {
+      await server.db.execute(sql`alter table split_expenses drop constraint made_up_refusal`)
+    }
+    expect(await stored()).toEqual({ expenses: 0, payments: 0 })
+    expect(await server.db.$count(splitShares)).toBe(0)
   })
 })
 

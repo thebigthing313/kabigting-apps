@@ -3,11 +3,11 @@
  * expense row becomes an Expense with both sides in exact dollars, each payment row a Payment, and
  * every Member's computed Balance is checked against Splitwise's own. Any failure is listed and
  * the run writes nothing. Failures name a row by its number and the field at fault, and a Member
- * by their number in the mapping, never by a value.
+ * by their number (by Splitwise user id, ascending), never by a value.
  */
 import { z } from "zod"
 import { dateOfInstant } from "#shared/dates.ts"
-import { parseToCent } from "#shared/money.ts"
+import { CURRENCY, parseToCent } from "#shared/money.ts"
 import { householdBalances, resolveExpense, type Roster } from "#shared/split/rules.ts"
 import type { Shares, Side } from "#shared/split/schemas.ts"
 import { mapCategory } from "./categories.ts"
@@ -22,6 +22,10 @@ type CategoryName = NonNullable<ReturnType<typeof mapCategory>>
 export type PlannedExpense = {
   row: number
   date: string
+  /** When it was added in Splitwise (`created_at`), a UTC instant. */
+  addedAt: string
+  /** When it was last changed in Splitwise (`updated_at`, else `created_at`). */
+  changedAt: string
   description: string
   note: string
   category: CategoryName
@@ -36,6 +40,10 @@ export type PlannedExpense = {
 export type PlannedPayment = {
   row: number
   date: string
+  /** When it was added in Splitwise (`created_at`), a UTC instant. */
+  addedAt: string
+  /** When it was last changed in Splitwise (`updated_at`, else `created_at`). */
+  changedAt: string
   fromId: string
   toId: string
   amount: number
@@ -69,6 +77,13 @@ export type ImportPlan = {
 const DESCRIPTION_MAX = 200
 const NOTE_MAX = 2_000
 const instant = z.iso.datetime({ offset: true })
+
+function isInstant(value: string | null): value is string {
+  return value !== null && instant.safeParse(value).success
+}
+
+/** A row's household date, and when it was added and last changed in Splitwise. */
+type When = { date: string; addedAt: string; changedAt: string }
 
 /** Exact cents from a Splitwise decimal string, or null when malformed or finer than a cent. */
 function exactCents(amount: string): number | null {
@@ -137,12 +152,17 @@ function planRow(row: SplitwiseRow, mapped: Mapped): RowResult {
   const fail = (field: string, message: string) =>
     failures.push(`Row ${row.row}: ${field} ${message}`)
 
-  if (row.currency !== "USD") fail("currency_code", "is not USD")
+  if (row.currency !== CURRENCY) fail("currency_code", `is not ${CURRENCY}`)
   const cost = exactCents(row.cost)
   if (cost === null) fail("cost", "is not exact to the cent")
   else if (cost === 0) fail("cost", "is zero")
-  const date = instant.safeParse(row.date).success ? dateOfInstant(row.date) : null
+  const date = isInstant(row.date) ? dateOfInstant(row.date) : null
   if (date === null) fail("date", "is not a UTC instant")
+  const addedAt = isInstant(row.createdAt) ? row.createdAt : null
+  if (addedAt === null) fail("created_at", "is missing or not a UTC instant")
+  if (row.updatedAt !== null && !isInstant(row.updatedAt)) {
+    fail("updated_at", "is not a UTC instant")
+  }
 
   const paid: Shares = {}
   const owed: Shares = {}
@@ -174,9 +194,12 @@ function planRow(row: SplitwiseRow, mapped: Mapped): RowResult {
     if (sum(paid) !== cost) fail("paid_share", "does not add up to cost")
     if (sum(owed) !== cost) fail("owed_share", "does not add up to cost")
   }
-  if (failures.length > 0 || cost === null || date === null) return { failures }
+  if (failures.length > 0 || cost === null || date === null || addedAt === null) {
+    return { failures }
+  }
+  const when: When = { date, addedAt, changedAt: row.updatedAt ?? addedAt }
 
-  if (row.payment) return planPayment(row, date, paid, owed)
+  if (row.payment) return planPayment(row, when, paid, owed)
 
   const category = row.category === null ? null : mapCategory(row.category)
   if (category === null) fail("category.name", "is not in the Category mapping")
@@ -201,7 +224,7 @@ function planRow(row: SplitwiseRow, mapped: Mapped): RowResult {
   return {
     expense: {
       row: row.row,
-      date,
+      ...when,
       description,
       note,
       category,
@@ -217,7 +240,7 @@ function planRow(row: SplitwiseRow, mapped: Mapped): RowResult {
  * A payment row moves exactly two members by equal and opposite amounts. It becomes a Payment from
  * the one whose Balance went up to the one whose Balance went down, with no note.
  */
-function planPayment(row: SplitwiseRow, date: string, paid: Shares, owed: Shares): RowResult {
+function planPayment(row: SplitwiseRow, when: When, paid: Shares, owed: Shares): RowResult {
   const moves = new Map<string, number>()
   for (const [id, cents] of Object.entries(paid)) moves.set(id, (moves.get(id) ?? 0) + cents)
   for (const [id, cents] of Object.entries(owed)) moves.set(id, (moves.get(id) ?? 0) - cents)
@@ -231,16 +254,16 @@ function planPayment(row: SplitwiseRow, date: string, paid: Shares, owed: Shares
       ],
     }
   }
-  return { payment: { row: row.row, date, fromId: up[0], toId: down[0], amount: up[1] } }
+  return { payment: { row: row.row, ...when, fromId: up[0], toId: down[0], amount: up[1] } }
 }
 
-/** A Splitwise group balance list in cents: USD only, exact to the cent, empty meaning zero. */
+/** A Splitwise group balance list in cents: dollars only, exact to the cent, empty meaning zero. */
 function splitwiseBalance(
   balance: readonly { currency: string; amount: string }[],
 ): number | "currency" | "cents" {
   let total = 0
   for (const entry of balance) {
-    if (entry.currency !== "USD") return "currency"
+    if (entry.currency !== CURRENCY) return "currency"
     const cents = exactCents(entry.amount)
     if (cents === null) return "cents"
     total += cents
@@ -302,10 +325,12 @@ export function planImport(
     const accountId = mapped.accountOf.get(entry.splitwiseId)
     const account = accountId === undefined ? undefined : accountsById.get(accountId)
     const groupMember = snapshot.members.find((member) => member.userId === entry.splitwiseId)
-    // Someone who left the group can only have done so settled up.
+    // Splitwise lets someone leave the group only once their balance is zero.
     const balance = splitwiseBalance(groupMember?.balance ?? [])
     if (balance === "currency") {
-      failures.push(`Member ${entry.number}: the Splitwise balance has a currency other than USD`)
+      failures.push(
+        `Member ${entry.number}: the Splitwise balance has a currency other than ${CURRENCY}`,
+      )
     } else if (balance === "cents") {
       failures.push(`Member ${entry.number}: the Splitwise balance is not exact to the cent`)
     }

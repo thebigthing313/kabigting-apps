@@ -4,7 +4,13 @@ import { execFileSync } from "node:child_process"
 import { readFileSync } from "node:fs"
 import { fileURLToPath } from "node:url"
 import { describe, expect, test } from "vitest"
-import { EXAMPLE_MAP_FILE, MAP_FILE, MappingInvalid, parseMapping } from "./mapping.ts"
+import {
+  EXAMPLE_MAP_FILE,
+  MAP_FILE,
+  MappingInvalid,
+  parseMapping,
+  parseMappingText,
+} from "./mapping.ts"
 
 const root = new URL("../../", import.meta.url)
 const read = (path: string) => readFileSync(new URL(path, root), "utf8")
@@ -40,6 +46,28 @@ describe("the mapping file", () => {
       { number: 1, splitwiseId: "11", email: "one@example.com" },
       { number: 2, splitwiseId: "12", email: "two@example.com" },
     ])
+  })
+
+  test("entries are numbered by Splitwise user id, ascending, whatever order the file has", () => {
+    const entries = parseMappingText('{ "30": "c@example.com", "4": "d@example.com" }')
+    expect(entries.map((entry) => [entry.number, entry.splitwiseId])).toEqual([
+      [1, "4"],
+      [2, "30"],
+    ])
+  })
+
+  test("a Splitwise user id given twice fails, though JSON.parse would keep the last", () => {
+    const text =
+      '{\n  "11": "one@example.com",\n  "12": "two@example.com",\n  "11" : "x@example.com"\n}'
+    const thrown = thrownBy(() => parseMappingText(text))
+    expect(thrown).toBeInstanceOf(MappingInvalid)
+    expect(String(thrown)).toContain(
+      "Mapping entry 1: the Splitwise user id is given more than once",
+    )
+    expect(String(thrown)).not.toContain("example.com")
+    // Only keys count: a value equal to a key is not a repeat.
+    expect(parseMappingText('{ "11": "12@example.com", "12": "11@example.com" }')).toHaveLength(2)
+    expect(thrownBy(() => parseMappingText("{ not json"))).toBeInstanceOf(MappingInvalid)
   })
 
   test.each([
