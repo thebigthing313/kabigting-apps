@@ -1,0 +1,60 @@
+import { getRouteApi, useNavigate } from "@tanstack/react-router"
+import { PaymentForm } from "@/apps/split/payment-form"
+import { Button } from "@/components/ui/button"
+import { Skeleton } from "@/components/ui/skeleton"
+import { changePayment, deletePayment, useExpenses, useMembers, usePayments } from "@/data/split"
+import { today } from "@shared/dates"
+import { householdBalances } from "@shared/split/rules"
+
+const appRoute = getRouteApi("/_app")
+
+/**
+ * Changing a saved Payment, full page: any Member can change or delete any Payment. The draft
+ * lives only here, for as long as the page is open.
+ */
+export function EditPaymentPage({ paymentId }: { paymentId: string }) {
+  const { session } = appRoute.useRouteContext()
+  const { data: expenses, isLoading } = useExpenses()
+  const { data: payments, isLoading: paymentsLoading } = usePayments()
+  const members = useMembers()
+  const navigate = useNavigate()
+  const home = () => void navigate({ to: "/split" })
+  if (isLoading || paymentsLoading || !members.data) {
+    return <Skeleton className="mx-auto h-64 w-full max-w-md" />
+  }
+  const payment = payments.find((each) => each.id === paymentId)
+  if (!payment) {
+    return (
+      <div className="mx-auto flex w-full max-w-md flex-col items-start gap-3">
+        <p>This Payment was deleted.</p>
+        <Button variant="outline" onClick={home}>
+          Back to Split
+        </Button>
+      </div>
+    )
+  }
+  const memberIds = members.data.map((member) => member.id)
+  return (
+    <PaymentForm
+      key={payment.id}
+      viewerId={session.user.id}
+      members={members.data}
+      balances={householdBalances(expenses, payments, memberIds)}
+      today={today()}
+      onCancel={home}
+      onSave={async (changed) => {
+        const stored = await changePayment(payment, changed, session.user.id, memberIds)
+        if (stored) home()
+        return stored
+      }}
+      editing={{
+        payment,
+        // It goes at once, and so do its effects on the Balances; a failure is reported.
+        onDelete: () => {
+          home()
+          void deletePayment(payment.id)
+        },
+      }}
+    />
+  )
+}

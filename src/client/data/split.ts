@@ -1,4 +1,4 @@
-// The Split App's client data: every Expense and every Category in eager collections, as every
+// The Split App's client data: every Expense, Payment and Category in eager collections, as every
 // Member sees all of them and Balances need them all; the Members as a plain query. Refetches
 // follow the Shell's focus and reconnect defaults.
 import { lower, useLiveQuery } from "@tanstack/react-db"
@@ -12,19 +12,30 @@ import { nowInstant } from "@shared/dates"
 import { newId } from "@shared/ids"
 import {
   editExpenseRoster,
+  editPaymentAllowed,
   newExpenseRoster,
+  paymentProblems,
   resolveExpense,
   type ExpenseResolution,
+  type PaymentProblem,
 } from "@shared/split/rules"
 import type {
   CategoryRow,
   CreateExpense,
+  CreatePayment,
   ExpenseRow,
+  PaymentRow,
   UpdateCategory,
   UpdateExpense,
+  UpdatePayment,
 } from "@shared/split/schemas"
 
-export type { CategoryRow as Category, ExpenseRow as Expense, Member } from "@shared/split/schemas"
+export type {
+  CategoryRow as Category,
+  ExpenseRow as Expense,
+  Member,
+  PaymentRow as Payment,
+} from "@shared/split/schemas"
 
 /** What a Member enters for an Expense; the server works out the rest. */
 function entered(row: ExpenseRow): UpdateExpense {
@@ -187,4 +198,87 @@ export function changeExpense(
 /** Deletes an Expense for good. It goes at once; true once the server has deleted it too. */
 export function deleteExpense(id: string): Promise<boolean> {
   return settled(expensesCollection().delete(id))
+}
+
+/** What a Member enters for a Payment. */
+function enteredPayment(row: PaymentRow): UpdatePayment {
+  const { date, fromId, toId, amount, note } = row
+  return { date, fromId, toId, amount, note }
+}
+
+// As with Expenses, a change replaces the whole Payment, and one the server says is gone is dropped.
+const paymentsCollection = defineRestCollection<PaymentRow>({
+  id: "split-payments",
+  queryKey: ["split", "payments"],
+  fetchRows: async () => (await readJson(await api.split.payments.$get())).rows,
+  create: async (row) => {
+    const json = { id: row.id, ...enteredPayment(row) }
+    return readJson(await api.split.payments.$post({ json }))
+  },
+  update: async (id, _changes, _options, row) =>
+    readJson(await api.split.payments[":id"].$put({ param: { id }, json: enteredPayment(row) })),
+  remove: async (id) => readJson(await api.split.payments[":id"].$delete({ param: { id } })),
+  dropOnNotFound: true,
+})
+
+/** Every Payment, live, in no particular order. */
+export function usePayments() {
+  const payments = paymentsCollection()
+  return useLiveQuery((q) => q.from({ payment: payments }), [payments])
+}
+
+/** Reports a Payment the rules refuse; nothing is sent. */
+function refusedPayment(problems: readonly PaymentProblem[]): Promise<false> {
+  toast.error("Saving failed", {
+    description: problems.map((problem) => problem.message).join(". "),
+  })
+  return Promise.resolve(false)
+}
+
+/**
+ * Records a new Payment added by `viewerId`, between two of `memberIds`. As `addExpense`, it shows
+ * at once and the server's row then replaces it. True once stored; false when refused, here by
+ * the rules or by the server, and then it is reported and nothing stays.
+ */
+export function addPayment(
+  input: CreatePayment,
+  viewerId: string,
+  memberIds: readonly string[],
+): Promise<boolean> {
+  const problems = paymentProblems(input, new Set(memberIds))
+  if (problems.length > 0) return refusedPayment(problems)
+  const now = nowInstant()
+  return settled(
+    paymentsCollection().insert({
+      ...input,
+      addedBy: viewerId,
+      addedAt: now,
+      changedBy: viewerId,
+      changedAt: now,
+    }),
+  )
+}
+
+/**
+ * Saves `saved` as it now stands, replacing all of it, changed by `viewerId`. Whoever is already
+ * on it stays allowed. True once stored; false when refused, or gone (then it drops out).
+ */
+export function changePayment(
+  saved: PaymentRow,
+  input: UpdatePayment,
+  viewerId: string,
+  memberIds: readonly string[],
+): Promise<boolean> {
+  const problems = paymentProblems(input, editPaymentAllowed(memberIds, saved))
+  if (problems.length > 0) return refusedPayment(problems)
+  return settled(
+    paymentsCollection().update(saved.id, (draft) => {
+      Object.assign(draft, { ...input, changedBy: viewerId, changedAt: nowInstant() })
+    }),
+  )
+}
+
+/** Deletes a Payment for good. It goes at once; true once the server has deleted it too. */
+export function deletePayment(id: string): Promise<boolean> {
+  return settled(paymentsCollection().delete(id))
 }

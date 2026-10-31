@@ -31,6 +31,8 @@ import { Route as AppFinancesWalletsIndexRouteImport } from './routes/_app/finan
 import { Route as AppFinancesWalletsWalletIdRouteImport } from './routes/_app/finances/wallets/$walletId'
 import { Route as AppSplitExpensesExpenseIdRouteImport } from './routes/_app/split/expenses/$expenseId'
 import { Route as AppSplitExpensesNewRouteImport } from './routes/_app/split/expenses/new'
+import { Route as AppSplitPaymentsPaymentIdRouteImport } from './routes/_app/split/payments/$paymentId'
+import { Route as AppSplitPaymentsNewRouteImport } from './routes/_app/split/payments/new'
 
 const AppRoute = AppRouteImport.update({
   id: '/_app',
@@ -147,6 +149,17 @@ const AppSplitExpensesNewRoute = AppSplitExpensesNewRouteImport.update({
   path: '/expenses/new',
   getParentRoute: () => AppSplitRouteRoute,
 } as any)
+const AppSplitPaymentsPaymentIdRoute =
+  AppSplitPaymentsPaymentIdRouteImport.update({
+    id: '/payments/$paymentId',
+    path: '/payments/$paymentId',
+    getParentRoute: () => AppSplitRouteRoute,
+  } as any)
+const AppSplitPaymentsNewRoute = AppSplitPaymentsNewRouteImport.update({
+  id: '/payments/new',
+  path: '/payments/new',
+  getParentRoute: () => AppSplitRouteRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof AppIndexRoute
@@ -167,6 +180,8 @@ export interface FileRoutesByFullPath {
   '/finances/wallets/$walletId': typeof AppFinancesWalletsWalletIdRoute
   '/split/expenses/$expenseId': typeof AppSplitExpensesExpenseIdRoute
   '/split/expenses/new': typeof AppSplitExpensesNewRoute
+  '/split/payments/$paymentId': typeof AppSplitPaymentsPaymentIdRoute
+  '/split/payments/new': typeof AppSplitPaymentsNewRoute
   '/finances/categories/': typeof AppFinancesCategoriesIndexRoute
   '/finances/schedules/': typeof AppFinancesSchedulesIndexRoute
   '/finances/wallets/': typeof AppFinancesWalletsIndexRoute
@@ -187,6 +202,8 @@ export interface FileRoutesByTo {
   '/finances/wallets/$walletId': typeof AppFinancesWalletsWalletIdRoute
   '/split/expenses/$expenseId': typeof AppSplitExpensesExpenseIdRoute
   '/split/expenses/new': typeof AppSplitExpensesNewRoute
+  '/split/payments/$paymentId': typeof AppSplitPaymentsPaymentIdRoute
+  '/split/payments/new': typeof AppSplitPaymentsNewRoute
   '/finances/categories': typeof AppFinancesCategoriesIndexRoute
   '/finances/schedules': typeof AppFinancesSchedulesIndexRoute
   '/finances/wallets': typeof AppFinancesWalletsIndexRoute
@@ -212,6 +229,8 @@ export interface FileRoutesById {
   '/_app/finances/wallets/$walletId': typeof AppFinancesWalletsWalletIdRoute
   '/_app/split/expenses/$expenseId': typeof AppSplitExpensesExpenseIdRoute
   '/_app/split/expenses/new': typeof AppSplitExpensesNewRoute
+  '/_app/split/payments/$paymentId': typeof AppSplitPaymentsPaymentIdRoute
+  '/_app/split/payments/new': typeof AppSplitPaymentsNewRoute
   '/_app/finances/categories/': typeof AppFinancesCategoriesIndexRoute
   '/_app/finances/schedules/': typeof AppFinancesSchedulesIndexRoute
   '/_app/finances/wallets/': typeof AppFinancesWalletsIndexRoute
@@ -237,6 +256,8 @@ export interface FileRouteTypes {
     | '/finances/wallets/$walletId'
     | '/split/expenses/$expenseId'
     | '/split/expenses/new'
+    | '/split/payments/$paymentId'
+    | '/split/payments/new'
     | '/finances/categories/'
     | '/finances/schedules/'
     | '/finances/wallets/'
@@ -257,6 +278,8 @@ export interface FileRouteTypes {
     | '/finances/wallets/$walletId'
     | '/split/expenses/$expenseId'
     | '/split/expenses/new'
+    | '/split/payments/$paymentId'
+    | '/split/payments/new'
     | '/finances/categories'
     | '/finances/schedules'
     | '/finances/wallets'
@@ -281,6 +304,8 @@ export interface FileRouteTypes {
     | '/_app/finances/wallets/$walletId'
     | '/_app/split/expenses/$expenseId'
     | '/_app/split/expenses/new'
+    | '/_app/split/payments/$paymentId'
+    | '/_app/split/payments/new'
     | '/_app/finances/categories/'
     | '/_app/finances/schedules/'
     | '/_app/finances/wallets/'
@@ -448,6 +473,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppSplitExpensesNewRouteImport
       parentRoute: typeof AppSplitRouteRoute
     }
+    '/_app/split/payments/$paymentId': {
+      id: '/_app/split/payments/$paymentId'
+      path: '/payments/$paymentId'
+      fullPath: '/split/payments/$paymentId'
+      preLoaderRoute: typeof AppSplitPaymentsPaymentIdRouteImport
+      parentRoute: typeof AppSplitRouteRoute
+    }
+    '/_app/split/payments/new': {
+      id: '/_app/split/payments/new'
+      path: '/payments/new'
+      fullPath: '/split/payments/new'
+      preLoaderRoute: typeof AppSplitPaymentsNewRouteImport
+      parentRoute: typeof AppSplitRouteRoute
+    }
   }
 }
 
@@ -495,6 +534,8 @@ interface AppSplitRouteRouteChildren {
   AppSplitIndexRoute: typeof AppSplitIndexRoute
   AppSplitExpensesExpenseIdRoute: typeof AppSplitExpensesExpenseIdRoute
   AppSplitExpensesNewRoute: typeof AppSplitExpensesNewRoute
+  AppSplitPaymentsPaymentIdRoute: typeof AppSplitPaymentsPaymentIdRoute
+  AppSplitPaymentsNewRoute: typeof AppSplitPaymentsNewRoute
 }
 
 const AppSplitRouteRouteChildren: AppSplitRouteRouteChildren = {
@@ -502,6 +543,8 @@ const AppSplitRouteRouteChildren: AppSplitRouteRouteChildren = {
   AppSplitIndexRoute: AppSplitIndexRoute,
   AppSplitExpensesExpenseIdRoute: AppSplitExpensesExpenseIdRoute,
   AppSplitExpensesNewRoute: AppSplitExpensesNewRoute,
+  AppSplitPaymentsPaymentIdRoute: AppSplitPaymentsPaymentIdRoute,
+  AppSplitPaymentsNewRoute: AppSplitPaymentsNewRoute,
 }
 
 const AppSplitRouteRouteWithChildren = AppSplitRouteRoute._addFileChildren(

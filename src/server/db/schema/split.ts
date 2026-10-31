@@ -97,3 +97,36 @@ export const splitShares = pgTable(
     index("split_shares_account_id").on(table.accountId),
   ],
 )
+
+/** Money one Member handed another, to settle up or as a loan. It has no Category. */
+export const splitPayments = pgTable(
+  "split_payments",
+  {
+    id: idColumn(),
+    date: date({ mode: "string" }).notNull(),
+    fromId: text()
+      .notNull()
+      .references(() => auth_user.id),
+    toId: text()
+      .notNull()
+      .references(() => auth_user.id),
+    /** Cents, always positive: what `fromId` handed `toId`. */
+    amountCents: bigint({ mode: "number" }).notNull(),
+    note: text().notNull().default(""),
+    addedById: text()
+      .notNull()
+      .references(() => auth_user.id),
+    addedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    changedById: text()
+      .notNull()
+      .references(() => auth_user.id),
+    changedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    check("split_payments_amount_positive", sql`${table.amountCents} > 0`),
+    check("split_payments_between_two", sql`${table.fromId} <> ${table.toId}`),
+    index("split_payments_date").on(table.date),
+    index("split_payments_from_id").on(table.fromId),
+    index("split_payments_to_id").on(table.toId),
+  ],
+)
