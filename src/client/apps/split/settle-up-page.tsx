@@ -5,7 +5,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { addPayment, useExpenses, useMembers, usePayments } from "@/data/split"
 import { today } from "@shared/dates"
 import { newId } from "@shared/ids"
-import { balances, paymentEntry } from "@shared/split/rules"
+import { householdBalances } from "@shared/split/rules"
 
 const appRoute = getRouteApi("/_app")
 
@@ -30,7 +30,7 @@ export function SettleUpPage() {
     <PaymentForm
       viewerId={session.user.id}
       members={members.data}
-      balances={balances([...expenses, ...payments.map(paymentEntry)], memberIds)}
+      balances={householdBalances(expenses, payments, memberIds)}
       today={startedOn}
       onCancel={home}
       onSave={async (payment) => {

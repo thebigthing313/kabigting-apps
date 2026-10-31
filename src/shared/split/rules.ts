@@ -234,3 +234,15 @@ export function paymentEntry(
     owedShares: { [payment.toId]: payment.amount },
   }
 }
+
+/**
+ * Every Member's Balance from everything the household has recorded: each Expense's shares, and
+ * each Payment as + sent, - received. Each of `memberIds` gets one, zero when untouched.
+ */
+export function householdBalances(
+  expenses: Iterable<BalanceEntry>,
+  payments: Iterable<Pick<PaymentInput, "fromId" | "toId" | "amount">>,
+  memberIds: readonly string[],
+): Shares {
+  return balances([...expenses, ...[...payments].map(paymentEntry)], memberIds)
+}

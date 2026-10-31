@@ -12,7 +12,7 @@ import { Button } from "@/components/ui/button"
 import type { Category, Expense, Member, Payment } from "@/data/split"
 import { formatDisplayDate } from "@shared/dates"
 import { format } from "@shared/money"
-import { balances, effectOn, paymentEntry } from "@shared/split/rules"
+import { effectOn, householdBalances } from "@shared/split/rules"
 
 type HomeViewProps = {
   viewerId: string
@@ -55,9 +55,9 @@ export function HomeView({
   onManageCategories,
 }: HomeViewProps) {
   const who = people(viewerId, members)
-  // Payments count as if the sender paid and the receiver owed: + sent, - received.
-  const totals = balances(
-    [...expenses, ...payments.map(paymentEntry)],
+  const totals = householdBalances(
+    expenses,
+    payments,
     members.map((member) => member.id),
   )
   const mine = totals[viewerId] ?? 0
@@ -103,7 +103,9 @@ export function HomeView({
           Activity
         </h2>
         {activity.length === 0 ? (
-          <p className="text-sm text-muted-foreground">Nothing yet. Add an Expense to start.</p>
+          <p className="text-sm text-muted-foreground">
+            Nothing yet. Add an Expense or settle up to start.
+          </p>
         ) : (
           <ul className="flex flex-col gap-2">
             {activity.toSorted(newestFirst).map((item) => (

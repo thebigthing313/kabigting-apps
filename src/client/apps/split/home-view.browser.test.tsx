@@ -80,7 +80,9 @@ describe("Split's Home", () => {
     await expect
       .element(screen.getByRole("region", { name: "Your Balance" }))
       .toHaveTextContent("Your Balance$0.00You're settled upBen is settled upCy is settled up")
-    await expect.element(screen.getByText("Nothing yet. Add an Expense to start.")).toBeVisible()
+    await expect
+      .element(screen.getByText("Nothing yet. Add an Expense or settle up to start."))
+      .toBeVisible()
     await screen.getByRole("button", { name: "Add Expense" }).click()
     expect(onAddExpense).toHaveBeenCalled()
   })
@@ -172,5 +174,26 @@ describe("Split's Home", () => {
     expect(onOpenPayment).toHaveBeenCalledWith("0190a000-0000-7000-8000-000000000200")
     await screen.getByRole("button", { name: "Settle up" }).click()
     expect(onSettleUp).toHaveBeenCalled()
+  })
+
+  test("Expenses and Payments on the same date show the one added last first", async () => {
+    const { screen } = await renderHome(
+      [
+        expense({ addedAt: "2026-10-30T12:00:00.000Z" }),
+        expense({
+          id: "0190a000-0000-7000-8000-000000000101",
+          description: "Pizza",
+          addedAt: "2026-10-30T14:00:00.000Z",
+        }),
+      ],
+      [payment({ date: "2026-10-30", addedAt: "2026-10-30T13:00:00.000Z" })],
+    )
+    const cards = screen.getByRole("article")
+    await expect.element(cards.nth(0)).toBeVisible()
+    expect(cards.elements().map((each) => each.textContent?.split("$")[0])).toEqual([
+      "Pizza",
+      "Ben → You",
+      "Groceries run",
+    ])
   })
 })

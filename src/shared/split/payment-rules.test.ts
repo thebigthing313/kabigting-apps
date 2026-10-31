@@ -5,8 +5,12 @@ import {
   balances,
   editPaymentAllowed,
   effect,
+  equalSide,
+  householdBalances,
+  newExpenseRoster,
   paymentEntry,
   paymentProblems,
+  resolveExpense,
   type PaymentInput,
 } from "./rules.ts"
 
@@ -67,20 +71,45 @@ describe("a Payment in the Balances", () => {
     expect(balances([groceries, settled], ORDER)).toEqual({ ana: 0, ben: 0, cy: 0 })
   })
 
-  test("Balances with Payments still add up to zero", () => {
-    const entry = fc
+  test("Balances from Expenses and Payments together still add up to zero", () => {
+    const expense = fc
+      .tuple(
+        fc.integer({ min: -1_000_000, max: 1_000_000 }).filter((total) => total !== 0),
+        fc.subarray(ORDER, { minLength: 1 }),
+        fc.subarray(ORDER, { minLength: 1 }),
+      )
+      .map(([total, payers, owers]) => {
+        const resolved = resolveExpense(
+          {
+            description: "Made-up",
+            date: "2026-10-31",
+            total,
+            paid: equalSide(payers),
+            owed: equalSide(owers),
+          },
+          newExpenseRoster(ORDER),
+        )
+        if (!resolved.ok) throw new Error("Expected a valid Expense")
+        return resolved
+      })
+    const paid = fc
       .tuple(
         fc.constantFrom(...ORDER),
         fc.constantFrom(...ORDER),
         fc.integer({ min: 1, max: 1_000_000 }),
       )
       .filter(([fromId, toId]) => fromId !== toId)
-      .map(([fromId, toId, amount]) => paymentEntry({ fromId, toId, amount }))
+      .map(([fromId, toId, amount]) => ({ fromId, toId, amount }))
     fc.assert(
-      fc.property(fc.array(entry, { maxLength: 20 }), (entries) => {
-        const sum = Object.values(balances(entries, ORDER)).reduce((a, b) => a + b, 0)
-        expect(sum).toBe(0)
-      }),
+      fc.property(
+        fc.array(expense, { maxLength: 20 }),
+        fc.array(paid, { maxLength: 20 }),
+        (expenses, payments) => {
+          const totals = householdBalances(expenses, payments, ORDER)
+          expect(Object.values(totals).reduce((a, b) => a + b, 0)).toBe(0)
+          expect(totals).toEqual(balances([...expenses, ...payments.map(paymentEntry)], ORDER))
+        },
+      ),
     )
   })
 })

@@ -328,7 +328,9 @@ describe("from Split's Home", () => {
     expect(writes).toEqual([])
     await screen.getByRole("button", { name: "Tap again to delete for good" }).click()
 
-    await expect.element(screen.getByText("Nothing yet. Add an Expense to start.")).toBeVisible()
+    await expect
+      .element(screen.getByText("Nothing yet. Add an Expense or settle up to start."))
+      .toBeVisible()
     expect(router.state.location.pathname).toBe("/split")
     await expect
       .element(screen.getByRole("region", { name: "Your Balance" }))

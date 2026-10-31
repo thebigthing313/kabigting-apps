@@ -224,6 +224,8 @@ describe("from Split's Home", () => {
   /** What the server holds, and every write sent to it. */
   let payments: Payment[] = []
   let writes: { method: string; path: string; body: unknown }[] = []
+  /** Deletes fail while set, as when the server has a fault. */
+  let deletesFail = false
 
   function serve(path: string, method: string, body: unknown): Response {
     if (path === "/api/split/members") return Response.json({ rows: members })
@@ -255,6 +257,13 @@ describe("from Split's Home", () => {
       return Response.json(stored)
     }
     if (found && method === "DELETE") {
+      if (deletesFail) {
+        writes.push({ method, path, body })
+        return Response.json(
+          { error: { code: "internal", message: "Something went wrong" } },
+          { status: 500 },
+        )
+      }
       writes.push({ method, path, body })
       payments = payments.filter((payment) => payment.id !== id)
       return Response.json(found)
@@ -268,6 +277,7 @@ describe("from Split's Home", () => {
   beforeEach(() => {
     payments = []
     writes = []
+    deletesFail = false
     vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = new URL(input instanceof Request ? input.url : String(input), location.origin)
       const method = (
@@ -386,6 +396,22 @@ describe("from Split's Home", () => {
         { method: "DELETE", path: `/api/split/payments/${PAYMENT_ID}`, body: null },
       ]),
     )
+  })
+
+  test("a delete that fails brings the Payment and the Balances back", async () => {
+    payments = [saved()]
+    deletesFail = true
+    const { screen } = await openSplit()
+    const balance = screen.getByRole("region", { name: "Your Balance" })
+    await screen.getByRole("button", { name: "Edit Payment from Ben to you" }).click()
+    await screen.getByRole("button", { name: "Delete Payment" }).click()
+    await screen.getByRole("button", { name: "Tap again to delete for good" }).click()
+
+    await vi.waitFor(() => expect(writes).toHaveLength(1))
+    await expect.element(screen.getByText("Ben → You")).toBeVisible()
+    await expect
+      .element(balance)
+      .toHaveTextContent("Your Balance+$30.00The others owe youBen is settled upCy owes $30.00")
   })
 
   test("a Payment the server refuses rolls back, and the form stays open", async () => {
