@@ -446,7 +446,13 @@ function SideEditor({
 
   function setMode(mode: SplitMode) {
     if (mode === side.mode) return
-    onChange({ ...side, mode, exact: mode === "exact" && result.ok ? result.shares : side.exact })
+    // Exact $ starts from the current cents, as amounts: a Refund's are typed without a minus.
+    const current = result.ok
+      ? Object.fromEntries(
+          Object.entries(result.shares).map(([id, cents]) => [id, Math.abs(cents)]),
+        )
+      : side.exact
+    onChange({ ...side, mode, exact: mode === "exact" ? current : side.exact })
   }
 
   function toggle(id: string, ticked: boolean) {

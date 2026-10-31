@@ -216,12 +216,15 @@ describe("create", () => {
       owed: {
         mode: "exact",
         ticked: [],
-        exact: { [ana.id]: -1_000, [ben.id]: -2_000 },
+        // Amounts as typed: the shares take the Refund's sign.
+        exact: { [ana.id]: 1_000, [ben.id]: 2_000 },
         percent: {},
       },
     })
     expect(expense).toMatchObject({
       total: -3_000,
+      // The inputs are kept as typed, so the form reopens on them.
+      owed: { mode: "exact", exact: { [ana.id]: 1_000, [ben.id]: 2_000 } },
       paidShares: { [ana.id]: -3_000 },
       owedShares: { [ana.id]: -1_000, [ben.id]: -2_000 },
     })
@@ -254,7 +257,7 @@ describe("create", () => {
     expect((await list()).some((row) => row.id === id)).toBe(false)
   })
 
-  test("refuses exact shares against the sign of the total, and a bad percent", async () => {
+  test("refuses a negative exact amount, and a bad percent", async () => {
     const response = await create(
       body({
         paid: {
@@ -270,7 +273,7 @@ describe("create", () => {
     expect(await response.json()).toMatchObject({
       error: {
         details: [
-          { path: "paid", message: "A share can't be negative" },
+          { path: "paid", message: "Enter each amount without a minus sign" },
           { path: "owed", message: "Enter each percent with up to two decimals" },
         ],
       },

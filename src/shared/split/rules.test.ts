@@ -157,28 +157,27 @@ describe("resolveSide: Exact", () => {
     })
   })
 
-  test("a Refund's shares are negative, and the tally reads the same way", () => {
-    expect(resolveSide(-3_000, exact({ ana: -1_000, ben: -2_000 }), ROSTER)).toMatchObject({
+  test("a Refund's amounts are typed without a minus, and its shares come out negative", () => {
+    expect(resolveSide(-3_000, exact({ ana: 1_000, ben: 2_000 }), ROSTER)).toEqual({
       ok: true,
       shares: { ana: -1_000, ben: -2_000 },
+      status: "2 ways",
     })
-    expect(resolveSide(-3_000, exact({ ana: -1_000 }), ROSTER)).toMatchObject({
+    expect(resolveSide(-3_000, exact({ ana: 1_000 }), ROSTER)).toMatchObject({
       problem: "$20.00 left to assign",
     })
-    expect(resolveSide(-3_000, exact({ ana: -4_000 }), ROSTER)).toMatchObject({
+    expect(resolveSide(-3_000, exact({ ana: 4_000 }), ROSTER)).toMatchObject({
       problem: "$10.00 over",
     })
   })
 
-  test("a share with the other sign from the total is refused", () => {
-    expect(resolveSide(1_000, exact({ ana: 2_000, ben: -1_000 }), ROSTER)).toMatchObject({
-      ok: false,
-      problem: "A share can't be negative",
-    })
-    expect(resolveSide(-1_000, exact({ ana: -2_000, ben: 1_000 }), ROSTER)).toMatchObject({
-      ok: false,
-      problem: "Every share of a Refund is negative",
-    })
+  test("a negative amount is refused, on a cost or a Refund", () => {
+    for (const total of [1_000, -1_000]) {
+      expect(resolveSide(total, exact({ ana: 2_000, ben: -1_000 }), ROSTER)).toMatchObject({
+        ok: false,
+        problem: "Enter each amount without a minus sign",
+      })
+    }
   })
 
   test("someone with cents who isn't allowed on the Expense is refused", () => {

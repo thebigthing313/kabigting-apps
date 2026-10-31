@@ -20,7 +20,10 @@ export const side = z.strictObject({
     .array(memberId)
     .max(100)
     .refine((ids) => new Set(ids).size === ids.length, "Tick each Member once"),
-  /** Exact: cents per Member, null while blank, with the sign of the total. */
+  /**
+   * Exact: cents per Member as typed, null while blank. Never negative, even on a Refund: the
+   * shares take the total's sign when resolved.
+   */
   exact: z.record(memberId, cents.nullable()),
   /** Percent: as typed, up to two decimals, adding up to exactly 100. */
   percent: z.record(memberId, z.string().max(10)),

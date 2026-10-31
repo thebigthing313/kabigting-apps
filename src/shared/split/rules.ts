@@ -61,8 +61,8 @@ function ways(count: number): string {
 /**
  * The cents per Member for one side of an Expense of `total`, by the side's Split mode. Equal
  * splits the total among the Members ticked; Percent takes each Member's percent of it; both hand
- * leftover cents out by the largest remainder, then in `roster.order`. Exact takes the cents typed,
- * which carry the total's sign and must add up to it.
+ * leftover cents out by the largest remainder, then in `roster.order`. Exact takes the amounts
+ * typed, which must add up to the total's amount, and gives them the total's sign.
  */
 export function resolveSide(total: number, side: Side, roster: Roster): SideResolution {
   if (side.mode === "exact") return exactShares(total, side.exact, roster)
@@ -81,6 +81,12 @@ export function resolveSide(total: number, side: Side, roster: Roster): SideReso
   return { ok: true, shares, status: ways(ids.length) }
 }
 
+/**
+ * Exact inputs are amounts as typed, never negative, for a cost and a Refund alike: on a Refund,
+ * 10.00 typed is a share of -$10.00. The shares take the total's sign here, so the inputs stay as
+ * typed and reopen as typed, and the tally compares amounts without signs. A negative input is
+ * refused rather than read as its amount, so a stray minus is never silently dropped.
+ */
 function exactShares(total: number, exact: Side["exact"], roster: Roster): SideResolution {
   // A blank or zero entry is no share.
   const typed = new Map<string, number>()
@@ -88,22 +94,22 @@ function exactShares(total: number, exact: Side["exact"], roster: Roster): SideR
     if (cents !== null && cents !== 0) typed.set(member, cents)
   }
   if ([...typed.keys()].some((member) => !roster.allowed.has(member))) return refused(OUTSIDER)
-  const direction = total < 0 ? -1 : 1
-  if ([...typed.values()].some((cents) => Math.sign(cents) === -direction)) {
-    return refused(total < 0 ? "Every share of a Refund is negative" : "A share can't be negative")
+  if ([...typed.values()].some((cents) => cents < 0)) {
+    return refused("Enter each amount without a minus sign")
   }
   const sum = [...typed.values()].reduce((a, b) => a + b, 0)
   if (!Number.isSafeInteger(sum)) return refused("The shares are too large")
-  const left = total - sum
+  const left = Math.abs(total) - sum
   if (left !== 0) {
-    return refused(`${format(Math.abs(left))} ${left * direction > 0 ? "left to assign" : "over"}`)
+    return refused(`${format(Math.abs(left))} ${left > 0 ? "left to assign" : "over"}`)
   }
+  const sign = total < 0 ? -1 : 1
   const ids = roster.order.filter((member) => typed.has(member))
   return {
     ok: true,
     shares: nonzero(
       ids,
-      ids.map((member) => typed.get(member) ?? 0),
+      ids.map((member) => sign * (typed.get(member) ?? 0)),
     ),
     status: ways(ids.length),
   }

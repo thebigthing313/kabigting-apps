@@ -300,18 +300,38 @@ describe("the full editor", () => {
     )
   })
 
-  test("a Refund's exact shares start negative, and a positive one is refused", async () => {
-    const { screen } = await renderFlow()
+  test("a Refund's exact amounts are typed without a minus", async () => {
+    const { screen, onSave } = await renderFlow()
     await screen.getByRole("textbox", { name: "Total" }).fill("-30")
     await screen.getByRole("textbox", { name: "Description" }).fill("Returned a lamp")
     await next(screen).click()
     await next(screen).click()
     await screen.getByRole("radio", { name: "Split it differently" }).click()
     await screen.getByRole("radio", { name: "Exact $" }).click()
-    await expect
-      .element(screen.getByRole("textbox", { name: "Amount for Ben" }))
-      .toHaveValue("-$10.00")
-    await screen.getByRole("textbox", { name: "Amount for Ben" }).fill("10")
-    await expectTally(screen, "Every share of a Refund is negative", false)
+    const amountFor = (name: string) => screen.getByRole("textbox", { name: `Amount for ${name}` })
+    // It starts from the current cents, as amounts.
+    await expect.element(amountFor("Ben")).toHaveValue("$10.00")
+    await amountFor("Ben").fill("-5")
+    await expectTally(screen, "Enter each amount without a minus sign", false)
+    await amountFor("Ben").fill("20")
+    await expectTally(screen, "$10.00 over", false)
+    await amountFor("Cy").fill("")
+    await expectTally(screen, "2 ways", true)
+    await next(screen).click()
+
+    await expect.element(screen.getByText("You share $10.00; Ben shares $20.00")).toBeVisible()
+    await screen.getByRole("button", { name: "Add Expense" }).click()
+    await vi.waitFor(() => expect(onSave).toHaveBeenCalledOnce())
+    expect(onSave).toHaveBeenCalledWith(
+      expect.objectContaining({
+        total: -3_000,
+        owed: {
+          mode: "exact",
+          ticked: ["ben", "ana", "cy"],
+          exact: { ben: 2_000, ana: 1_000, cy: null },
+          percent: {},
+        },
+      }),
+    )
   })
 })
