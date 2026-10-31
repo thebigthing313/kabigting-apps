@@ -200,7 +200,10 @@ describe("text typed into a checked Item just before clearing", () => {
     await clearButton().click()
     await vi.waitFor(() => expect(onClearChecked).toHaveBeenCalledWith(["id-Jam"]), AT_ONCE)
     await new Promise((resolve) => setTimeout(resolve, 1_500))
-    expect(onUpdateItemText).not.toHaveBeenCalled()
+    // Nothing is saved after the clear. (Under load the click can land after the typing pause,
+    // when the text has rightly saved already.)
+    const cleared = onClearChecked.mock.invocationCallOrder[0]!
+    expect(onUpdateItemText.mock.invocationCallOrder.filter((at) => at > cleared)).toEqual([])
     expect(listed("To do")).toEqual(["Milk"])
   })
 })
