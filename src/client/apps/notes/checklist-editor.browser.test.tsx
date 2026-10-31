@@ -424,7 +424,9 @@ describe("Item text that can't reach the server", () => {
   test("leaving the page sends pending Item text and the Add item row at once", async () => {
     const { screen, onUpdateItemText, onAddItem } = await renderSaved([item("Milk", "c")])
     await userEvent.fill(screen.getByRole("textbox", { name: "Item" }), "Oat milk")
-    await userEvent.type(screen.getByRole("textbox", { name: "Add item" }), "Bread")
+    // Filled, not typed key by key: under load the keystrokes can outlast the Item's typing
+    // pause, and its text would then save before the page is left.
+    await userEvent.fill(screen.getByRole("textbox", { name: "Add item" }), "Bread")
     // Nothing settles, as on a page being unloaded: every save must already be on its way.
     onUpdateItemText.mockImplementation(() => new Promise<SaveOutcome>(() => {}))
     onAddItem.mockImplementation(() => new Promise<SaveOutcome>(() => {}))
