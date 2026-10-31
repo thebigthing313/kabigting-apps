@@ -79,6 +79,10 @@ test("a card payment in both files stays one Transfer", async ({ page }, testInf
   await expect(cardActuals.getByRole("button")).toContainText(`Transfer from ${checkingName}`)
   await expect(cardActuals.getByRole("button")).not.toContainText("Only one side arrived")
 
+  // The list updates before the server answers; the toast says the Confirm is saved. It stays
+  // clear of the + button, which the next step taps while it shows.
+  await expect(page.getByText("Joined to the Transfer")).toBeVisible()
+
   // Either file again adds nothing.
   dialog = await upload(page, cardFile)
   await expect(dialog.getByRole("status")).toHaveText("0 added, 1 already here")
