@@ -1,6 +1,6 @@
-import { getRouteApi, useNavigate } from "@tanstack/react-router"
+import { getRouteApi } from "@tanstack/react-router"
+import { DeletedEntry, useEntryForm } from "@/apps/split/entry-form"
 import { PaymentForm } from "@/apps/split/payment-form"
-import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { changePayment, deletePayment, useExpenses, useMembers, usePayments } from "@/data/split"
 import { today } from "@shared/dates"
@@ -17,43 +17,29 @@ export function EditPaymentPage({ paymentId }: { paymentId: string }) {
   const { data: expenses, isLoading } = useExpenses()
   const { data: payments, isLoading: paymentsLoading } = usePayments()
   const members = useMembers()
-  const navigate = useNavigate()
-  const home = () => void navigate({ to: "/split" })
+  const payment = payments.find((each) => each.id === paymentId)
+  const entry = useEntryForm("Payment", { id: paymentId, row: payment, loaded: !paymentsLoading })
   if (isLoading || paymentsLoading || !members.data) {
     return <Skeleton className="mx-auto h-64 w-full max-w-md" />
   }
-  const payment = payments.find((each) => each.id === paymentId)
-  if (!payment) {
-    return (
-      <div className="mx-auto flex w-full max-w-md flex-col items-start gap-3">
-        <p>This Payment was deleted.</p>
-        <Button variant="outline" onClick={home}>
-          Back to Split
-        </Button>
-      </div>
-    )
-  }
+  if (!payment) return <DeletedEntry kind="Payment" onBack={entry.leave} />
   const memberIds = members.data.map((member) => member.id)
   return (
     <PaymentForm
-      key={payment.id}
+      key={entry.formKey}
       viewerId={session.user.id}
       members={members.data}
       balances={householdBalances(expenses, payments, memberIds)}
       today={today()}
-      onCancel={home}
-      onSave={async (changed) => {
-        const stored = await changePayment(payment, changed, session.user.id, memberIds)
-        if (stored) home()
-        return stored
-      }}
+      notice={entry.notice}
+      onCancel={entry.leave}
+      onSave={(changed) =>
+        entry.save(() => changePayment(payment, changed, session.user.id, memberIds))
+      }
       editing={{
         payment,
-        // It goes at once, and so do its effects on the Balances; a failure is reported.
-        onDelete: () => {
-          home()
-          void deletePayment(payment.id)
-        },
+        // It goes at once, and so do its effects on the Balances.
+        onDelete: () => entry.remove(() => deletePayment(payment.id)),
       }}
     />
   )

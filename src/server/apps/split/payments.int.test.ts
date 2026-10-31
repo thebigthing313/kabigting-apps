@@ -259,6 +259,17 @@ describe("update", () => {
     expect(await listed(payment.id)).toEqual(edited)
   })
 
+  test("two Members saving the same Payment: the last save wins for the whole record", async () => {
+    const payment = await created({ note: "Settling up" })
+    const bens = await changed(payment.id, fields({ amount: 1_000, note: "Ben's change" }), ben)
+    const anas = await changed(payment.id, fields({ date: "2026-10-29" }), ana)
+    // Nothing of Ben's save is merged in: Ana's whole record replaced it.
+    expect(anas).toMatchObject({ ...fields({ date: "2026-10-29" }), changedBy: ana.id })
+    expect(anas.amount).not.toBe(bens.amount)
+    expect(Date.parse(anas.changedAt)).toBeGreaterThanOrEqual(Date.parse(bens.changedAt))
+    expect(await listed(payment.id)).toEqual(anas)
+  })
+
   test("names every field that blocks the save, and changes nothing", async () => {
     const payment = await created()
     const response = await put(payment.id, fields({ toId: ben.id, amount: 0 }))

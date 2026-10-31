@@ -19,12 +19,22 @@ export async function settled(transaction: Settling): Promise<boolean> {
  */
 export type WriteOutcome = "saved" | "refused" | "unreached"
 
-/** As `settled`, telling a write that never reached the server from one that was refused. */
-export async function writeOutcome(transaction: Settling): Promise<WriteOutcome> {
+/**
+ * How a write ended, for a caller that tells failures apart itself: null once the server accepted
+ * it, otherwise what it failed with (rolled back by then).
+ */
+export async function writeFailure(transaction: Settling): Promise<{ error: unknown } | null> {
   try {
     await transaction.when("settled")
-    return "saved"
+    return null
   } catch (error) {
-    return isUnreached(error) ? "unreached" : "refused"
+    return { error }
   }
+}
+
+/** As `settled`, telling a write that never reached the server from one that was refused. */
+export async function writeOutcome(transaction: Settling): Promise<WriteOutcome> {
+  const failed = await writeFailure(transaction)
+  if (!failed) return "saved"
+  return isUnreached(failed.error) ? "unreached" : "refused"
 }

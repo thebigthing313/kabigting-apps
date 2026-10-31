@@ -3,11 +3,19 @@
 // follow the Shell's focus and reconnect defaults.
 import { lower, useLiveQuery } from "@tanstack/react-db"
 import { useQuery } from "@tanstack/react-query"
+import { useSyncExternalStore } from "react"
 import { toast } from "sonner"
 import { api } from "@/data/api"
-import { defineRestCollection } from "@/data/collection-factory"
-import { readJson } from "@/data/error-handler"
-import { settled } from "@/data/settled"
+import {
+  defineRestCollection,
+  isNoAccess,
+  isNotFound,
+  isTaken,
+  type WriteOptions,
+} from "@/data/collection-factory"
+import { isUnreached, readJson } from "@/data/error-handler"
+import { queryClient } from "@/data/query-client"
+import { type Settling, settled, writeFailure } from "@/data/settled"
 import { nowInstant } from "@shared/dates"
 import { newId } from "@shared/ids"
 import {
@@ -133,57 +141,133 @@ export function setCategoryArchived(id: string, archived: boolean): Promise<bool
   )
 }
 
+/**
+ * How a save or delete of an Expense or Payment ended, for its form to act on:
+ * - "saved": stored. A create whose id was already stored counts, since an earlier try whose
+ *   answer was lost got there; so does deleting what is already gone.
+ * - "refused": by the rules or the server; rolled back and reported.
+ * - "unreached": the network or a gateway failed; rolled back, not reported, and never retried.
+ * - "gone": what was being changed has been deleted; it drops out and nothing is recreated.
+ * - "no-access": the viewer no longer has access to Split.
+ * Only "refused" is reported here; the form tells the viewer about the rest.
+ */
+export type EntryOutcome = "saved" | "refused" | "unreached" | "gone" | "no-access"
+
+/** What an Expense or Payment write leaves to its form to tell. */
+const ENTRY_WRITE: { metadata: WriteOptions } = {
+  metadata: {
+    quietWhenUnreached: true,
+    quietWhenGone: true,
+    quietWhenTaken: true,
+    quietWhenNoAccess: true,
+  },
+}
+
+/** How an Expense or Payment write ended; `onTaken` brings in what an earlier try stored. */
+async function entryOutcome(
+  transaction: Settling,
+  onTaken: () => Promise<unknown> = () => Promise.resolve(),
+): Promise<EntryOutcome> {
+  const failed = await writeFailure(transaction)
+  if (!failed) return "saved"
+  const { error } = failed
+  if (isTaken(error)) {
+    await onTaken().catch(() => undefined)
+    return "saved"
+  }
+  if (isNoAccess(error)) return "no-access"
+  if (isNotFound(error)) return "gone"
+  return isUnreached(error) ? "unreached" : "refused"
+}
+
+/**
+ * True while a load of Split's data was last refused because the viewer no longer has access to
+ * Split (403 `forbidden_app`), as when a refetch finds access revoked. Such a refusal is never
+ * retried, so it shows at once.
+ */
+export function useSplitAccessLost(): boolean {
+  const cache = queryClient.getQueryCache()
+  return useSyncExternalStore(
+    (onChange) => cache.subscribe(onChange),
+    () => cache.findAll({ queryKey: ["split"] }).some((query) => isNoAccess(query.state.error)),
+  )
+}
+
+/**
+ * A delete runs after its form has closed, so only a gone entry (counted as deleted) and lost
+ * access (the form's caller acts on it) are quiet; anything else is reported, and it comes back.
+ */
+const ENTRY_DELETE: { metadata: WriteOptions } = {
+  metadata: { quietWhenGone: true, quietWhenNoAccess: true },
+}
+
+/** Deletes an entry for good; one already gone, here or on the server, counts as deleted. */
+function deleteEntry(
+  collection: { has: (id: string) => boolean; delete: (id: string, config: object) => Settling },
+  id: string,
+): Promise<EntryOutcome> {
+  if (!collection.has(id)) return Promise.resolve("saved")
+  return entryOutcome(collection.delete(id, ENTRY_DELETE)).then((outcome) =>
+    outcome === "gone" ? "saved" : outcome,
+  )
+}
+
 /** Reports an Expense the rules refuse; nothing is sent. */
-function refused(resolved: Extract<ExpenseResolution, { ok: false }>): Promise<false> {
+function refused(resolved: Extract<ExpenseResolution, { ok: false }>): Promise<EntryOutcome> {
   toast.error("Saving failed", {
     description: resolved.problems.map((problem) => problem.message).join(". "),
   })
-  return Promise.resolve(false)
+  return Promise.resolve("refused")
 }
 
 /**
  * Saves a new Expense added by `viewerId`. It shows at once, with its shares worked out here by
  * the same rules the server applies, among `memberIds` (the Members, oldest Account first); the
- * server's row then replaces it. True once stored. False when it is refused, here by the rules or
- * by the server, and then it is reported and nothing stays.
+ * server's row then replaces it. Anything but stored leaves nothing behind; see `EntryOutcome`.
  */
 export function addExpense(
   input: CreateExpense,
   viewerId: string,
   memberIds: readonly string[],
-): Promise<boolean> {
+): Promise<EntryOutcome> {
   const resolved = resolveExpense(input, newExpenseRoster(memberIds))
   if (!resolved.ok) return refused(resolved)
   const now = nowInstant()
-  return settled(
-    expensesCollection().insert({
-      ...input,
-      paidShares: resolved.paidShares,
-      owedShares: resolved.owedShares,
-      addedBy: viewerId,
-      addedAt: now,
-      changedBy: viewerId,
-      changedAt: now,
-    }),
+  const expenses = expensesCollection()
+  return entryOutcome(
+    expenses.insert(
+      {
+        ...input,
+        paidShares: resolved.paidShares,
+        owedShares: resolved.owedShares,
+        addedBy: viewerId,
+        addedAt: now,
+        changedBy: viewerId,
+        changedAt: now,
+      },
+      ENTRY_WRITE,
+    ),
+    () => expenses.utils.refetch(),
   )
 }
 
 /**
  * Saves `saved` as it now stands, replacing all of it, changed by `viewerId`. As `addExpense`, it
  * shows at once and the server's row then replaces it; those already on it stay allowed, Former
- * members included. True once stored; false when refused, or gone (then it
- * drops out).
+ * members included. Gone, it drops out and is never recreated; see `EntryOutcome`.
  */
 export function changeExpense(
   saved: ExpenseRow,
   input: UpdateExpense,
   viewerId: string,
   memberIds: readonly string[],
-): Promise<boolean> {
+): Promise<EntryOutcome> {
   const resolved = resolveExpense(input, editExpenseRoster(memberIds, memberIds, saved))
   if (!resolved.ok) return refused(resolved)
-  return settled(
-    expensesCollection().update(saved.id, (draft) => {
+  const expenses = expensesCollection()
+  if (!expenses.has(saved.id)) return Promise.resolve("gone")
+  return entryOutcome(
+    expenses.update(saved.id, ENTRY_WRITE, (draft) => {
       Object.assign(draft, {
         ...input,
         paidShares: resolved.paidShares,
@@ -195,9 +279,12 @@ export function changeExpense(
   )
 }
 
-/** Deletes an Expense for good. It goes at once; true once the server has deleted it too. */
-export function deleteExpense(id: string): Promise<boolean> {
-  return settled(expensesCollection().delete(id))
+/**
+ * Deletes an Expense for good. It goes at once; "saved" once the server has deleted it too, or
+ * found it already gone.
+ */
+export function deleteExpense(id: string): Promise<EntryOutcome> {
+  return deleteEntry(expensesCollection(), id)
 }
 
 /** What a Member enters for a Payment. */
@@ -228,57 +315,57 @@ export function usePayments() {
 }
 
 /** Reports a Payment the rules refuse; nothing is sent. */
-function refusedPayment(problems: readonly PaymentProblem[]): Promise<false> {
+function refusedPayment(problems: readonly PaymentProblem[]): Promise<EntryOutcome> {
   toast.error("Saving failed", {
     description: problems.map((problem) => problem.message).join(". "),
   })
-  return Promise.resolve(false)
+  return Promise.resolve("refused")
 }
 
 /**
  * Records a new Payment added by `viewerId`, between two of `memberIds`. As `addExpense`, it shows
- * at once and the server's row then replaces it. True once stored; false when refused, here by
- * the rules or by the server, and then it is reported and nothing stays.
+ * at once and the server's row then replaces it; outcomes as for `addExpense`.
  */
 export function addPayment(
   input: CreatePayment,
   viewerId: string,
   memberIds: readonly string[],
-): Promise<boolean> {
+): Promise<EntryOutcome> {
   const problems = paymentProblems(input, new Set(memberIds))
   if (problems.length > 0) return refusedPayment(problems)
   const now = nowInstant()
-  return settled(
-    paymentsCollection().insert({
-      ...input,
-      addedBy: viewerId,
-      addedAt: now,
-      changedBy: viewerId,
-      changedAt: now,
-    }),
+  const payments = paymentsCollection()
+  return entryOutcome(
+    payments.insert(
+      { ...input, addedBy: viewerId, addedAt: now, changedBy: viewerId, changedAt: now },
+      ENTRY_WRITE,
+    ),
+    () => payments.utils.refetch(),
   )
 }
 
 /**
  * Saves `saved` as it now stands, replacing all of it, changed by `viewerId`. Whoever is already
- * on it stays allowed. True once stored; false when refused, or gone (then it drops out).
+ * on it stays allowed. Outcomes as for `changeExpense`.
  */
 export function changePayment(
   saved: PaymentRow,
   input: UpdatePayment,
   viewerId: string,
   memberIds: readonly string[],
-): Promise<boolean> {
+): Promise<EntryOutcome> {
   const problems = paymentProblems(input, editPaymentAllowed(memberIds, saved))
   if (problems.length > 0) return refusedPayment(problems)
-  return settled(
-    paymentsCollection().update(saved.id, (draft) => {
+  const payments = paymentsCollection()
+  if (!payments.has(saved.id)) return Promise.resolve("gone")
+  return entryOutcome(
+    payments.update(saved.id, ENTRY_WRITE, (draft) => {
       Object.assign(draft, { ...input, changedBy: viewerId, changedAt: nowInstant() })
     }),
   )
 }
 
-/** Deletes a Payment for good. It goes at once; true once the server has deleted it too. */
-export function deletePayment(id: string): Promise<boolean> {
-  return settled(paymentsCollection().delete(id))
+/** Deletes a Payment for good; outcomes as for `deleteExpense`. */
+export function deletePayment(id: string): Promise<EntryOutcome> {
+  return deleteEntry(paymentsCollection(), id)
 }
