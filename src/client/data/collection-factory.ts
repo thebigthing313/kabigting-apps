@@ -49,12 +49,12 @@ type RestWrites<Row extends { id: string }> = {
   id: string
   queryKey: readonly string[]
   /**
-   * Each write returns the full row as the server stored it. A collection without `update` or
-   * `remove` has no such write: updating or deleting a row in it throws.
+   * Each write returns the full row as the server stored it. `update` gets the fields changed and
+   * the whole row as changed, for a route that replaces the whole record.
    */
   create: (row: Row, options: WriteOptions) => Promise<Row>
-  update?: (id: string, changes: Partial<Row>, options: WriteOptions) => Promise<Row>
-  remove?: (id: string) => Promise<Row>
+  update: (id: string, changes: Partial<Row>, options: WriteOptions, row: Row) => Promise<Row>
+  remove: (id: string) => Promise<Row>
   /**
    * When a write answers 404, also drop the row: the server says it is gone (or no longer
    * visible), so keeping it would only invite more failing writes.
@@ -113,7 +113,6 @@ function writeHandlers<Row extends { id: string }>(spec: RestWrites<Row>) {
     const gone = spec.dropOnNotFound && key !== undefined ? () => drop(key) : undefined
     return failedWrite(error, action, gone, options)
   }
-  const { update, remove } = spec
   return {
     onInsert: async ({ transaction, collection }) => {
       let options: WriteOptions = {}
@@ -135,8 +134,9 @@ function writeHandlers<Row extends { id: string }>(spec: RestWrites<Row>) {
         for (const mutation of transaction.mutations) {
           key = mutation.key
           options = writeOptions(mutation.metadata)
-          if (!update) throw new Error(`${spec.id} has no update`)
-          await collection.utils.writeUpsert(await update(mutation.key, mutation.changes, options))
+          await collection.utils.writeUpsert(
+            await spec.update(mutation.key, mutation.changes, options, mutation.modified),
+          )
         }
       } catch (error) {
         return failed(error, "Saving", options, key, (gone) => collection.utils.writeDelete(gone))
@@ -148,8 +148,7 @@ function writeHandlers<Row extends { id: string }>(spec: RestWrites<Row>) {
       try {
         for (const mutation of transaction.mutations) {
           key = mutation.key
-          if (!remove) throw new Error(`${spec.id} has no remove`)
-          await remove(mutation.key)
+          await spec.remove(mutation.key)
           await collection.utils.writeDelete(mutation.key)
         }
       } catch (error) {

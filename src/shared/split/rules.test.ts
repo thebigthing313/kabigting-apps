@@ -3,6 +3,7 @@ import { describe, expect, test } from "vitest"
 import {
   balances,
   effect,
+  editExpenseRoster,
   effectOn,
   equalSide,
   newExpenseRoster,
@@ -147,6 +148,47 @@ describe("resolveExpense", () => {
         { field: "owed", message: "Tick at least one Member" },
       ],
     })
+  })
+})
+
+describe("editExpenseRoster", () => {
+  // Dee is older than everyone but has lost App access; she is on the saved Expense.
+  const OLDEST_FIRST = ["dee", ...ORDER, "eve"]
+  const saved = {
+    paid: equalSide(["ana"]),
+    owed: equalSide(["dee", "ana", "ben", "cy"]),
+    paidShares: { ana: 1_000 },
+    owedShares: { dee: 250, ana: 250, ben: 250, cy: 250 },
+  }
+  const roster = editExpenseRoster(OLDEST_FIRST, ORDER, saved)
+
+  test("keeps a Former member already on the Expense, oldest Account first", () => {
+    expect(roster.order).toEqual(["dee", "ana", "ben", "cy"])
+    expect(resolveSide(1_001, equalSide(["cy", "dee"]), roster)).toMatchObject({
+      ok: true,
+      shares: { dee: 501, cy: 500 },
+    })
+  })
+
+  test("never newly adds anyone who isn't a Member", () => {
+    expect(resolveSide(1_000, equalSide(["ana", "eve"]), roster)).toMatchObject({
+      ok: false,
+      problem: "Only Members can be on an Expense",
+    })
+  })
+
+  test("someone ticked whose share rounded to nothing is still on it", () => {
+    const tiny = { ...saved, owed: equalSide(["ana", "dee"]), owedShares: { ana: 1 } }
+    expect(editExpenseRoster(OLDEST_FIRST, ["ana"], tiny).allowed).toEqual(new Set(["ana", "dee"]))
+  })
+
+  test("an Account it can't rank goes last", () => {
+    expect(editExpenseRoster(["ana"], ["ana", "ben"], saved).order).toEqual([
+      "ana",
+      "ben",
+      "dee",
+      "cy",
+    ])
   })
 })
 

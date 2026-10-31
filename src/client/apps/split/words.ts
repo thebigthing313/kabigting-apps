@@ -1,4 +1,5 @@
 // How Split puts Balances and shares into words. The viewer is always "You", and comes first.
+import { formatInstantMonthDay } from "@shared/dates"
 import { format } from "@shared/money"
 import type { Shares } from "@shared/split/schemas"
 
@@ -68,4 +69,18 @@ export function sideWords(shares: Shares, verb: "paid" | "owe", who: People): st
     return `${list(names)} ${word} ${format(cents)}${single ? "" : " each"}`
   })
   return phrases.join("; ")
+}
+
+/** Who added an entry and when, and who changed it last and when. */
+export type Authorship = { addedBy: string; addedAt: string; changedBy: string; changedAt: string }
+
+/**
+ * Who added an entry and who changed it, by day in the household zone: "Added by Ana on Oct 3",
+ * then " · changed by you on Oct 5" once it has been changed.
+ */
+export function authorshipWords(entry: Authorship, who: People): string {
+  const added = `Added by ${who.nameOf(entry.addedBy, "within")} on ${formatInstantMonthDay(entry.addedAt)}`
+  if (entry.changedAt === entry.addedAt) return added
+  const by = who.nameOf(entry.changedBy, "within")
+  return `${added} · changed by ${by} on ${formatInstantMonthDay(entry.changedAt)}`
 }
