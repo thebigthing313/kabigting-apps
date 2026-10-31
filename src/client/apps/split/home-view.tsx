@@ -1,4 +1,5 @@
-import { PlusIcon, TagsIcon } from "lucide-react"
+import { HandCoinsIcon, PlusIcon, TagsIcon } from "lucide-react"
+import { PaymentCard } from "@/apps/split/payment-card"
 import {
   authorshipWords,
   people,
@@ -8,49 +9,64 @@ import {
   type People,
 } from "@/apps/split/words"
 import { Button } from "@/components/ui/button"
-import type { Category, Expense, Member } from "@/data/split"
+import type { Category, Expense, Member, Payment } from "@/data/split"
 import { formatDisplayDate } from "@shared/dates"
 import { format } from "@shared/money"
-import { balances, effectOn } from "@shared/split/rules"
+import { balances, effectOn, paymentEntry } from "@shared/split/rules"
 
 type HomeViewProps = {
   viewerId: string
   /** Oldest Account first. */
   members: readonly Member[]
   expenses: readonly Expense[]
+  payments: readonly Payment[]
   categories: readonly Category[]
   onAddExpense: () => void
+  onSettleUp: () => void
   /** Opens an Expense to change it; any Member can, whoever added it. */
   onOpenExpense: (expenseId: string) => void
+  /** Opens a Payment to change it; any Member can, whoever added it. */
+  onOpenPayment: (paymentId: string) => void
   onManageCategories: () => void
 }
 
+/** An entry in the Activity feed. */
+type Activity = { kind: "expense"; entry: Expense } | { kind: "payment"; entry: Payment }
+
 /** Newest first: by date, then the one added last. */
-function newestFirst(a: Expense, b: Expense): number {
+function newestFirst({ entry: a }: Activity, { entry: b }: Activity): number {
   return b.date.localeCompare(a.date) || b.addedAt.localeCompare(a.addedAt)
 }
 
 /**
- * Split's Home: the viewer's Balance and every other Member's, the Add Expense button, the way to
- * the Categories, and the Activity feed.
+ * Split's Home: the viewer's Balance and every other Member's, the Add Expense and Settle up
+ * buttons, the way to the Categories, and the Activity feed of Expenses and Payments.
  */
 export function HomeView({
   viewerId,
   members,
   expenses,
+  payments,
   categories,
   onAddExpense,
+  onSettleUp,
   onOpenExpense,
+  onOpenPayment,
   onManageCategories,
 }: HomeViewProps) {
   const who = people(viewerId, members)
+  // Payments count as if the sender paid and the receiver owed: + sent, - received.
   const totals = balances(
-    expenses,
+    [...expenses, ...payments.map(paymentEntry)],
     members.map((member) => member.id),
   )
   const mine = totals[viewerId] ?? 0
   const others = members.filter((member) => member.id !== viewerId)
   const categoryName = new Map(categories.map((category) => [category.id, category.name]))
+  const activity: Activity[] = [
+    ...expenses.map((entry) => ({ kind: "expense" as const, entry })),
+    ...payments.map((entry) => ({ kind: "payment" as const, entry })),
+  ]
 
   return (
     <div className="mx-auto flex w-full max-w-md flex-col gap-4 pb-24">
@@ -71,9 +87,14 @@ export function HomeView({
           </ul>
         )}
       </section>
-      <Button size="lg" className="h-12" onClick={onAddExpense}>
-        <PlusIcon /> Add Expense
-      </Button>
+      <div className="grid grid-cols-2 gap-2">
+        <Button size="lg" className="h-12" onClick={onAddExpense}>
+          <PlusIcon /> Add Expense
+        </Button>
+        <Button size="lg" variant="outline" className="h-12" onClick={onSettleUp}>
+          <HandCoinsIcon /> Settle up
+        </Button>
+      </div>
       <Button variant="outline" className="h-11 self-start" onClick={onManageCategories}>
         <TagsIcon /> Categories
       </Button>
@@ -81,18 +102,26 @@ export function HomeView({
         <h2 id="split-activity" className="text-base font-semibold">
           Activity
         </h2>
-        {expenses.length === 0 ? (
+        {activity.length === 0 ? (
           <p className="text-sm text-muted-foreground">Nothing yet. Add an Expense to start.</p>
         ) : (
           <ul className="flex flex-col gap-2">
-            {expenses.toSorted(newestFirst).map((expense) => (
-              <li key={expense.id}>
-                <ExpenseCard
-                  expense={expense}
-                  categoryName={categoryName.get(expense.categoryId) ?? "No Category"}
-                  who={who}
-                  onOpen={() => onOpenExpense(expense.id)}
-                />
+            {activity.toSorted(newestFirst).map((item) => (
+              <li key={item.entry.id}>
+                {item.kind === "expense" ? (
+                  <ExpenseCard
+                    expense={item.entry}
+                    categoryName={categoryName.get(item.entry.categoryId) ?? "No Category"}
+                    who={who}
+                    onOpen={() => onOpenExpense(item.entry.id)}
+                  />
+                ) : (
+                  <PaymentCard
+                    payment={item.entry}
+                    who={who}
+                    onOpen={() => onOpenPayment(item.entry.id)}
+                  />
+                )}
               </li>
             ))}
           </ul>

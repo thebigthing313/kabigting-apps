@@ -144,7 +144,7 @@ export function resolveExpense(expense: ExpenseInput, roster: Roster): ExpenseRe
   return { ok: true, paidShares: paid.shares, owedShares: owed.shares }
 }
 
-/** What moves Balances: an Expense's stored shares. */
+/** What moves Balances: an Expense's stored shares, or a Payment through `paymentEntry`. */
 export type BalanceEntry = { paidShares: Shares; owedShares: Shares }
 
 /** How one entry moves each Member's Balance: their Paid share less their Owed share. */
@@ -176,4 +176,61 @@ export function balances(entries: Iterable<BalanceEntry>, members: readonly stri
     }
   }
   return totals
+}
+
+/** What identifies a Payment; its note is stored as given. */
+export type PaymentInput = { date: string; fromId: string; toId: string; amount: number }
+
+/** The fields of a Payment that can block its save, as the API's validation names them. */
+export type PaymentField = "fromId" | "toId" | "amount" | "date"
+export type PaymentProblem = { field: PaymentField; message: string }
+
+/**
+ * Who can be on an edited Payment: the current Members, plus whoever is already on it, so saving
+ * it again never refuses them. Nobody else can be added.
+ */
+export function editPaymentAllowed(
+  memberIds: readonly string[],
+  saved: Pick<PaymentInput, "fromId" | "toId">,
+): Set<string> {
+  return new Set([...memberIds, saved.fromId, saved.toId])
+}
+
+/**
+ * Every problem blocking a Payment's save, in the order the form asks for the fields: it goes
+ * between two different people in `allowed`, for an Amount above zero, on a date.
+ */
+export function paymentProblems(
+  payment: PaymentInput,
+  allowed: ReadonlySet<string>,
+): PaymentProblem[] {
+  const problems: PaymentProblem[] = []
+  if (!allowed.has(payment.fromId)) {
+    problems.push({ field: "fromId", message: "Only Members can be on a Payment" })
+  }
+  if (!allowed.has(payment.toId)) {
+    problems.push({ field: "toId", message: "Only Members can be on a Payment" })
+  } else if (payment.toId === payment.fromId) {
+    problems.push({ field: "toId", message: "Pick two different Members" })
+  }
+  if (!Number.isSafeInteger(payment.amount) || payment.amount <= 0) {
+    problems.push({ field: "amount", message: "Enter an amount above zero" })
+  }
+  if (!isoDate.safeParse(payment.date).success) {
+    problems.push({ field: "date", message: "Pick a date" })
+  }
+  return problems
+}
+
+/**
+ * A Payment as it moves Balances: whoever sent it goes up by its Amount, as if they had paid it,
+ * and whoever got it goes down by it, as if they owed it.
+ */
+export function paymentEntry(
+  payment: Pick<PaymentInput, "fromId" | "toId" | "amount">,
+): BalanceEntry {
+  return {
+    paidShares: { [payment.fromId]: payment.amount },
+    owedShares: { [payment.toId]: payment.amount },
+  }
 }
