@@ -1,9 +1,10 @@
 import { cn } from "cn"
 import { ArrowLeftIcon, CheckIcon, PencilIcon } from "lucide-react"
 import { useState } from "react"
-import { people, sideWords } from "@/apps/split/words"
+import { people, sideWords, type People } from "@/apps/split/words"
 import { AmountInput } from "@/components/amount-input"
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import type { Category, Member } from "@/data/split"
@@ -16,8 +17,15 @@ import {
   resolveExpense,
   resolveSide,
   type ExpenseField,
+  type Roster,
 } from "@shared/split/rules"
-import type { CreateExpense } from "@shared/split/schemas"
+import {
+  SPLIT_MODES,
+  type CreateExpense,
+  type Shares,
+  type Side,
+  type SplitMode,
+} from "@shared/split/schemas"
 
 /** A new Expense as the flow hands it over; the caller gives it its id. */
 export type NewExpense = Omit<CreateExpense, "id">
@@ -37,6 +45,25 @@ type ExpenseFlowProps = {
 
 const STEPS = ["What", "Who paid", "Who owes", "Review"] as const
 
+type SideKey = "paid" | "owed"
+
+/**
+ * The answer to "Who paid" or "Who owes": one Member, everyone equally (owed only), or the full
+ * editor with its own Side.
+ */
+type Answer = { kind: "one"; id: string } | { kind: "everyone" } | { kind: "editor" }
+
+const MODE_LABELS: Record<SplitMode, string> = {
+  equal: "Equally",
+  exact: "Exact $",
+  percent: "Percent",
+}
+
+/** A Refund's shares as positive cents, for its words. */
+function magnitudes(shares: Shares): Shares {
+  return Object.fromEntries(Object.entries(shares).map(([id, cents]) => [id, Math.abs(cents)]))
+}
+
 /** Which fields each step asks for, so Next waits until they're valid. */
 const STEP_FIELDS: readonly (readonly ExpenseField[])[] = [
   ["description", "date", "total"],
@@ -48,8 +75,9 @@ const STEP_FIELDS: readonly (readonly ExpenseField[])[] = [
 /**
  * Adding an Expense, full page, in four steps: What → Who paid → Who owes → Review. The step bar
  * jumps back to any step already reached, and Next waits until the step is valid. Who paid and
- * Who owes take one-tap answers: one Member paid it all, and everyone or only one Member owes it,
- * equally.
+ * Who owes take one-tap answers (one Member paid it all; everyone or only one Member owes it,
+ * equally), or open a full editor for the side with its own Split mode. A negative total is a
+ * Refund, and the questions say so.
  */
 export function ExpenseFlow({
   viewerId,
@@ -66,22 +94,32 @@ export function ExpenseFlow({
   const [date, setDate] = useState(today)
   const [categoryId, setCategoryId] = useState(defaultCategory(categories)?.id ?? "")
   const [note, setNote] = useState("")
-  const [paidBy, setPaidBy] = useState(viewerId)
-  // The one-tap answers to "Who owes": everyone (null) or only one Member.
-  const [owedBy, setOwedBy] = useState<string | null>(null)
+  const [answers, setAnswers] = useState<Record<SideKey, Answer>>({
+    paid: { kind: "one", id: viewerId },
+    owed: { kind: "everyone" },
+  })
+  // What each side's full editor holds, kept while a one-tap answer is picked instead.
+  const [edited, setEdited] = useState<Record<SideKey, Side | null>>({ paid: null, owed: null })
   const [saving, setSaving] = useState(false)
 
   const order = members.map((member) => member.id)
   const roster = newExpenseRoster(order)
   const who = people(viewerId, members)
+  const isRefund = (total ?? 0) < 0
+  const sideOf = (key: SideKey): Side => {
+    const answer = answers[key]
+    if (answer.kind === "one") return equalSide([answer.id])
+    if (answer.kind === "everyone") return equalSide(order)
+    return edited[key] ?? equalSide(order)
+  }
   const expense: NewExpense = {
     description,
     date,
     categoryId,
     total: total ?? 0,
     note,
-    paid: equalSide([paidBy]),
-    owed: equalSide(owedBy === null ? order : [owedBy]),
+    paid: sideOf("paid"),
+    owed: sideOf("owed"),
   }
   const resolution = resolveExpense(expense, roster)
   const problems = resolution.ok ? [] : resolution.problems
@@ -89,14 +127,32 @@ export function ExpenseFlow({
     !problems.some((problem) => STEP_FIELDS[index]?.includes(problem.field)) &&
     (index !== 0 || categoryId !== "")
   // The viewer first, then everyone else oldest Account first.
-  const answers = [
+  const ranked = [
     ...members.filter((member) => member.id === viewerId),
     ...members.filter((member) => member.id !== viewerId),
   ]
   /** One side on Review, in words even while another field still blocks the save. */
-  const sideLine = (key: "paid" | "owed") => {
+  const sideLine = (key: SideKey) => {
     const side = resolveSide(expense.total, expense[key], roster)
-    return side.ok ? sideWords(side.shares, key === "paid" ? "paid" : "owe", who) : side.problem
+    if (!side.ok) return side.problem
+    if (isRefund)
+      return sideWords(magnitudes(side.shares), key === "paid" ? "got back" : "share", who)
+    return sideWords(side.shares, key === "paid" ? "paid" : "owe", who)
+  }
+
+  function pick(key: SideKey, picked: Answer) {
+    setAnswers((was) => ({ ...was, [key]: picked }))
+  }
+
+  /** Opens a side's full editor, starting from the side as it stands. */
+  function openEditor(key: SideKey) {
+    const current = sideOf(key)
+    setEdited((was) => ({ ...was, [key]: was[key] ?? current }))
+    pick(key, { kind: "editor" })
+  }
+
+  function editSide(key: SideKey, side: Side) {
+    setEdited((was) => ({ ...was, [key]: side }))
   }
 
   function goTo(index: number) {
@@ -159,6 +215,11 @@ export function ExpenseFlow({
             onValueChange={setTotal}
             placeholder="$0.00"
           />
+          {isRefund && (
+            <p className="text-center text-sm text-muted-foreground">
+              A negative total is a Refund: money given back.
+            </p>
+          )}
           <Input
             aria-label="Description"
             value={description}
@@ -199,41 +260,65 @@ export function ExpenseFlow({
       )}
 
       {step === 1 && (
-        <Question title="Who paid?">
-          {answers.map((member) => (
-            <Answer
+        <Question title={isRefund ? "Who got the money back?" : "Who paid?"}>
+          {ranked.map((member) => (
+            <Choice
               key={member.id}
-              selected={paidBy === member.id}
-              onSelect={() => setPaidBy(member.id)}
+              selected={answers.paid.kind === "one" && answers.paid.id === member.id}
+              onSelect={() => pick("paid", { kind: "one", id: member.id })}
             >
-              {who.nameOf(member.id)} paid it all
-            </Answer>
+              {who.nameOf(member.id)} {isRefund ? "got it all back" : "paid it all"}
+            </Choice>
           ))}
+          <Choice selected={answers.paid.kind === "editor"} onSelect={() => openEditor("paid")}>
+            {isRefund ? "Several people got it back" : "Several people paid"}
+          </Choice>
         </Question>
       )}
 
       {step === 2 && (
-        <Question title="Who owes for it?">
-          <Answer selected={owedBy === null} onSelect={() => setOwedBy(null)}>
+        <Question title={isRefund ? "Who shares the Refund?" : "Who owes for it?"}>
+          <Choice
+            selected={answers.owed.kind === "everyone"}
+            onSelect={() => pick("owed", { kind: "everyone" })}
+          >
             Everyone equally
-          </Answer>
-          {answers.map((member) => (
-            <Answer
+          </Choice>
+          {ranked.map((member) => (
+            <Choice
               key={member.id}
-              selected={owedBy === member.id}
-              onSelect={() => setOwedBy(member.id)}
+              selected={answers.owed.kind === "one" && answers.owed.id === member.id}
+              onSelect={() => pick("owed", { kind: "one", id: member.id })}
             >
               Only {who.nameOf(member.id, "within")}
-            </Answer>
+            </Choice>
           ))}
+          <Choice selected={answers.owed.kind === "editor"} onSelect={() => openEditor("owed")}>
+            Split it differently
+          </Choice>
         </Question>
+      )}
+
+      {(step === 1 || step === 2) && answers[step === 1 ? "paid" : "owed"].kind === "editor" && (
+        <SideEditor
+          label={step === 1 ? "Paid side" : "Owed side"}
+          total={expense.total}
+          side={expense[step === 1 ? "paid" : "owed"]}
+          roster={roster}
+          rows={ranked.map((member) => member.id)}
+          who={who}
+          onChange={(side) => editSide(step === 1 ? "paid" : "owed", side)}
+        />
       )}
 
       {step === 3 && (
         <div className="flex flex-col rounded-xl border px-3">
           <ReviewLine label="What" onChange={() => setStep(0)}>
             <span className="font-medium">{description.trim() || "No description"}</span> ·{" "}
-            {format(total ?? 0)}
+            <span>
+              {format(total ?? 0)}
+              {isRefund && " (Refund)"}
+            </span>
             <div className="text-xs text-muted-foreground">
               {categories.find((category) => category.id === categoryId)?.name ?? "No Category"} ·{" "}
               {date === "" ? "No date" : formatDisplayDate(date)}
@@ -249,7 +334,11 @@ export function ExpenseFlow({
           {problems.length > 0 && (
             <ul aria-label="Still to fix" className="py-2 text-sm text-destructive">
               {problems.map((problem) => (
-                <li key={problem.field}>{problem.message}</li>
+                <li key={problem.field}>
+                  {problem.field === "paid" && "Paid: "}
+                  {problem.field === "owed" && "Owed: "}
+                  {problem.message}
+                </li>
               ))}
             </ul>
           )}
@@ -288,7 +377,7 @@ function Question({ title, children }: { title: string; children: React.ReactNod
   )
 }
 
-function Answer({
+function Choice({
   selected,
   onSelect,
   children,
@@ -340,5 +429,125 @@ function ReviewLine({
         <PencilIcon />
       </Button>
     </div>
+  )
+}
+
+/**
+ * One side's full editor: its Split mode, a row per Member, and a live tally that is green once the
+ * side adds up to the total and amber until then. Switching to Exact $ starts from the cents the
+ * side comes to now; each mode keeps what was typed for it.
+ */
+function SideEditor({
+  label,
+  total,
+  side,
+  roster,
+  rows,
+  who,
+  onChange,
+}: {
+  label: string
+  total: number
+  side: Side
+  roster: Roster
+  /** The Members offered, in the order shown. */
+  rows: readonly string[]
+  who: People
+  onChange: (side: Side) => void
+}) {
+  const result = resolveSide(total, side, roster)
+  const shares = result.ok ? result.shares : {}
+
+  function setMode(mode: SplitMode) {
+    if (mode === side.mode) return
+    onChange({ ...side, mode, exact: mode === "exact" && result.ok ? result.shares : side.exact })
+  }
+
+  function toggle(id: string, ticked: boolean) {
+    const others = side.ticked.filter((member) => member !== id)
+    onChange({ ...side, ticked: ticked ? [...others, id] : others })
+  }
+
+  return (
+    <section aria-label={label} className="flex flex-col gap-3 rounded-xl border p-3">
+      <div role="radiogroup" aria-label="Split mode" className="flex gap-1.5">
+        {SPLIT_MODES.map((mode) => (
+          <button
+            key={mode}
+            type="button"
+            role="radio"
+            aria-checked={side.mode === mode}
+            onClick={() => setMode(mode)}
+            className={cn(
+              "rounded-full border px-3 py-1 text-sm",
+              side.mode === mode && "border-primary bg-primary text-primary-foreground",
+            )}
+          >
+            {MODE_LABELS[mode]}
+          </button>
+        ))}
+      </div>
+      {rows.map((id) => {
+        const share = shares[id]
+        return (
+          <div key={id} className="flex min-h-9 items-center gap-2">
+            {side.mode === "equal" ? (
+              <label className="flex flex-1 items-center gap-2">
+                <Checkbox
+                  aria-label={who.nameOf(id)}
+                  checked={side.ticked.includes(id)}
+                  onCheckedChange={(checked) => toggle(id, checked)}
+                />
+                {who.nameOf(id)}
+              </label>
+            ) : (
+              <span className="flex-1">{who.nameOf(id)}</span>
+            )}
+            {side.mode === "exact" && (
+              <AmountInput
+                className="w-28 text-right"
+                aria-label={`Amount for ${who.nameOf(id, "within")}`}
+                value={side.exact[id] ?? null}
+                onValueChange={(cents) =>
+                  onChange({ ...side, exact: { ...side.exact, [id]: cents } })
+                }
+                placeholder="$0.00"
+              />
+            )}
+            {side.mode === "percent" && (
+              <Input
+                className="w-20 text-right"
+                inputMode="decimal"
+                autoComplete="off"
+                aria-label={`Percent for ${who.nameOf(id, "within")}`}
+                value={side.percent[id] ?? ""}
+                onChange={(event) =>
+                  onChange({ ...side, percent: { ...side.percent, [id]: event.target.value } })
+                }
+                placeholder="0%"
+              />
+            )}
+            {side.mode !== "exact" && (
+              <span className="w-20 text-right text-sm text-muted-foreground tabular-nums">
+                {share === undefined ? "–" : format(share)}
+              </span>
+            )}
+          </div>
+        )
+      })}
+      <div
+        role="status"
+        aria-label="Tally"
+        data-balanced={result.ok}
+        className={cn(
+          "sticky bottom-2 rounded-lg px-3 py-2 text-center text-sm font-medium",
+          result.ok
+            ? "bg-emerald-100 text-emerald-900 dark:bg-emerald-950 dark:text-emerald-200"
+            : "bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-200",
+        )}
+      >
+        {result.status}
+      </div>
+    </section>
   )
 }

@@ -52,9 +52,14 @@ function inOrder(ids: readonly string[], { viewerId, order }: People): string[] 
 
 /**
  * One side of an Expense in words, those with the same share together: "You paid $54.00",
- * "You, Ana and Ben owe $18.00 each", "Ana owes $3.34; you and Ben owe $3.33 each".
+ * "You, Ana and Ben owe $18.00 each", "Ana owes $3.34; you and Ben owe $3.33 each". A Refund's
+ * sides read "got back" and "share", given their shares as positive cents.
  */
-export function sideWords(shares: Shares, verb: "paid" | "owe", who: People): string {
+export function sideWords(
+  shares: Shares,
+  verb: "paid" | "owe" | "got back" | "share",
+  who: People,
+): string {
   const groups = new Map<number, string[]>()
   for (const id of inOrder(Object.keys(shares), who)) {
     const cents = shares[id] ?? 0
@@ -64,7 +69,9 @@ export function sideWords(shares: Shares, verb: "paid" | "owe", who: People): st
   const phrases = [...groups].map(([cents, ids], index) => {
     const names = ids.map((id, at) => who.nameOf(id, index === 0 && at === 0 ? "start" : "within"))
     const single = ids.length === 1
-    const word = verb === "paid" ? "paid" : single && ids[0] !== who.viewerId ? "owes" : "owe"
+    // "owe" and "share" take an s after one name other than "you".
+    const thirdPerson = (verb === "owe" || verb === "share") && single && ids[0] !== who.viewerId
+    const word = thirdPerson ? `${verb}s` : verb
     return `${list(names)} ${word} ${format(cents)}${single ? "" : " each"}`
   })
   return phrases.join("; ")

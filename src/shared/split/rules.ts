@@ -5,7 +5,7 @@
  * Every function that hands out cents takes a `Roster`: leftover cents go by the largest remainder,
  * then to the oldest Account in its `order`, so the same Expense always resolves to the same shares.
  */
-import { allocate } from "../money.ts"
+import { allocate, format } from "../money.ts"
 import { isoDate } from "../schemas/primitives.ts"
 import type { Shares, Side } from "./schemas.ts"
 
@@ -51,16 +51,25 @@ function nonzero(ids: readonly string[], cents: readonly number[]): Shares {
   return result
 }
 
+const OUTSIDER = "Only Members can be on an Expense"
+
+/** "1 Member", "3 ways": how many share a side that balances. */
+function ways(count: number): string {
+  return count === 1 ? "1 Member" : `${count} ways`
+}
+
 /**
- * The cents per Member for one side of an Expense of `total`. Equal splits the total among the
- * Members ticked, leftover cents going in `roster.order`.
+ * The cents per Member for one side of an Expense of `total`, by the side's Split mode. Equal
+ * splits the total among the Members ticked; Percent takes each Member's percent of it; both hand
+ * leftover cents out by the largest remainder, then in `roster.order`. Exact takes the cents typed,
+ * which carry the total's sign and must add up to it.
  */
 export function resolveSide(total: number, side: Side, roster: Roster): SideResolution {
+  if (side.mode === "exact") return exactShares(total, side.exact, roster)
+  if (side.mode === "percent") return percentShares(total, side.percent, roster)
   const ticked = new Set(side.ticked)
   if (ticked.size === 0) return refused("Tick at least one Member")
-  if ([...ticked].some((member) => !roster.allowed.has(member))) {
-    return refused("Only Members can be on an Expense")
-  }
+  if ([...ticked].some((member) => !roster.allowed.has(member))) return refused(OUTSIDER)
   const ids = roster.order.filter((member) => ticked.has(member))
   const shares = nonzero(
     ids,
@@ -69,7 +78,83 @@ export function resolveSide(total: number, side: Side, roster: Roster): SideReso
       ids.map(() => 1),
     ),
   )
-  return { ok: true, shares, status: ids.length === 1 ? "1 Member" : `${ids.length} ways` }
+  return { ok: true, shares, status: ways(ids.length) }
+}
+
+function exactShares(total: number, exact: Side["exact"], roster: Roster): SideResolution {
+  // A blank or zero entry is no share.
+  const typed = new Map<string, number>()
+  for (const [member, cents] of Object.entries(exact)) {
+    if (cents !== null && cents !== 0) typed.set(member, cents)
+  }
+  if ([...typed.keys()].some((member) => !roster.allowed.has(member))) return refused(OUTSIDER)
+  const direction = total < 0 ? -1 : 1
+  if ([...typed.values()].some((cents) => Math.sign(cents) === -direction)) {
+    return refused(total < 0 ? "Every share of a Refund is negative" : "A share can't be negative")
+  }
+  const sum = [...typed.values()].reduce((a, b) => a + b, 0)
+  if (!Number.isSafeInteger(sum)) return refused("The shares are too large")
+  const left = total - sum
+  if (left !== 0) {
+    return refused(`${format(Math.abs(left))} ${left * direction > 0 ? "left to assign" : "over"}`)
+  }
+  const ids = roster.order.filter((member) => typed.has(member))
+  return {
+    ok: true,
+    shares: nonzero(
+      ids,
+      ids.map((member) => typed.get(member) ?? 0),
+    ),
+    status: ways(ids.length),
+  }
+}
+
+// Up to three digits, then up to two decimals, then an optional "%".
+const PERCENT = /^(\d{1,3})?(?:\.(\d{0,2}))?%?$/
+
+/**
+ * A percent as typed ("33.33", "4.5", "12%") in hundredths of a percent, or null when it isn't a
+ * plain number with up to two decimals.
+ */
+export function parsePercent(text: string): number | null {
+  const match = PERCENT.exec(text.trim())
+  if (!match) return null
+  const [, whole, fraction] = match
+  if (whole === undefined && !fraction) return null
+  return Number(whole ?? "0") * 100 + Number((fraction ?? "").padEnd(2, "0"))
+}
+
+/** Hundredths of a percent in words, without trailing zeros: 450 → "4.5%". */
+function percentWords(hundredths: number): string {
+  return `${(hundredths / 100).toFixed(2).replace(/\.?0+$/, "")}%`
+}
+
+function percentShares(total: number, percents: Side["percent"], roster: Roster): SideResolution {
+  const points = new Map<string, number>()
+  for (const [member, text] of Object.entries(percents)) {
+    if (text.trim() === "") continue
+    const parsed = parsePercent(text)
+    if (parsed === null) return refused("Enter each percent with up to two decimals")
+    // A zero percent is no share.
+    if (parsed > 0) points.set(member, parsed)
+  }
+  if ([...points.keys()].some((member) => !roster.allowed.has(member))) return refused(OUTSIDER)
+  const left = 10_000 - [...points.values()].reduce((a, b) => a + b, 0)
+  if (left !== 0) {
+    return refused(`${percentWords(Math.abs(left))} ${left > 0 ? "left to assign" : "over"}`)
+  }
+  const ids = roster.order.filter((member) => points.has(member))
+  return {
+    ok: true,
+    shares: nonzero(
+      ids,
+      allocate(
+        total,
+        ids.map((member) => points.get(member) ?? 0),
+      ),
+    ),
+    status: ways(ids.length),
+  }
 }
 
 /** What identifies an Expense and how it is split; the rest is stored as given. */

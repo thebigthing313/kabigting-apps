@@ -74,6 +74,7 @@ describe("the one-tap Expense flow", () => {
       "You paid it all",
       "Ben paid it all",
       "Cy paid it all",
+      "Several people paid",
     ])
     await expect.element(paid.nth(0)).toBeChecked()
     await next(screen).click()
@@ -84,6 +85,7 @@ describe("the one-tap Expense flow", () => {
       "Only you",
       "Only Ben",
       "Only Cy",
+      "Split it differently",
     ])
     await expect.element(owed.nth(0)).toBeChecked()
     await next(screen).click()
@@ -154,5 +156,162 @@ describe("the one-tap Expense flow", () => {
     const { screen, onCancel } = await renderFlow()
     await screen.getByRole("button", { name: "Cancel" }).click()
     expect(onCancel).toHaveBeenCalled()
+  })
+})
+
+const tally = (screen: Screen) => screen.getByRole("status", { name: "Tally" })
+
+/** The tally's words, and whether it shows the side balanced (green) or not (amber). */
+async function expectTally(screen: Screen, text: string, balanced: boolean) {
+  await expect.element(tally(screen)).toHaveTextContent(text)
+  await expect.element(tally(screen)).toHaveAttribute("data-balanced", String(balanced))
+}
+
+describe("the full editor", () => {
+  test("each side has its own Split mode, and Next waits until the side adds up", async () => {
+    const { screen, onSave } = await renderFlow()
+    await fillWhat(screen)
+    await next(screen).click()
+
+    await screen.getByRole("radio", { name: "Several people paid" }).click()
+    const mode = screen.getByRole("radiogroup", { name: "Split mode" })
+    // It opens on the answer it replaces: you paid it all, equally.
+    await expect.element(mode.getByRole("radio", { name: "Equally" })).toBeChecked()
+    await expect.element(screen.getByRole("checkbox", { name: "You" })).toBeChecked()
+    await expect.element(screen.getByRole("checkbox", { name: "Ben" })).not.toBeChecked()
+    await expectTally(screen, "1 Member", true)
+
+    // Exact $ starts from the current cents.
+    await mode.getByRole("radio", { name: "Exact $" }).click()
+    const amountFor = (name: string) => screen.getByRole("textbox", { name: `Amount for ${name}` })
+    await expect.element(amountFor("you")).toHaveValue("$100.00")
+    await expect.element(amountFor("Ben")).toHaveValue("")
+    await amountFor("you").fill("60")
+    await expectTally(screen, "$40.00 left to assign", false)
+    await expect.element(next(screen)).toBeDisabled()
+    await amountFor("Ben").fill("45")
+    await expectTally(screen, "$5.00 over", false)
+    await amountFor("Ben").fill("40")
+    await expectTally(screen, "2 ways", true)
+    await next(screen).click()
+
+    await screen.getByRole("radio", { name: "Split it differently" }).click()
+    await mode.getByRole("radio", { name: "Percent" }).click()
+    await expectTally(screen, "100% left to assign", false)
+    const percentFor = (name: string) =>
+      screen.getByRole("textbox", { name: `Percent for ${name}` })
+    await percentFor("you").fill("50")
+    await percentFor("Ben").fill("29.5")
+    await expectTally(screen, "20.5% left to assign", false)
+    await expect.element(next(screen)).toBeDisabled()
+    await percentFor("Cy").fill("20.5")
+    await expectTally(screen, "3 ways", true)
+    await next(screen).click()
+
+    await expect.element(screen.getByText("You paid $60.00; Ben paid $40.00")).toBeVisible()
+    await expect
+      .element(screen.getByText("You owe $50.00; Ben owes $29.50; Cy owes $20.50"))
+      .toBeVisible()
+    await screen.getByRole("button", { name: "Add Expense" }).click()
+    await vi.waitFor(() => expect(onSave).toHaveBeenCalledOnce())
+    expect(onSave).toHaveBeenCalledWith(
+      expect.objectContaining({
+        total: 10_000,
+        paid: { mode: "exact", ticked: ["ana"], exact: { ana: 6_000, ben: 4_000 }, percent: {} },
+        owed: {
+          mode: "percent",
+          ticked: ["ben", "ana", "cy"],
+          exact: {},
+          percent: { ana: "50", ben: "29.5", cy: "20.5" },
+        },
+      }),
+    )
+  })
+
+  test("Equally ticks who shares it, and nobody ticked blocks Next", async () => {
+    const { screen } = await renderFlow()
+    await fillWhat(screen)
+    await next(screen).click()
+    await next(screen).click()
+    await screen.getByRole("radio", { name: "Split it differently" }).click()
+    await expectTally(screen, "3 ways", true)
+
+    await screen.getByRole("checkbox", { name: "Cy" }).click()
+    await expectTally(screen, "2 ways", true)
+    await expect.element(screen.getByText("$50.00").first()).toBeVisible()
+    await screen.getByRole("checkbox", { name: "You" }).click()
+    await screen.getByRole("checkbox", { name: "Ben" }).click()
+    await expectTally(screen, "Tick at least one Member", false)
+    await expect.element(next(screen)).toBeDisabled()
+  })
+
+  test("a one-tap answer keeps the editor's inputs, and Review names a side gone wrong", async () => {
+    const { screen } = await renderFlow()
+    await fillWhat(screen)
+    await next(screen).click()
+    await screen.getByRole("radio", { name: "Several people paid" }).click()
+    await screen.getByRole("radio", { name: "Exact $" }).click()
+    await screen.getByRole("textbox", { name: "Amount for you" }).fill("70")
+    await screen.getByRole("textbox", { name: "Amount for Cy" }).fill("30")
+    await screen.getByRole("radio", { name: "Ben paid it all" }).click()
+    await expect
+      .element(screen.getByRole("radiogroup", { name: "Split mode" }))
+      .not.toBeInTheDocument()
+    await screen.getByRole("radio", { name: "Several people paid" }).click()
+    await expect
+      .element(screen.getByRole("textbox", { name: "Amount for Cy" }))
+      .toHaveValue("$30.00")
+    await next(screen).click()
+    await next(screen).click()
+
+    await step(screen, "What").click()
+    await screen.getByRole("textbox", { name: "Total" }).fill("120")
+    await step(screen, "Review").click()
+    await expect
+      .element(screen.getByRole("list", { name: "Still to fix" }))
+      .toHaveTextContent("Paid: $20.00 left to assign")
+    await expect.element(screen.getByRole("button", { name: "Add Expense" })).toBeDisabled()
+  })
+
+  test("a negative total is a Refund, and the questions say so", async () => {
+    const { screen, onSave } = await renderFlow()
+    await screen.getByRole("textbox", { name: "Total" }).fill("-30")
+    await screen.getByRole("textbox", { name: "Description" }).fill("Returned a lamp")
+    await expect.element(screen.getByText(/A negative total is a Refund/)).toBeVisible()
+    await next(screen).click()
+
+    await expect
+      .element(screen.getByRole("radiogroup", { name: "Who got the money back?" }))
+      .toBeVisible()
+    await expect.element(screen.getByRole("radio", { name: "You got it all back" })).toBeChecked()
+    await next(screen).click()
+    await expect
+      .element(screen.getByRole("radiogroup", { name: "Who shares the Refund?" }))
+      .toBeVisible()
+    await next(screen).click()
+
+    await expect.element(screen.getByText("-$30.00 (Refund)")).toBeVisible()
+    await expect.element(screen.getByText("You got back $30.00")).toBeVisible()
+    await expect.element(screen.getByText("You, Ben and Cy share $10.00 each")).toBeVisible()
+    await screen.getByRole("button", { name: "Add Expense" }).click()
+    await vi.waitFor(() => expect(onSave).toHaveBeenCalledOnce())
+    expect(onSave).toHaveBeenCalledWith(
+      expect.objectContaining({ total: -3_000, paid: equalSide(["ana"]) }),
+    )
+  })
+
+  test("a Refund's exact shares start negative, and a positive one is refused", async () => {
+    const { screen } = await renderFlow()
+    await screen.getByRole("textbox", { name: "Total" }).fill("-30")
+    await screen.getByRole("textbox", { name: "Description" }).fill("Returned a lamp")
+    await next(screen).click()
+    await next(screen).click()
+    await screen.getByRole("radio", { name: "Split it differently" }).click()
+    await screen.getByRole("radio", { name: "Exact $" }).click()
+    await expect
+      .element(screen.getByRole("textbox", { name: "Amount for Ben" }))
+      .toHaveValue("-$10.00")
+    await screen.getByRole("textbox", { name: "Amount for Ben" }).fill("10")
+    await expectTally(screen, "Every share of a Refund is negative", false)
   })
 })
