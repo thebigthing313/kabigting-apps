@@ -159,8 +159,8 @@ export function addExpense(
 
 /**
  * Saves `saved` as it now stands, replacing all of it, changed by `viewerId`. As `addExpense`, it
- * shows at once and the server's row then replaces it; those already on it stay allowed even when
- * they're no longer among `memberIds`. True once stored; false when refused, or gone (then it
+ * shows at once and the server's row then replaces it; those already on it stay allowed, Former
+ * members included. True once stored; false when refused, or gone (then it
  * drops out).
  */
 export function changeExpense(

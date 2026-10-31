@@ -98,6 +98,11 @@ describe("formatInstantMonthDay", () => {
     expect(formatInstantMonthDay("2026-10-04T03:30:00.000Z")).toBe("Oct 3")
     expect(formatInstantMonthDay("2026-10-04T04:30:00.000Z")).toBe("Oct 4")
   })
+
+  test("in standard time too, five hours behind UTC", () => {
+    expect(formatInstantMonthDay("2026-01-15T04:59:00.000Z")).toBe("Jan 14")
+    expect(formatInstantMonthDay("2026-01-15T05:00:00.000Z")).toBe("Jan 15")
+  })
 })
 
 describe("nowInstant", () => {

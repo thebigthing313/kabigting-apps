@@ -200,6 +200,8 @@ describe("from Split's Home", () => {
   /** What the server holds, and the requests that changed it. */
   let expenses: Expense[] = []
   let writes: { method: string; path: string; body: unknown }[] = []
+  /** A write the server refuses this time, with its answer. */
+  let refusing: { method: string; answer: () => Response } | null = null
 
   function serve(path: string, method: string, body: unknown): Response {
     if (path === "/api/split/members") return Response.json({ rows: members })
@@ -207,6 +209,10 @@ describe("from Split's Home", () => {
     if (path === "/api/split/expenses" && method === "GET") return Response.json({ rows: expenses })
     const id = path.replace("/api/split/expenses/", "")
     const found = expenses.find((expense) => expense.id === id)
+    if (found && refusing?.method === method) {
+      writes.push({ method, path, body })
+      return refusing.answer()
+    }
     if (found && method === "PUT") {
       writes.push({ method, path, body })
       const input = updateExpense.parse(body)
@@ -242,6 +248,7 @@ describe("from Split's Home", () => {
   beforeEach(() => {
     expenses = [saved()]
     writes = []
+    refusing = null
     vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = new URL(input instanceof Request ? input.url : String(input), location.origin)
       const method = (
@@ -331,5 +338,63 @@ describe("from Split's Home", () => {
         { method: "DELETE", path: `/api/split/expenses/${EXPENSE_ID}`, body: null },
       ]),
     )
+  })
+
+  test("a save only the server refuses rolls back, and the form stays open", async () => {
+    // Say Cy lost App access after the form opened: only the server can tell.
+    refusing = {
+      method: "PUT",
+      answer: () =>
+        Response.json(
+          {
+            error: {
+              code: "validation_failed",
+              message: "The Expense is not valid",
+              details: [{ path: "owed", message: "Only Members can be on an Expense" }],
+            },
+          },
+          { status: 400 },
+        ),
+    }
+    const { screen, router } = await openSplit()
+    await screen.getByRole("button", { name: "Edit Groceries run" }).click()
+    await screen.getByRole("button", { name: "Change Owed" }).click()
+    await screen.getByRole("radio", { name: "Only Cy" }).click()
+    await screen.getByRole("button", { name: "Done" }).click()
+    await screen.getByRole("button", { name: "Save changes" }).click()
+
+    // Still on Review with the draft, and the button is back for another try.
+    await expect.element(screen.getByRole("button", { name: "Save changes" })).toBeEnabled()
+    expect(router.state.location.pathname).toBe(`/split/expenses/${EXPENSE_ID}`)
+    await expect.element(screen.getByText("Cy owes $90.00")).toBeVisible()
+    expect(writes).toHaveLength(1)
+
+    // The Expense itself is as it was.
+    await screen.getByRole("button", { name: "Cancel" }).click()
+    await expect.element(screen.getByText("You, Ben and Cy owe $30.00 each")).toBeVisible()
+    await expect
+      .element(screen.getByRole("region", { name: "Your Balance" }))
+      .toHaveTextContent("Your Balance-$30.00You owe the othersBen is owed $60.00Cy owes $30.00")
+  })
+
+  test("a delete that fails brings the Expense back", async () => {
+    refusing = {
+      method: "DELETE",
+      answer: () =>
+        Response.json(
+          { error: { code: "internal", message: "Something went wrong" } },
+          { status: 500 },
+        ),
+    }
+    const { screen } = await openSplit()
+    await screen.getByRole("button", { name: "Edit Groceries run" }).click()
+    await screen.getByRole("button", { name: "Delete Expense" }).click()
+    await screen.getByRole("button", { name: "Tap again to delete for good" }).click()
+
+    await vi.waitFor(() => expect(writes).toHaveLength(1))
+    await expect.element(screen.getByText("You, Ben and Cy owe $30.00 each")).toBeVisible()
+    await expect
+      .element(screen.getByRole("region", { name: "Your Balance" }))
+      .toHaveTextContent("Your Balance-$30.00You owe the othersBen is owed $60.00Cy owes $30.00")
   })
 })

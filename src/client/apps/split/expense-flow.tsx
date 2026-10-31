@@ -56,6 +56,7 @@ type ExpenseFlowProps = {
 }
 
 const STEPS = ["What", "Who paid", "Who owes", "Review"] as const
+const REVIEW = STEPS.length - 1
 
 /** Which fields each step asks for, so Next waits until they're valid. */
 const STEP_FIELDS: readonly (readonly ExpenseField[])[] = [
@@ -83,8 +84,8 @@ export function ExpenseFlow({
 }: ExpenseFlowProps) {
   const saved = editing?.expense
   const order = members.map((member) => member.id)
-  const [step, setStep] = useState(saved ? 3 : 0)
-  const [reached, setReached] = useState(saved ? 3 : 0)
+  const [step, setStep] = useState(saved ? REVIEW : 0)
+  const [reached, setReached] = useState(saved ? REVIEW : 0)
   const [total, setTotal] = useState<number | null>(saved?.total ?? null)
   const [description, setDescription] = useState(saved?.description ?? "")
   const [date, setDate] = useState(saved?.date ?? today)
@@ -124,10 +125,10 @@ export function ExpenseFlow({
   }
 
   // Changing a saved Expense, every step returns to Review, and Review's way back leaves.
-  const leavesOnBack = step === 0 || (saved !== undefined && step === 3)
+  const leavesOnBack = step === 0 || (saved !== undefined && step === REVIEW)
   function back() {
     if (leavesOnBack) onCancel()
-    else goTo(saved ? 3 : step - 1)
+    else goTo(saved ? REVIEW : step - 1)
   }
 
   /** On success the caller leaves the flow; a refusal (already reported) stays on Review. */
@@ -255,7 +256,7 @@ export function ExpenseFlow({
         </Question>
       )}
 
-      {step === 3 && (
+      {step === REVIEW && (
         <div className="flex flex-col rounded-xl border px-3">
           <ReviewLine label="What" onChange={() => goTo(0)}>
             <span className="font-medium">{description.trim() || "No description"}</span> ·{" "}
@@ -287,12 +288,12 @@ export function ExpenseFlow({
         </div>
       )}
 
-      {step < 3 ? (
+      {step < REVIEW ? (
         <Button
           size="lg"
           className="h-12"
           disabled={!stepValid(step)}
-          onClick={() => goTo(saved ? 3 : step + 1)}
+          onClick={() => goTo(saved ? REVIEW : step + 1)}
         >
           {saved ? "Done" : "Next"}
         </Button>
@@ -306,7 +307,7 @@ export function ExpenseFlow({
           <CheckIcon /> {saved ? "Save changes" : "Add Expense"}
         </Button>
       )}
-      {editing && step === 3 && (
+      {editing && step === REVIEW && (
         <Button
           variant={deleteArmed ? "destructive" : "ghost"}
           className={cn(!deleteArmed && "text-destructive")}

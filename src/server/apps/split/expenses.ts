@@ -151,8 +151,8 @@ async function lockedExpense(tx: Tx, expenseId: string): Promise<ExpenseRow | un
 }
 
 /**
- * Who can be on an edited Expense: the Members as of this save, plus everyone already on it, even
- * those who have since lost App access, so their shares stay editable and removable.
+ * Who can be on an edited Expense: the Members as of this save, plus everyone already on it,
+ * Former members included, so their shares stay editable and removable.
  */
 async function editRoster(tx: Tx, saved: ExpenseRow): Promise<Roster> {
   const members = (await currentMembers(tx)).map((member) => member.id)
@@ -199,7 +199,7 @@ export function expenseRoutes(db: Db) {
       const expenseId = c.req.valid("param").id
       const input = c.req.valid("json")
       const accountId = c.get("account").id
-      await db.transaction(async (tx) => {
+      const row = await db.transaction(async (tx) => {
         const saved = (await lockedExpense(tx, expenseId)) ?? notFound()
         const roster = await editRoster(tx, saved)
         const resolved = await resolveForSave(tx, input, roster, saved.categoryId)
@@ -209,9 +209,11 @@ export function expenseRoutes(db: Db) {
           .where(eq(splitExpenses.id, expenseId))
         await tx.delete(splitShares).where(eq(splitShares.expenseId, expenseId))
         await insertShares(tx, expenseId, resolved)
+        // Read under the lock, so a delete right after the commit can't turn this save into 404.
+        const [stored] = await readExpenses(tx, eq(splitExpenses.id, expenseId))
+        return stored ?? notFound()
       })
-      const [row] = await readExpenses(db, eq(splitExpenses.id, expenseId))
-      return row ? c.json(row) : notFound()
+      return c.json(row)
     })
     .delete("/:id", validate("param", params), async (c) => {
       // Permanent: there is no trash. Its shares go with it; the deleted row is the answer.

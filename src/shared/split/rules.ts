@@ -54,8 +54,8 @@ export function accountsOnExpense(saved: SavedSides): Set<string> {
 }
 
 /**
- * The Roster of an Expense being edited: the current Members, plus everyone already on it, even
- * those who have since lost App access. Nobody else can be added. `oldestFirst` ranks Accounts by
+ * The Roster of an Expense being edited: the current Members, plus everyone already on it, Former
+ * members included. Nobody else can be added. `oldestFirst` ranks Accounts by
  * age; anyone it doesn't know goes last.
  */
 export function editExpenseRoster(
