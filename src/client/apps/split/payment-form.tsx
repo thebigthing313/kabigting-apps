@@ -1,6 +1,7 @@
 import { cn } from "cn"
 import { ArrowLeftIcon, CheckIcon, Trash2Icon } from "lucide-react"
 import { useId, useState } from "react"
+import { EntryNoticeLine, type EntryNotice } from "@/apps/split/entry-form"
 import {
   authorshipWords,
   FORMER_MEMBER,
@@ -11,7 +12,7 @@ import {
 import { AmountInput } from "@/components/amount-input"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import type { Member, Payment } from "@/data/split"
+import type { EntryOutcome, Member, Payment } from "@/data/split"
 import { format } from "@shared/money"
 import {
   editPaymentAllowed,
@@ -35,9 +36,11 @@ type PaymentFormProps = {
   balances: Shares
   /** The household's date today, the date a new Payment starts on. */
   today: string
-  /** Saves the Payment; resolves true once stored. */
-  onSave: (payment: NewPayment) => Promise<boolean>
+  /** Saves the Payment; resolves to how the save ended, the form closing unless refused or unreached. */
+  onSave: (payment: NewPayment) => Promise<EntryOutcome>
   onCancel: () => void
+  /** A newer version saved by someone else, or a save that didn't reach the server. */
+  notice?: EntryNotice | null
   /** The saved Payment being changed, absent when recording one. Offers `onDelete`. */
   editing?: { payment: Payment; onDelete: () => void }
 }
@@ -55,6 +58,7 @@ export function PaymentForm({
   today,
   onSave,
   onCancel,
+  notice,
   editing,
 }: PaymentFormProps) {
   const saved = editing?.payment
@@ -76,7 +80,10 @@ export function PaymentForm({
   const payment: NewPayment = { date, fromId, toId, amount: amount ?? 0, note }
   const problems = paymentProblems(payment, allowed)
 
-  /** On success the caller leaves the form; a refusal (already reported) stays here. */
+  /**
+   * On success the caller leaves the form; a refusal (already reported), or a save that never
+   * reached the server, stays here with everything kept.
+   */
   async function save() {
     if (problems.length > 0 || saving) return
     setSaving(true)
@@ -138,6 +145,7 @@ export function PaymentForm({
         </ul>
       )}
       {saved && <p className="text-xs text-muted-foreground">{authorshipWords(saved, who)}</p>}
+      {notice && <EntryNoticeLine notice={notice} who={who} onRetry={() => void save()} />}
       <Button
         size="lg"
         className="h-12"

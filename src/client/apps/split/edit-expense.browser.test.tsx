@@ -18,7 +18,7 @@ import { ExpenseFlow, type NewExpense } from "@/apps/split/expense-flow"
 import { SplitHome } from "@/apps/split/split-home"
 import { cleanupCollections } from "@/data/collection-factory"
 import { queryClient } from "@/data/query-client"
-import type { Expense, Member } from "@/data/split"
+import type { EntryOutcome, Expense, Member } from "@/data/split"
 import { dismissToasts } from "@/test/toasts"
 import { editExpenseRoster, equalSide, resolveExpense } from "@shared/split/rules"
 import { updateExpense, type Side } from "@shared/split/schemas"
@@ -65,7 +65,7 @@ function saved(overrides: Partial<Expense> = {}): Expense {
 }
 
 async function renderEdit(expense: Expense) {
-  const onSave = vi.fn<(expense: NewExpense) => Promise<boolean>>(async () => true)
+  const onSave = vi.fn<(expense: NewExpense) => Promise<EntryOutcome>>(async () => "saved")
   const onCancel = vi.fn<() => void>()
   const onDelete = vi.fn<() => void>()
   const screen = await render(

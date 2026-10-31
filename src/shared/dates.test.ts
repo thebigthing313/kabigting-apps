@@ -11,6 +11,7 @@ import {
   monthInstantRange,
   monthDates,
   formatInstantMonthDay,
+  formatInstantTime,
   monthOf,
   monthOfDate,
   nowInstant,
@@ -102,6 +103,13 @@ describe("formatInstantMonthDay", () => {
   test("in standard time too, five hours behind UTC", () => {
     expect(formatInstantMonthDay("2026-01-15T04:59:00.000Z")).toBe("Jan 14")
     expect(formatInstantMonthDay("2026-01-15T05:00:00.000Z")).toBe("Jan 15")
+  })
+})
+
+describe("formatInstantTime", () => {
+  test("gives the household's time of day, in daylight and standard time", () => {
+    expect(formatInstantTime("2026-10-04T03:30:00.000Z")).toBe("11:30 PM")
+    expect(formatInstantTime("2026-01-15T17:05:00.000Z")).toBe("12:05 PM")
   })
 })
 

@@ -1,5 +1,6 @@
-import { getRouteApi, useNavigate } from "@tanstack/react-router"
+import { getRouteApi } from "@tanstack/react-router"
 import { useState } from "react"
+import { useEntryForm } from "@/apps/split/entry-form"
 import { ExpenseFlow } from "@/apps/split/expense-flow"
 import { Skeleton } from "@/components/ui/skeleton"
 import { addExpense, useCategories, useMembers, latestMembers } from "@/data/split"
@@ -9,20 +10,20 @@ import { newId } from "@shared/ids"
 const appRoute = getRouteApi("/_app")
 
 /**
- * Adding an Expense, full page. Its id is made once, when the page opens, and the draft lives only
- * here, for as long as the page is open.
+ * Adding an Expense, full page. Its id is made once, when the page opens, so trying a save again
+ * never stores it twice; the draft lives only here, for as long as the page is open.
  */
 export function AddExpensePage() {
   const { session } = appRoute.useRouteContext()
   const members = useMembers()
   const categories = useCategories()
-  const navigate = useNavigate()
+  const entry = useEntryForm("Expense")
   const [id] = useState(newId)
   const [startedOn] = useState(today)
   if (!members.data || !categories.data) {
     return <Skeleton className="mx-auto h-64 w-full max-w-md" />
   }
-  const home = () => void navigate({ to: "/split" })
+  const accounts = members.data
   return (
     <ExpenseFlow
       viewerId={session.user.id}
@@ -30,12 +31,11 @@ export function AddExpensePage() {
       categories={categories.data.filter((category) => !category.archived)}
       today={startedOn}
       latestMembers={latestMembers}
-      onCancel={home}
-      onSave={async (expense) => {
-        const stored = await addExpense({ id, ...expense }, session.user.id, members.data)
-        if (stored) home()
-        return stored
-      }}
+      notice={entry.notice}
+      onCancel={entry.leave}
+      onSave={(expense) =>
+        entry.save(() => addExpense({ id, ...expense }, session.user.id, accounts))
+      }
     />
   )
 }

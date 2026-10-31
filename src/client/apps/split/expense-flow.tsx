@@ -1,6 +1,7 @@
 import { cn } from "cn"
 import { ArrowLeftIcon, CheckIcon, PencilIcon, Trash2Icon } from "lucide-react"
 import { useState } from "react"
+import { EntryNoticeLine, type EntryNotice } from "@/apps/split/entry-form"
 import {
   authorshipWords,
   expenseSideWords,
@@ -14,7 +15,7 @@ import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
-import type { Category, Expense, Member } from "@/data/split"
+import type { Category, EntryOutcome, Expense, Member } from "@/data/split"
 import { formatDisplayDate } from "@shared/dates"
 import { format } from "@shared/money"
 import { defaultCategory } from "@shared/split/categories"
@@ -59,14 +60,16 @@ type ExpenseFlowProps = {
   categories: readonly Category[]
   /** The household's date today, the date a new Expense starts on. */
   today: string
-  /** Saves the Expense; resolves true once stored. */
-  onSave: (expense: NewExpense) => Promise<boolean>
+  /** Saves the Expense; resolves to how the save ended, the flow closing unless refused or unreached. */
+  onSave: (expense: NewExpense) => Promise<EntryOutcome>
   /**
    * The Accounts as last fetched, read after a refusal, once they have been fetched again: someone
    * on a side may have lost App access since the form opened.
    */
   latestMembers?: () => readonly Member[] | undefined
   onCancel: () => void
+  /** A newer version saved by someone else, or a save that didn't reach the server. */
+  notice?: EntryNotice | null
   /**
    * The saved Expense being changed, absent when adding one. It opens on Review as it was
    * entered, each step returns to Review, and Review offers `onDelete`.
@@ -130,6 +133,7 @@ export function ExpenseFlow({
   onSave,
   latestMembers,
   onCancel,
+  notice,
   editing,
 }: ExpenseFlowProps) {
   const saved = editing?.expense
@@ -237,14 +241,16 @@ export function ExpenseFlow({
   /**
    * On success the caller leaves the flow. A refusal (already reported) stays on Review, unless
    * the Accounts fetched since show someone on a side lost App access: then that side's step
-   * opens its editor with them flagged.
+   * opens its editor with them flagged. A save that never reached the server stays on Review with
+   * everything kept.
    */
   async function save() {
     if (!resolution.ok || saving) return
     setSaving(true)
-    const stored = await onSave({ ...expense, description: description.trim(), note: note.trim() })
+    const outcome = await onSave({ ...expense, description: description.trim(), note: note.trim() })
     setSaving(false)
-    if (stored) return
+    // Only a refusal can be someone who lost access; anything else is the caller's to act on.
+    if (outcome !== "refused") return
     const fresh = rosterAmong(latestMembers?.() ?? members, saved)
     const lost = (["paid", "owed"] as const).find(
       (key) => outsidersOn(sides[key], fresh).length > 0,
@@ -437,6 +443,10 @@ export function ExpenseFlow({
         </div>
       )}
 
+      {/* Steps work offline, so a failed save is told, with Try again, only on Review. */}
+      {notice && (notice.kind === "newer" || step === REVIEW) && (
+        <EntryNoticeLine notice={notice} who={who} onRetry={() => void save()} />
+      )}
       {step < REVIEW ? (
         <Button
           size="lg"

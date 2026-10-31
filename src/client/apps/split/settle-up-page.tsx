@@ -1,5 +1,6 @@
-import { getRouteApi, useNavigate } from "@tanstack/react-router"
+import { getRouteApi } from "@tanstack/react-router"
 import { useState } from "react"
+import { useEntryForm } from "@/apps/split/entry-form"
 import { PaymentForm } from "@/apps/split/payment-form"
 import { Skeleton } from "@/components/ui/skeleton"
 import { addPayment, useExpenses, useMembers, usePayments } from "@/data/split"
@@ -10,21 +11,21 @@ import { householdBalances, withBalances } from "@shared/split/rules"
 const appRoute = getRouteApi("/_app")
 
 /**
- * Recording a Payment, full page. Its id is made once, when the page opens, and the draft lives
- * only here, for as long as the page is open.
+ * Recording a Payment, full page. Its id is made once, when the page opens, so trying a save again
+ * never stores it twice; the draft lives only here, for as long as the page is open.
  */
 export function SettleUpPage() {
   const { session } = appRoute.useRouteContext()
   const { data: expenses, isLoading } = useExpenses()
   const { data: payments, isLoading: paymentsLoading } = usePayments()
   const members = useMembers()
-  const navigate = useNavigate()
+  const entry = useEntryForm("Payment")
   const [id] = useState(newId)
   const [startedOn] = useState(today)
   if (isLoading || paymentsLoading || !members.data) {
     return <Skeleton className="mx-auto h-64 w-full max-w-md" />
   }
-  const home = () => void navigate({ to: "/split" })
+  const accounts = members.data
   return (
     <PaymentForm
       viewerId={session.user.id}
@@ -35,12 +36,11 @@ export function SettleUpPage() {
         withBalances(members.data).map((member) => member.id),
       )}
       today={startedOn}
-      onCancel={home}
-      onSave={async (payment) => {
-        const stored = await addPayment({ id, ...payment }, session.user.id, members.data)
-        if (stored) home()
-        return stored
-      }}
+      notice={entry.notice}
+      onCancel={entry.leave}
+      onSave={(payment) =>
+        entry.save(() => addPayment({ id, ...payment }, session.user.id, accounts))
+      }
     />
   )
 }

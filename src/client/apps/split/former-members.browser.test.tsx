@@ -19,7 +19,7 @@ import { HomeView } from "@/apps/split/home-view"
 import { PaymentForm, type NewPayment } from "@/apps/split/payment-form"
 import { cleanupCollections } from "@/data/collection-factory"
 import { queryClient } from "@/data/query-client"
-import type { Expense, Member } from "@/data/split"
+import type { EntryOutcome, Expense, Member } from "@/data/split"
 import { dismissToasts } from "@/test/toasts"
 import { equalSide, memberIdsOf, newExpenseRoster, resolveExpense } from "@shared/split/rules"
 import { createExpense } from "@shared/split/schemas"
@@ -63,7 +63,7 @@ afterEach(async () => {
 })
 
 async function renderFlow(editing?: Expense) {
-  const onSave = vi.fn<(expense: NewExpense) => Promise<boolean>>(async () => true)
+  const onSave = vi.fn<(expense: NewExpense) => Promise<EntryOutcome>>(async () => "saved")
   const screen = await render(
     <ExpenseFlow
       viewerId="ana"
@@ -188,7 +188,7 @@ describe("Home", () => {
 
 describe("Settle up", () => {
   test("offers a Former member's tile, and records a Payment to them", async () => {
-    const onSave = vi.fn<(payment: NewPayment) => Promise<boolean>>(async () => true)
+    const onSave = vi.fn<(payment: NewPayment) => Promise<EntryOutcome>>(async () => "saved")
     const screen = await render(
       <PaymentForm
         viewerId="ana"

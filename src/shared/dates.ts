@@ -129,6 +129,11 @@ export function formatInstantMonthDay(instant: string): string {
   return format(new TZDate(Date.parse(instant), HOUSEHOLD_ZONE), "MMM d")
 }
 
+/** The time of day an instant falls at in the household zone, e.g. "4:05 PM". */
+export function formatInstantTime(instant: string): string {
+  return format(new TZDate(Date.parse(instant), HOUSEHOLD_ZONE), "h:mm a")
+}
+
 /** A calendar date's month and day, e.g. "Mar 5". */
 export function formatMonthDay(date: string): string {
   return format(toPickerDate(date), "MMM d")

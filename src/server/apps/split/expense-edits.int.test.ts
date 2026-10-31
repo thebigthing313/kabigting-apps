@@ -145,6 +145,34 @@ describe("update", () => {
     expect(await listed(expense.id)).toEqual(edited)
   })
 
+  test("two Members saving the same Expense: the last save wins for the whole record", async () => {
+    const expense = await created()
+    // Both opened it as it was. Ben saves first; Ana, who never saw his change, saves after.
+    const bens = await changed(
+      expense.id,
+      fields({ description: "Ben's shop", total: 6_000, owed: equalSide([ben.id, ana.id]) }),
+      ben,
+    )
+    const anas = await changed(
+      expense.id,
+      fields({ note: "Ana's note", paid: equalSide([ana.id, admin.id]) }),
+      ana,
+    )
+    // Nothing of Ben's save is merged in: Ana's whole record replaced it.
+    expect(anas).toMatchObject({
+      description: "Groceries run",
+      total: 9_000,
+      note: "Ana's note",
+      paid: equalSide([ana.id, admin.id]),
+      owed: equalSide([admin.id, ana.id, ben.id]),
+      paidShares: { [admin.id]: 4_500, [ana.id]: 4_500 },
+      owedShares: { [admin.id]: 3_000, [ana.id]: 3_000, [ben.id]: 3_000 },
+      changedBy: ana.id,
+    })
+    expect(Date.parse(anas.changedAt)).toBeGreaterThanOrEqual(Date.parse(bens.changedAt))
+    expect(await listed(expense.id)).toEqual(anas)
+  })
+
   test("turns an Equal Expense into an Exact and Percent Refund, worked out again", async () => {
     const expense = await created()
     const paid = {

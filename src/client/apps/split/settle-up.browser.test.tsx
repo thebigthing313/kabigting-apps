@@ -18,7 +18,7 @@ import { SettleUpPage } from "@/apps/split/settle-up-page"
 import { SplitHome } from "@/apps/split/split-home"
 import { cleanupCollections } from "@/data/collection-factory"
 import { queryClient } from "@/data/query-client"
-import type { Expense, Member, Payment } from "@/data/split"
+import type { EntryOutcome, Expense, Member, Payment } from "@/data/split"
 import { dismissToasts } from "@/test/toasts"
 import { equalSide, paymentProblems } from "@shared/split/rules"
 import { createPayment, updatePayment } from "@shared/split/schemas"
@@ -73,7 +73,7 @@ function saved(overrides: Partial<Payment> = {}): Payment {
 }
 
 async function renderForm(editing?: Payment) {
-  const onSave = vi.fn<(payment: NewPayment) => Promise<boolean>>(async () => true)
+  const onSave = vi.fn<(payment: NewPayment) => Promise<EntryOutcome>>(async () => "saved")
   const onCancel = vi.fn<() => void>()
   const onDelete = vi.fn<() => void>()
   const screen = await render(
