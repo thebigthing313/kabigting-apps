@@ -22,6 +22,7 @@ import { Route as AppFinancesSummaryRouteImport } from './routes/_app/finances/s
 import { Route as AppNotesIndexRouteImport } from './routes/_app/notes/index'
 import { Route as AppNotesNoteIdRouteImport } from './routes/_app/notes/$noteId'
 import { Route as AppSplitIndexRouteImport } from './routes/_app/split/index'
+import { Route as AppSplitCategoriesRouteImport } from './routes/_app/split/categories'
 import { Route as AppFinancesCategoriesIndexRouteImport } from './routes/_app/finances/categories/index'
 import { Route as AppFinancesCategoriesCategoryIdRouteImport } from './routes/_app/finances/categories/$categoryId'
 import { Route as AppFinancesSchedulesIndexRouteImport } from './routes/_app/finances/schedules/index'
@@ -94,6 +95,11 @@ const AppSplitIndexRoute = AppSplitIndexRouteImport.update({
   path: '/',
   getParentRoute: () => AppSplitRouteRoute,
 } as any)
+const AppSplitCategoriesRoute = AppSplitCategoriesRouteImport.update({
+  id: '/categories',
+  path: '/categories',
+  getParentRoute: () => AppSplitRouteRoute,
+} as any)
 const AppFinancesCategoriesIndexRoute =
   AppFinancesCategoriesIndexRouteImport.update({
     id: '/categories/',
@@ -145,6 +151,7 @@ export interface FileRoutesByFullPath {
   '/admin/accounts': typeof AppAdminAccountsRoute
   '/finances/summary': typeof AppFinancesSummaryRoute
   '/notes/$noteId': typeof AppNotesNoteIdRoute
+  '/split/categories': typeof AppSplitCategoriesRoute
   '/finances/': typeof AppFinancesIndexRoute
   '/notes/': typeof AppNotesIndexRoute
   '/split/': typeof AppSplitIndexRoute
@@ -163,6 +170,7 @@ export interface FileRoutesByTo {
   '/admin/accounts': typeof AppAdminAccountsRoute
   '/finances/summary': typeof AppFinancesSummaryRoute
   '/notes/$noteId': typeof AppNotesNoteIdRoute
+  '/split/categories': typeof AppSplitCategoriesRoute
   '/finances': typeof AppFinancesIndexRoute
   '/notes': typeof AppNotesIndexRoute
   '/split': typeof AppSplitIndexRoute
@@ -186,6 +194,7 @@ export interface FileRoutesById {
   '/_app/admin/accounts': typeof AppAdminAccountsRoute
   '/_app/finances/summary': typeof AppFinancesSummaryRoute
   '/_app/notes/$noteId': typeof AppNotesNoteIdRoute
+  '/_app/split/categories': typeof AppSplitCategoriesRoute
   '/_app/finances/': typeof AppFinancesIndexRoute
   '/_app/notes/': typeof AppNotesIndexRoute
   '/_app/split/': typeof AppSplitIndexRoute
@@ -209,6 +218,7 @@ export interface FileRouteTypes {
     | '/admin/accounts'
     | '/finances/summary'
     | '/notes/$noteId'
+    | '/split/categories'
     | '/finances/'
     | '/notes/'
     | '/split/'
@@ -227,6 +237,7 @@ export interface FileRouteTypes {
     | '/admin/accounts'
     | '/finances/summary'
     | '/notes/$noteId'
+    | '/split/categories'
     | '/finances'
     | '/notes'
     | '/split'
@@ -249,6 +260,7 @@ export interface FileRouteTypes {
     | '/_app/admin/accounts'
     | '/_app/finances/summary'
     | '/_app/notes/$noteId'
+    | '/_app/split/categories'
     | '/_app/finances/'
     | '/_app/notes/'
     | '/_app/split/'
@@ -360,6 +372,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppSplitIndexRouteImport
       parentRoute: typeof AppSplitRouteRoute
     }
+    '/_app/split/categories': {
+      id: '/_app/split/categories'
+      path: '/categories'
+      fullPath: '/split/categories'
+      preLoaderRoute: typeof AppSplitCategoriesRouteImport
+      parentRoute: typeof AppSplitRouteRoute
+    }
     '/_app/finances/categories/': {
       id: '/_app/finances/categories/'
       path: '/categories'
@@ -452,11 +471,13 @@ const AppNotesRouteRouteWithChildren = AppNotesRouteRoute._addFileChildren(
 )
 
 interface AppSplitRouteRouteChildren {
+  AppSplitCategoriesRoute: typeof AppSplitCategoriesRoute
   AppSplitIndexRoute: typeof AppSplitIndexRoute
   AppSplitExpensesNewRoute: typeof AppSplitExpensesNewRoute
 }
 
 const AppSplitRouteRouteChildren: AppSplitRouteRouteChildren = {
+  AppSplitCategoriesRoute: AppSplitCategoriesRoute,
   AppSplitIndexRoute: AppSplitIndexRoute,
   AppSplitExpensesNewRoute: AppSplitExpensesNewRoute,
 }

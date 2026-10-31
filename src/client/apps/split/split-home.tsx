@@ -22,6 +22,7 @@ export function SplitHome() {
       expenses={expenses}
       categories={categories.data}
       onAddExpense={() => void navigate({ to: "/split/expenses/new" })}
+      onManageCategories={() => void navigate({ to: "/split/categories" })}
     />
   )
 }

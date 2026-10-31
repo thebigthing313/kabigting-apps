@@ -1,6 +1,6 @@
 import { PencilIcon, PlusIcon } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
-import { NameDialog } from "@/apps/finances/name-dialog"
+import { NameDialog } from "@/components/name-dialog"
 import { Button } from "@/components/ui/button"
 import {
   Combobox,

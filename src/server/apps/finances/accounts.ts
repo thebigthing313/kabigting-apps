@@ -5,7 +5,7 @@ import type { AppEnv } from "#server/core/context.ts"
 import type { Db } from "#server/db/client.ts"
 import { ApiError } from "#server/core/errors.ts"
 import { validate } from "#server/core/validate.ts"
-import { isForeignKeyViolation, isUniqueViolation } from "#server/apps/finances/db-errors.ts"
+import { isForeignKeyViolation, isUniqueViolation } from "#server/db/errors.ts"
 import { financesAccounts } from "#server/db/schema/index.ts"
 import {
   accountQuery,
