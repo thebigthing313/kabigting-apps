@@ -16,6 +16,7 @@ import { Route as AppIndexRouteImport } from './routes/_app/index'
 import { Route as AppFinancesRouteRouteImport } from './routes/_app/finances/route'
 import { Route as AppNotesRouteRouteImport } from './routes/_app/notes/route'
 import { Route as AppSplitPrototypeRouteImport } from './routes/_app/split-prototype'
+import { Route as AppSplitSummariesPrototypeRouteImport } from './routes/_app/split-summaries-prototype'
 import { Route as AppAdminAccountsRouteImport } from './routes/_app/admin/accounts'
 import { Route as AppFinancesIndexRouteImport } from './routes/_app/finances/index'
 import { Route as AppFinancesSummaryRouteImport } from './routes/_app/finances/summary'
@@ -62,6 +63,12 @@ const AppSplitPrototypeRoute = AppSplitPrototypeRouteImport.update({
   path: '/split-prototype',
   getParentRoute: () => AppRoute,
 } as any)
+const AppSplitSummariesPrototypeRoute =
+  AppSplitSummariesPrototypeRouteImport.update({
+    id: '/split-summaries-prototype',
+    path: '/split-summaries-prototype',
+    getParentRoute: () => AppRoute,
+  } as any)
 const AppAdminAccountsRoute = AppAdminAccountsRouteImport.update({
   id: '/admin/accounts',
   path: '/admin/accounts',
@@ -130,6 +137,7 @@ export interface FileRoutesByFullPath {
   '/finances': typeof AppFinancesRouteRouteWithChildren
   '/notes': typeof AppNotesRouteRouteWithChildren
   '/split-prototype': typeof AppSplitPrototypeRoute
+  '/split-summaries-prototype': typeof AppSplitSummariesPrototypeRoute
   '/admin/accounts': typeof AppAdminAccountsRoute
   '/finances/summary': typeof AppFinancesSummaryRoute
   '/notes/$noteId': typeof AppNotesNoteIdRoute
@@ -146,6 +154,7 @@ export interface FileRoutesByTo {
   '/change-password': typeof ChangePasswordRoute
   '/sign-in': typeof SignInRoute
   '/split-prototype': typeof AppSplitPrototypeRoute
+  '/split-summaries-prototype': typeof AppSplitSummariesPrototypeRoute
   '/': typeof AppIndexRoute
   '/admin/accounts': typeof AppAdminAccountsRoute
   '/finances/summary': typeof AppFinancesSummaryRoute
@@ -167,6 +176,7 @@ export interface FileRoutesById {
   '/_app/finances': typeof AppFinancesRouteRouteWithChildren
   '/_app/notes': typeof AppNotesRouteRouteWithChildren
   '/_app/split-prototype': typeof AppSplitPrototypeRoute
+  '/_app/split-summaries-prototype': typeof AppSplitSummariesPrototypeRoute
   '/_app/': typeof AppIndexRoute
   '/_app/admin/accounts': typeof AppAdminAccountsRoute
   '/_app/finances/summary': typeof AppFinancesSummaryRoute
@@ -189,6 +199,7 @@ export interface FileRouteTypes {
     | '/finances'
     | '/notes'
     | '/split-prototype'
+    | '/split-summaries-prototype'
     | '/admin/accounts'
     | '/finances/summary'
     | '/notes/$noteId'
@@ -205,6 +216,7 @@ export interface FileRouteTypes {
     | '/change-password'
     | '/sign-in'
     | '/split-prototype'
+    | '/split-summaries-prototype'
     | '/'
     | '/admin/accounts'
     | '/finances/summary'
@@ -225,6 +237,7 @@ export interface FileRouteTypes {
     | '/_app/finances'
     | '/_app/notes'
     | '/_app/split-prototype'
+    | '/_app/split-summaries-prototype'
     | '/_app/'
     | '/_app/admin/accounts'
     | '/_app/finances/summary'
@@ -294,6 +307,13 @@ declare module '@tanstack/react-router' {
       path: '/split-prototype'
       fullPath: '/split-prototype'
       preLoaderRoute: typeof AppSplitPrototypeRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/split-summaries-prototype': {
+      id: '/_app/split-summaries-prototype'
+      path: '/split-summaries-prototype'
+      fullPath: '/split-summaries-prototype'
+      preLoaderRoute: typeof AppSplitSummariesPrototypeRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/admin/accounts': {
@@ -419,6 +439,7 @@ interface AppRouteChildren {
   AppFinancesRouteRoute: typeof AppFinancesRouteRouteWithChildren
   AppNotesRouteRoute: typeof AppNotesRouteRouteWithChildren
   AppSplitPrototypeRoute: typeof AppSplitPrototypeRoute
+  AppSplitSummariesPrototypeRoute: typeof AppSplitSummariesPrototypeRoute
   AppIndexRoute: typeof AppIndexRoute
   AppAdminAccountsRoute: typeof AppAdminAccountsRoute
 }
@@ -427,6 +448,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppFinancesRouteRoute: AppFinancesRouteRouteWithChildren,
   AppNotesRouteRoute: AppNotesRouteRouteWithChildren,
   AppSplitPrototypeRoute: AppSplitPrototypeRoute,
+  AppSplitSummariesPrototypeRoute: AppSplitSummariesPrototypeRoute,
   AppIndexRoute: AppIndexRoute,
   AppAdminAccountsRoute: AppAdminAccountsRoute,
 }

@@ -237,7 +237,7 @@ function seedExpense(
 
 const everyone = ["sam", "alex", "jordan"]
 
-const SEED: Entry[] = [
+const RECENT: Entry[] = [
   seedExpense(
     "Costco run",
     "2026-10-29",
@@ -307,6 +307,135 @@ const SEED: Entry[] = [
     "riley",
   ),
 ]
+
+// A year of made-up history before October, so the summaries have periods to compare. Riley
+// lived in until the end of September and is a Former member after that.
+function history(): Entry[] {
+  const out: Entry[] = []
+  const four = ["sam", "alex", "jordan", "riley"]
+  const months = ["2025-11", "2025-12", "2026-01", "2026-02", "2026-03", "2026-04", "2026-05"]
+  months.push("2026-06", "2026-07", "2026-08", "2026-09")
+  months.forEach((month, i) => {
+    const payer = four[i % 4]!
+    const wobble = (n: number) => ((i * 37 + n * 53) % 41) * 100
+    out.push(
+      seedExpense(
+        "Groceries",
+        `${month}-04`,
+        "groceries",
+        9_000 + wobble(1),
+        emptySide("equal", [payer]),
+        emptySide("equal", four),
+        payer,
+      ),
+      seedExpense(
+        "Groceries",
+        `${month}-18`,
+        "groceries",
+        7_500 + wobble(2),
+        emptySide("equal", ["sam"]),
+        emptySide("equal", four),
+        "sam",
+      ),
+      seedExpense(
+        "Internet",
+        `${month}-10`,
+        "utilities",
+        7_999,
+        emptySide("equal", ["alex"]),
+        emptySide("equal", four),
+        "alex",
+      ),
+      seedExpense(
+        "Electric bill",
+        `${month}-21`,
+        "utilities",
+        9_000 + wobble(3) * 2,
+        emptySide("equal", ["jordan"]),
+        emptySide("equal", four),
+        "jordan",
+      ),
+      seedExpense(
+        "Takeout",
+        `${month}-13`,
+        "dining",
+        3_000 + wobble(4),
+        emptySide("equal", [four[(i + 1) % 4]!]),
+        emptySide("equal", ["sam", "alex", "jordan"]),
+        "sam",
+      ),
+    )
+    if (i % 3 === 0)
+      out.push(
+        seedExpense(
+          "Cleaning supplies",
+          `${month}-08`,
+          "household",
+          2_400 + wobble(5),
+          emptySide("equal", ["riley"]),
+          emptySide("equal", four),
+          "riley",
+        ),
+      )
+    if (i % 4 === 1)
+      out.push(
+        seedExpense(
+          "Concert tickets",
+          `${month}-25`,
+          "entertainment",
+          18_000,
+          emptySide("equal", ["alex"]),
+          emptySide("equal", ["alex", "jordan"]),
+          "alex",
+        ),
+      )
+    if (i % 2 === 0)
+      out.push({
+        kind: "payment",
+        id: newId(),
+        date: `${month}-28`,
+        fromId: four[(i + 2) % 4]!,
+        toId: "sam",
+        amount: 5_000 + wobble(6),
+        note: "",
+        addedBy: "sam",
+        changedBy: "sam",
+      })
+  })
+  out.push(
+    seedExpense(
+      "Beach house",
+      "2026-07-02",
+      "travel",
+      96_000,
+      { mode: "exact", ticked: [], exact: { sam: 60_000, jordan: 36_000 }, percent: {} },
+      emptySide("equal", four),
+      "sam",
+    ),
+    seedExpense(
+      "Pharmacy",
+      "2026-03-15",
+      "health",
+      2_350,
+      emptySide("equal", ["jordan"]),
+      emptySide("equal", ["jordan"]),
+      "jordan",
+      "Only Jordan's, logged for the record",
+    ),
+    seedExpense(
+      "Birthday gift for Mom",
+      "2026-05-09",
+      "gifts",
+      7_500,
+      emptySide("equal", ["alex"]),
+      emptySide("equal", ["sam", "alex", "jordan"]),
+      "alex",
+    ),
+  )
+  return out
+}
+
+const SEED: Entry[] = [...RECENT, ...history()]
 
 export type Store = ReturnType<typeof useSplitStore>
 
