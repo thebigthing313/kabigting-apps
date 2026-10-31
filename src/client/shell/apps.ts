@@ -1,5 +1,6 @@
 import {
   ChartColumnIcon,
+  HandCoinsIcon,
   HouseIcon,
   NotebookPenIcon,
   RepeatIcon,
@@ -21,7 +22,7 @@ export type AppEntry = {
   title: string
   description: string
   /** The App's home; every page of the App lives under it. */
-  to: "/finances" | "/notes"
+  to: "/finances" | "/notes" | "/split"
   icon: LucideIcon
   /** The App's sections; empty when the App's home is its only top-level page. */
   sidebar: readonly SidebarItem[]
@@ -44,6 +45,12 @@ const CLIENT_APPS: Record<AppKey, Omit<AppEntry, "key" | "title">> = {
     description: "Jot down short notes",
     to: "/notes",
     icon: NotebookPenIcon,
+    sidebar: [],
+  },
+  split: {
+    description: "Share household expenses and settle up",
+    to: "/split",
+    icon: HandCoinsIcon,
     sidebar: [],
   },
 }

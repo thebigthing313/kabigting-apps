@@ -54,3 +54,11 @@ A Member's one overall standing: their Paid shares, less their Owed shares, plus
 sent, less the Payments they received. Positive means the others owe them; negative means they owe.
 There is no Balance between two particular Members.
 _Avoid_: Debt, net, who-owes-whom
+
+### Labels
+
+**Category**:
+A flat, shared label every Expense carries, Refunds included, with General preselected. Any Member
+can add, rename or archive one; an archived Category stays on its Expenses but isn't offered on new
+ones, and none is ever deleted. Payments have none. It is not a Finances Category.
+_Avoid_: Tag, type, group
