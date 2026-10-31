@@ -9,7 +9,7 @@ import { useEffect, useEffectEvent, useRef, useState } from "react"
 import { toast } from "sonner"
 import type { People } from "@/apps/split/words"
 import { Button } from "@/components/ui/button"
-import type { EntryOutcome } from "@/data/split"
+import { type EntryOutcome, useSplitAccessLost } from "@/data/split"
 import { formatInstantTime } from "@shared/dates"
 
 /** Which kind of entry a form adds or changes, as the viewer reads it. */
@@ -26,42 +26,61 @@ export type EntryNotice =
   | { kind: "offline" }
 
 /**
- * The saved entry an edit page opens: the live row, undefined once it is gone, and whether the
- * rows have loaded, so that one not loaded yet isn't taken for gone.
+ * The saved entry an edit page opens: its id, the live row (undefined once it is gone), and
+ * whether the rows have loaded, so that one not loaded yet isn't taken for gone.
  */
-export type OpenedEntry<Row extends Changed> = { row: Row | undefined; loaded: boolean }
+export type OpenedEntry<Row extends Changed> = { id: string; row: Row | undefined; loaded: boolean }
+
+/** Where a form's own save stands: none in flight, in flight, or done and the form closing. */
+type Phase = "open" | "saving" | "closing"
 
 /**
  * Runs an Expense or Payment form's saves and deletes, and watches the entry it changes. Give it
  * `opened` when changing a saved entry; leave it out when adding one.
  *
- * - `formKey` mounts the form: it changes on **Load their version**, so the draft starts again
- *   from the newer version.
+ * - `formKey` mounts the form: it changes with the entry, and on **Load their version**, so the
+ *   draft starts again from that version.
  * - `notice` is the newer-version or offline notice, or null.
  * - `save` sends a save and acts on its outcome; true when the form closes.
  * - `remove` leaves for Split's Home at once, then deletes in the background.
  * - `leave` goes back to Split's Home.
+ *
+ * Losing access to Split, found by a write or by a refetch, leaves for the Shell's Home.
  */
 export function useEntryForm<Row extends Changed>(kind: EntryKind, opened?: OpenedEntry<Row>) {
   const navigate = useNavigate()
-  // The version the draft started from: the first one loaded, until Load their version.
-  const [base, setBase] = useState<string | null>(null)
-  const [saving, setSaving] = useState(false)
+  const accessLost = useSplitAccessLost()
+  // The version the draft started from: the entry's first one loaded, until Load their version.
+  const [base, setBase] = useState<{ id: string; changedAt: string } | null>(null)
+  const [phase, setPhase] = useState<Phase>("open")
   const [offline, setOffline] = useState(false)
-  // Leaving tells the viewer once, whichever of a refetch and a save finds out first.
-  const left = useRef(false)
+  // Which entry the form has left, so leaving tells the viewer once, whichever of a refetch and a
+  // write finds out first.
+  const left = useRef<string | null>(null)
 
+  const id = opened?.id ?? "new"
   const row = opened?.row
-  if (base === null && row) setBase(row.changedAt)
+  // Another entry opened in the same page starts afresh.
+  if (base === null ? row !== undefined : base.id !== id) {
+    setBase(row ? { id, changedAt: row.changedAt } : null)
+    setOffline(false)
+    setPhase("open")
+  }
 
   function leave() {
     void navigate({ to: "/split" })
   }
 
+  /** Marks the form as left; false when it already was. */
+  function leaving(): boolean {
+    if (left.current === id) return false
+    left.current = id
+    return true
+  }
+
   /** Leaves because the entry was deleted elsewhere; nothing is recreated. */
   function leaveGone() {
-    if (left.current) return
-    left.current = true
+    if (!leaving()) return
     toast(`This ${kind} was deleted, so your changes weren't saved`)
     leave()
   }
@@ -73,22 +92,27 @@ export function useEntryForm<Row extends Changed>(kind: EntryKind, opened?: Open
   }
 
   function leaveWithoutAccess() {
-    if (left.current) return
-    left.current = true
-    toShellHome()
+    if (leaving()) toShellHome()
   }
 
   // A refetch found the entry gone while the form was open.
-  const goneOnRefetch = base !== null && opened?.loaded === true && row === undefined
+  const goneOnRefetch =
+    base !== null && base.id === id && opened?.loaded === true && row === undefined
   const onGone = useEffectEvent(leaveGone)
   useEffect(() => {
     if (goneOnRefetch) onGone()
   }, [goneOnRefetch])
 
+  // A refetch was refused: the viewer lost access to Split while the form was open.
+  const onAccessLost = useEffectEvent(leaveWithoutAccess)
+  useEffect(() => {
+    if (accessLost) onAccessLost()
+  }, [accessLost])
+
   /** Acts on how a write ended; true when the form closes. */
   function settle(outcome: EntryOutcome): boolean {
     if (outcome === "saved") {
-      left.current = true
+      left.current = id
       leave()
     } else if (outcome === "gone") {
       leaveGone()
@@ -104,15 +128,16 @@ export function useEntryForm<Row extends Changed>(kind: EntryKind, opened?: Open
 
   async function save(write: () => Promise<EntryOutcome>): Promise<boolean> {
     setOffline(false)
-    setSaving(true)
-    const outcome = await write()
-    setSaving(false)
-    return settle(outcome)
+    setPhase("saving")
+    const closes = settle(await write())
+    // Closing, the row shows this save until the form is gone: never someone else's.
+    setPhase(closes ? "closing" : "open")
+    return closes
   }
 
   function remove(write: () => Promise<EntryOutcome>) {
     // Its own delete is no news: the entry going doesn't count as deleted elsewhere.
-    left.current = true
+    left.current = id
     leave()
     // A delete that finds it already gone counts as deleted; any other failure is reported and
     // puts it back.
@@ -121,20 +146,28 @@ export function useEntryForm<Row extends Changed>(kind: EntryKind, opened?: Open
     })
   }
 
-  // While this form's own save is in flight, the row shows that save, not someone else's.
-  const newer = !saving && row !== undefined && base !== null && row.changedAt !== base
+  // While this form's own save is in flight or closing the form, the row shows that save.
+  const newer =
+    phase === "open" &&
+    row !== undefined &&
+    base !== null &&
+    base.id === id &&
+    row.changedAt !== base.changedAt
   const notice: EntryNotice | null = newer
     ? {
         kind: "newer",
         changedBy: row.changedBy,
         changedAt: row.changedAt,
-        onLoad: () => setBase(row.changedAt),
+        onLoad: () => {
+          setBase({ id, changedAt: row.changedAt })
+          setOffline(false)
+        },
       }
     : offline
       ? { kind: "offline" }
       : null
 
-  return { formKey: base ?? "new", notice, save, remove, leave }
+  return { formKey: `${id}:${base?.changedAt ?? "new"}`, notice, save, remove, leave }
 }
 
 /**
@@ -163,14 +196,16 @@ export function EntryNoticeLine({
       </div>
     )
   }
+  // The viewer's own change, saved from another device.
+  const yours = notice.changedBy === who.viewerId
   return (
     <div role="status" className="flex flex-col items-start gap-1 rounded-lg bg-muted p-3 text-sm">
       <span>
         {who.nameOf(notice.changedBy)} changed this at {formatInstantTime(notice.changedAt)}. Saving
-        will replace their change.
+        will replace {yours ? "that" : "their"} change.
       </span>
       <Button size="sm" variant="link" className="h-auto p-0" onClick={notice.onLoad}>
-        Load their version
+        Load {yours ? "that" : "their"} version
       </Button>
     </div>
   )

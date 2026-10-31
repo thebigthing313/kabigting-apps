@@ -85,12 +85,20 @@ type Form = {
   changeDraft: (screen: Screen) => Promise<void>
   /** Shows the draft as `changeDraft` left it. */
   draftShown: (screen: Screen) => Promise<void>
-  /** The change Ben saves elsewhere, and how the form shows it once loaded. */
-  theirs: () => void
+  /** Changes the open draft a second way, and what the server then stores. */
+  changeDraftAgain: (screen: Screen) => Promise<void>
+  againStored: Record<string, unknown>
+  /** The change `by` (Ben, unless given) saves elsewhere, and how the form shows it once loaded. */
+  theirs: (by?: string) => void
   theirsShown: (screen: Screen) => Promise<void>
   /** Fills a new one, up to its add button. */
   fillNew: (screen: Screen) => Promise<void>
+  /** Stores a second one, `SECOND_ID`, and how the form shows it. */
+  second: () => void
+  secondShown: (screen: Screen) => Promise<void>
 }
+
+const SECOND_ID = "0190a000-0000-7000-8000-000000000300"
 
 /** What the server holds. */
 let expenses: Expense[] = []
@@ -120,11 +128,17 @@ const forms: Form[] = [
     draftShown: async (screen) => {
       await expect.element(screen.getByText("Cy owes $90.00")).toBeVisible()
     },
-    theirs: () => {
+    changeDraftAgain: async (screen) => {
+      await screen.getByRole("button", { name: "Change What" }).click()
+      await screen.getByRole("textbox", { name: "Description" }).fill("Big shop")
+      await screen.getByRole("button", { name: "Done" }).click()
+    },
+    againStored: { description: "Big shop", owed: equalSide(["cy"]) },
+    theirs: (by = "ben") => {
       expenses = expenses.map((expense) => ({
         ...expense,
         description: "Weekly shop",
-        changedBy: "ben",
+        changedBy: by,
         changedAt: THEIR_CHANGE_AT,
       }))
     },
@@ -138,6 +152,13 @@ const forms: Form[] = [
       await screen.getByRole("button", { name: "Next" }).click()
       await screen.getByRole("button", { name: "Next" }).click()
       await screen.getByRole("button", { name: "Next" }).click()
+    },
+    second: () => {
+      expenses = [...expenses, { ...groceries, id: SECOND_ID, description: "Hardware" }]
+    },
+    secondShown: async (screen) => {
+      await expect.element(screen.getByText("Hardware")).toBeVisible()
+      await expect.element(screen.getByText("You, Ben and Cy owe $30.00 each")).toBeVisible()
     },
   },
   {
@@ -155,11 +176,15 @@ const forms: Form[] = [
         .element(screen.getByRole("status", { name: "Summary" }))
         .toHaveTextContent("Ben pays you $45.00")
     },
-    theirs: () => {
+    changeDraftAgain: async (screen) => {
+      await screen.getByRole("textbox", { name: "Note" }).fill("Late")
+    },
+    againStored: { amount: 4_500, note: "Late" },
+    theirs: (by = "ben") => {
       payments = payments.map((payment) => ({
         ...payment,
         amount: 2_500,
-        changedBy: "ben",
+        changedBy: by,
         changedAt: THEIR_CHANGE_AT,
       }))
     },
@@ -170,6 +195,14 @@ const forms: Form[] = [
     },
     fillNew: async (screen) => {
       await screen.getByRole("textbox", { name: "Amount" }).fill("20")
+    },
+    second: () => {
+      payments = [...payments, { ...settling, id: SECOND_ID, amount: 1_000 }]
+    },
+    secondShown: async (screen) => {
+      await expect
+        .element(screen.getByRole("status", { name: "Summary" }))
+        .toHaveTextContent("Ben pays you $10.00")
     },
   },
 ]
@@ -244,6 +277,9 @@ function storePayment(method: string, id: string, body: unknown): Response {
 }
 
 function serve(path: string, method: string, body: unknown): Response {
+  if (method !== "GET") writes.push({ method, path })
+  // Losing App access refuses every Split route, reads included.
+  if (noAccess) return failure(403, "forbidden_app")
   if (method === "GET") {
     if (path === "/api/split/members") return Response.json({ rows: members })
     if (path === "/api/split/categories") return Response.json({ rows: categories })
@@ -251,8 +287,6 @@ function serve(path: string, method: string, body: unknown): Response {
     if (path === "/api/split/payments") return Response.json({ rows: payments })
     return failure(404, "not_found")
   }
-  writes.push({ method, path })
-  if (noAccess) return failure(403, "forbidden_app")
   const [, , , collection, id] = path.split("/")
   if (collection === "expenses") {
     return storeExpense(method, id ?? createExpense.parse(body).id, body)
@@ -483,10 +517,12 @@ describe.each(forms)("the $kind form", (form) => {
     expect(writes).toEqual([])
     await expect.element(screen.getByText("You appear to be offline. Not saved.")).toBeVisible()
 
+    // Try again sends the draft as it stands now, changed since the failed save.
+    await form.changeDraftAgain(screen)
     await screen.getByRole("button", { name: "Try again" }).click()
     await vi.waitFor(() => expect(router.state.location.pathname).toBe("/split"))
     expect(writes).toHaveLength(1)
-    expect(rows()[0]).toMatchObject({ changedBy: "ana", changedAt: SAVED_AT })
+    expect(rows()[0]).toMatchObject({ ...form.againStored, changedBy: "ana", changedAt: SAVED_AT })
   })
 
   test("a retried save that had already landed (409 on its own id) counts as saved", async () => {
@@ -507,4 +543,125 @@ describe.each(forms)("the $kind form", (form) => {
     // What the first try stored shows on Split's Home.
     await expect.element(screen.getByRole("button", { name: form.newCard })).toBeVisible()
   })
+  test("a newer version saved by the viewer elsewhere says it was theirs", async () => {
+    const { screen } = await openEdit()
+    await form.changeDraft(screen)
+    form.theirs("ana")
+    await refetch(form)
+
+    await expect
+      .element(screen.getByText("You changed this at 3:42 PM. Saving will replace that change."))
+      .toBeVisible()
+    await screen.getByRole("button", { name: "Load that version" }).click()
+    await form.theirsShown(screen)
+  })
+
+  test("the notice never shows for the form's own save", async () => {
+    const { screen, router } = await openEdit()
+    let shown = false
+    const watch = new MutationObserver(() => {
+      if (document.body.textContent?.includes("changed this at")) shown = true
+    })
+    watch.observe(document.body, { childList: true, subtree: true, characterData: true })
+    await form.changeDraft(screen)
+    await screen.getByRole("button", { name: form.saveLabel }).click()
+    await vi.waitFor(() => expect(router.state.location.pathname).toBe("/split"))
+    await expect.element(screen.getByRole("button", { name: form.card })).toBeVisible()
+    watch.disconnect()
+    expect(shown).toBe(false)
+  })
+
+  test("Load their version clears a failed save's offline notice", async () => {
+    const { screen } = await openEdit()
+    await form.changeDraft(screen)
+    offline = true
+    await screen.getByRole("button", { name: form.saveLabel }).click()
+    await expect.element(screen.getByText("You appear to be offline. Not saved.")).toBeVisible()
+
+    offline = false
+    form.theirs()
+    await refetch(form)
+    await screen.getByRole("button", { name: "Load their version" }).click()
+    await form.theirsShown(screen)
+    await expect
+      .element(screen.getByText("You appear to be offline. Not saved."))
+      .not.toBeInTheDocument()
+  })
+
+  test("opening another one in the same page starts its draft afresh", async () => {
+    form.second()
+    const { screen, router } = await openEdit()
+    await form.changeDraft(screen)
+    await router.navigate({ to: editPath.replace(/[^/]+$/, SECOND_ID) })
+
+    await form.secondShown(screen)
+    await expect.element(screen.getByText(/changed this at/)).not.toBeInTheDocument()
+  })
+
+  test("losing access found by a refetch shows it and goes to the Shell's Home", async () => {
+    const { screen, router } = await openEdit()
+    await form.changeDraft(screen)
+    noAccess = true
+    await refetch(form)
+
+    await expect.element(screen.getByText("You no longer have access to Split")).toBeVisible()
+    await vi.waitFor(() => expect(router.state.location.pathname).toBe("/"))
+    expect(writes).toEqual([])
+  })
+
+  test("losing access found by a delete shows it and goes to the Shell's Home", async () => {
+    const { screen, router } = await openEdit()
+    noAccess = true
+    await screen.getByRole("button", { name: `Delete ${form.kind}` }).click()
+    await screen.getByRole("button", { name: "Tap again to delete for good" }).click()
+
+    await expect.element(screen.getByText("You no longer have access to Split")).toBeVisible()
+    await vi.waitFor(() => expect(router.state.location.pathname).toBe("/"))
+    await expect.element(screen.getByText("Deleting failed")).not.toBeInTheDocument()
+  })
+
+  test("adding offline stays, with everything kept, until Try again", async () => {
+    const { screen, router } = await open(newPath)
+    await form.fillNew(screen)
+    offline = true
+    await screen.getByRole("button", { name: form.addLabel }).click()
+    await expect.element(screen.getByText("You appear to be offline. Not saved.")).toBeVisible()
+    expect(writes).toEqual([])
+    expect(rows()).toHaveLength(1)
+
+    offline = false
+    await screen.getByRole("button", { name: "Try again" }).click()
+    await vi.waitFor(() => expect(router.state.location.pathname).toBe("/split"))
+    expect(writes.map((write) => write.method)).toEqual(["POST"])
+    await expect.element(screen.getByRole("button", { name: form.newCard })).toBeVisible()
+  })
+})
+
+test("the Expense flow's steps work offline, and keep what was entered", async () => {
+  const { screen } = await open("/split/expenses/new")
+  await expect.element(screen.getByRole("heading", { name: "New Expense" })).toBeVisible()
+  offline = true
+  await screen.getByRole("textbox", { name: "Total" }).fill("12")
+  await screen.getByRole("textbox", { name: "Description" }).fill("Lunch")
+  await screen.getByRole("button", { name: "Next" }).click()
+  await screen.getByRole("radio", { name: "Ben paid it all" }).click()
+  await screen.getByRole("button", { name: "Next" }).click()
+  await screen.getByRole("radio", { name: "Only Cy" }).click()
+  await screen.getByRole("button", { name: "Next" }).click()
+  await expect.element(screen.getByText("Ben paid $12.00")).toBeVisible()
+  await expect.element(screen.getByText("Cy owes $12.00")).toBeVisible()
+
+  // Back to the first step and on again, all offline: nothing is lost.
+  await screen
+    .getByRole("navigation", { name: "Steps" })
+    .getByRole("button", { name: "What" })
+    .click()
+  await expect.element(screen.getByRole("textbox", { name: "Description" })).toHaveValue("Lunch")
+  await screen
+    .getByRole("navigation", { name: "Steps" })
+    .getByRole("button", { name: "Review" })
+    .click()
+  await expect.element(screen.getByText("Lunch")).toBeVisible()
+  await expect.element(screen.getByText("Cy owes $12.00")).toBeVisible()
+  expect(writes).toEqual([])
 })

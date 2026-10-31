@@ -17,7 +17,7 @@ export function EditExpensePage({ expenseId }: { expenseId: string }) {
   const members = useMembers()
   const categories = useCategories()
   const expense = expenses.find((each) => each.id === expenseId)
-  const entry = useEntryForm("Expense", { row: expense, loaded: !isLoading })
+  const entry = useEntryForm("Expense", { id: expenseId, row: expense, loaded: !isLoading })
   if (isLoading || !members.data || !categories.data) {
     return <Skeleton className="mx-auto h-64 w-full max-w-md" />
   }

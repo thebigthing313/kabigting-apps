@@ -18,7 +18,7 @@ export function EditPaymentPage({ paymentId }: { paymentId: string }) {
   const { data: payments, isLoading: paymentsLoading } = usePayments()
   const members = useMembers()
   const payment = payments.find((each) => each.id === paymentId)
-  const entry = useEntryForm("Payment", { row: payment, loaded: !paymentsLoading })
+  const entry = useEntryForm("Payment", { id: paymentId, row: payment, loaded: !paymentsLoading })
   if (isLoading || paymentsLoading || !members.data) {
     return <Skeleton className="mx-auto h-64 w-full max-w-md" />
   }

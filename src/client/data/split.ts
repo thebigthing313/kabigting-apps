@@ -3,6 +3,7 @@
 // follow the Shell's focus and reconnect defaults.
 import { lower, useLiveQuery } from "@tanstack/react-db"
 import { useQuery } from "@tanstack/react-query"
+import { useSyncExternalStore } from "react"
 import { toast } from "sonner"
 import { api } from "@/data/api"
 import {
@@ -13,7 +14,8 @@ import {
   type WriteOptions,
 } from "@/data/collection-factory"
 import { isUnreached, readJson } from "@/data/error-handler"
-import { type Settling, settled } from "@/data/settled"
+import { queryClient } from "@/data/query-client"
+import { type Settling, settled, writeFailure } from "@/data/settled"
 import { nowInstant } from "@shared/dates"
 import { newId } from "@shared/ids"
 import {
@@ -166,18 +168,29 @@ async function entryOutcome(
   transaction: Settling,
   onTaken: () => Promise<unknown> = () => Promise.resolve(),
 ): Promise<EntryOutcome> {
-  try {
-    await transaction.when("settled")
+  const failed = await writeFailure(transaction)
+  if (!failed) return "saved"
+  const { error } = failed
+  if (isTaken(error)) {
+    await onTaken().catch(() => undefined)
     return "saved"
-  } catch (error) {
-    if (isTaken(error)) {
-      await onTaken().catch(() => undefined)
-      return "saved"
-    }
-    if (isNoAccess(error)) return "no-access"
-    if (isNotFound(error)) return "gone"
-    return isUnreached(error) ? "unreached" : "refused"
   }
+  if (isNoAccess(error)) return "no-access"
+  if (isNotFound(error)) return "gone"
+  return isUnreached(error) ? "unreached" : "refused"
+}
+
+/**
+ * True while a load of Split's data was last refused because the viewer no longer has access to
+ * Split (403 `forbidden_app`), as when a refetch finds access revoked. Such a refusal is never
+ * retried, so it shows at once.
+ */
+export function useSplitAccessLost(): boolean {
+  const cache = queryClient.getQueryCache()
+  return useSyncExternalStore(
+    (onChange) => cache.subscribe(onChange),
+    () => cache.findAll({ queryKey: ["split"] }).some((query) => isNoAccess(query.state.error)),
+  )
 }
 
 /**
