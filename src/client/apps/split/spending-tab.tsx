@@ -51,11 +51,7 @@ export function SpendingTab({ expenses, categoryName, who }: SpendingTabProps) {
 
   return (
     <div className="flex flex-col gap-3">
-      <div
-        role="radiogroup"
-        aria-label="Period"
-        className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1"
-      >
+      <div role="radiogroup" aria-label="Period" className="flex flex-wrap gap-1.5">
         {SPENDING_PERIODS.map((each) => (
           <button
             key={each}
@@ -64,7 +60,7 @@ export function SpendingTab({ expenses, categoryName, who }: SpendingTabProps) {
             aria-checked={period === each}
             onClick={() => setPeriod(each)}
             className={cn(
-              "shrink-0 rounded-full border px-3 py-1 text-sm",
+              "rounded-full border px-3 py-1 text-sm",
               period === each && "border-primary bg-primary text-primary-foreground",
             )}
           >

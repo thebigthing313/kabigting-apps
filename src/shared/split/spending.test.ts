@@ -1,4 +1,5 @@
 import { describe, expect, test } from "vitest"
+import { householdBalances } from "./rules.ts"
 import { periodRange, spending, type SpendingExpense } from "./spending.ts"
 
 // Made-up Members and Categories.
@@ -123,6 +124,22 @@ describe("spending: My share", () => {
       { memberId: "ana" },
     )
     expect(result.total).toBe(2_000)
+  })
+})
+
+describe("spending: Payments", () => {
+  test("a Payment moves Balances but is never spending", () => {
+    const expenses = [{ ...expense({ id: "a", total: 9_000 }), paidShares: { ana: 9_000 } }]
+    // Ben settles up with Ana.
+    const payments = [{ date: "2026-10-15", fromId: "ben", toId: "ana", amount: 3_000 }]
+    expect(householdBalances(expenses, payments, ["ana", "ben", "cy"])).toEqual({
+      ana: 3_000,
+      ben: 0,
+      cy: -3_000,
+    })
+    // Spending reads only Expenses: with the Payment recorded it is what the Expense alone makes.
+    expect(spending(expenses, ALL_TIME, "household").total).toBe(9_000)
+    expect(spending(expenses, ALL_TIME, { memberId: "ben" }).total).toBe(3_000)
   })
 })
 

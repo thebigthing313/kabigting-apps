@@ -110,3 +110,9 @@ export function authorshipWords(entry: Authorship, who: People): string {
   const by = who.nameOf(entry.changedBy, "within")
   return `${added} · changed by ${by} on ${formatInstantMonthDay(entry.changedAt)}`
 }
+
+/** A Payment in plain words: "Ana pays Ben $40.00", "You pay Ben $40.00", "Ben pays you $40.00". */
+export function paymentWords(fromId: string, toId: string, amount: number, who: People): string {
+  const verb = fromId === who.viewerId ? "pay" : "pays"
+  return `${who.nameOf(fromId)} ${verb} ${who.nameOf(toId, "within")} ${format(amount)}`
+}

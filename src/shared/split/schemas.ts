@@ -106,3 +106,40 @@ export type ExpenseRow = z.infer<typeof expenseRow>
 export type Member = z.infer<typeof member>
 export type CategoryRow = z.infer<typeof categoryRow>
 export type UpdateCategory = z.infer<typeof updateCategory>
+
+/**
+ * A new Payment under an id the client made: money one Member hands another, to settle up or as a
+ * loan. The caller is who added it. The Amount is checked with the Split rules, which name the
+ * field that blocks the save.
+ */
+export const createPayment = z.strictObject({
+  id,
+  date: isoDate,
+  fromId: memberId,
+  toId: memberId,
+  /** Cents, always positive: what `fromId` handed `toId`. */
+  amount: cents,
+  note,
+})
+
+/** A saved Payment as it now stands, replacing all of it. The caller is who changed it last. */
+export const updatePayment = createPayment.omit({ id: true })
+
+export const paymentRow = z.object({
+  id,
+  date: isoDate,
+  fromId: memberId,
+  toId: memberId,
+  amount: cents,
+  note: z.string(),
+  addedBy: memberId,
+  addedAt: instant,
+  changedBy: memberId,
+  changedAt: instant,
+})
+
+export const paymentRows = z.object({ rows: z.array(paymentRow) })
+
+export type CreatePayment = z.infer<typeof createPayment>
+export type UpdatePayment = z.infer<typeof updatePayment>
+export type PaymentRow = z.infer<typeof paymentRow>

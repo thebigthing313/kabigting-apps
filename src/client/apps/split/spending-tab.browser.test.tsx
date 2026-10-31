@@ -4,7 +4,7 @@ import { describe, expect, test } from "vitest"
 import { render } from "vitest-browser-react"
 import type { HomeTab } from "@/apps/split/home-tab"
 import { HomeView } from "@/apps/split/home-view"
-import type { Category, Expense, Member } from "@/data/split"
+import type { Category, Expense, Member, Payment } from "@/data/split"
 import { formatDisplayDate, monthDates, shiftMonth, thisMonth } from "@shared/dates"
 import { equalSide } from "@shared/split/rules"
 
@@ -95,6 +95,20 @@ const expenses: Expense[] = [
   }),
 ]
 
+// Payments in every period, which are never spending.
+const payments: Payment[] = [THIS_MONTH, LAST_MONTH, LONG_AGO].map((date, index) => ({
+  id: `0190a000-0000-7000-8000-00000000020${index}`,
+  date,
+  fromId: "ana",
+  toId: "ben",
+  amount: 77_700,
+  note: "Settling up",
+  addedBy: "ana",
+  addedAt: "2026-01-01T12:00:00.000Z",
+  changedBy: "ana",
+  changedAt: "2026-01-01T12:00:00.000Z",
+}))
+
 /** Home with its tab kept in state, as the route keeps it in the address. */
 function Harness() {
   const [tab, setTab] = useState<HomeTab>("activity")
@@ -103,11 +117,14 @@ function Harness() {
       viewerId="ana"
       members={members}
       expenses={expenses}
+      payments={payments}
       categories={categories}
       tab={tab}
       onTabChange={setTab}
       onAddExpense={() => {}}
+      onSettleUp={() => {}}
       onOpenExpense={() => {}}
+      onOpenPayment={() => {}}
       onManageCategories={() => {}}
     />
   )
@@ -143,7 +160,7 @@ describe("the Spending tab", () => {
     await expect
       .element(screen.getByRole("radio", { name: "Household" }))
       .toHaveAttribute("aria-checked", "true")
-    // The Refund nets against Groceries: $90.00 less $30.00.
+    // The Refund nets against Groceries: $90.00 less $30.00. The Payments count for nothing.
     await expect
       .element(screen.getByRole("group", { name: "Spending total" }))
       .toHaveTextContent("$480.00Household spending · last 3 months")
@@ -226,20 +243,25 @@ describe("the Spending tab", () => {
     await screen.getByRole("button", { name: /^Dining out/ }).click()
     await expect
       .element(screen.getByRole("region", { name: "Dining out Expenses" }))
-      .toHaveTextContent(`Pizza night${formatDisplayDate(THIS_MONTH)} · Doesn't involve you$120.00`)
+      .toHaveTextContent(
+        `Dining outPizza night${formatDisplayDate(THIS_MONTH)} · Doesn't involve you$120.00`,
+      )
   })
 
-  test("a period with nothing in it says so", async () => {
+  test("a period with only Payments in it has no spending", async () => {
     const screen = await render(
       <HomeView
         viewerId="ana"
         members={members}
         expenses={[]}
+        payments={payments}
         categories={categories}
         tab="spending"
         onTabChange={() => {}}
         onAddExpense={() => {}}
+        onSettleUp={() => {}}
         onOpenExpense={() => {}}
+        onOpenPayment={() => {}}
         onManageCategories={() => {}}
       />,
     )
