@@ -257,6 +257,46 @@ describe("an Account that lost App access", () => {
     })
     expect(await listed(expense.id)).toEqual(expense)
   })
+
+  test("a hidden tick on an Exact or Percent side never brings them in later", async () => {
+    const eve = await account({ apps: ["split"] })
+    const outsider = await account({ apps: ["notes"] })
+    // Ticks kept from before each side left Equally: they name nobody, so nobody is on it.
+    const paid = {
+      mode: "exact",
+      ticked: [ana.id, eve.id, outsider.id],
+      exact: { [ana.id]: 9_000 },
+      percent: {},
+    }
+    const owed = {
+      mode: "percent",
+      ticked: [eve.id, outsider.id],
+      exact: {},
+      percent: { [ana.id]: "50", [ben.id]: "50" },
+    }
+    const expense = await created({ paid, owed })
+    expect(expense).toMatchObject({
+      paidShares: { [ana.id]: 9_000 },
+      owedShares: { [ana.id]: 4_500, [ben.id]: 4_500 },
+    })
+    await setApps(eve, [])
+
+    // Switching back to Equally would tick them: refused on both sides, and nothing changes.
+    const response = await put(
+      expense.id,
+      fields({ paid: { ...paid, mode: "equal" }, owed: { ...owed, mode: "equal" } }),
+    )
+    expect(response.status).toBe(400)
+    expect(await response.json()).toMatchObject({
+      error: {
+        details: [
+          { path: "paid", message: "Only Members can be on an Expense" },
+          { path: "owed", message: "Only Members can be on an Expense" },
+        ],
+      },
+    })
+    expect(await listed(expense.id)).toEqual(expense)
+  })
 })
 
 describe("delete", () => {

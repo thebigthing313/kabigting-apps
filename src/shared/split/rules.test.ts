@@ -54,9 +54,11 @@ describe("resolveSide: Equal", () => {
     })
   })
 
-  test("a share that rounds to nothing is left out", () => {
-    expect(resolveSide(2, equalSide(ORDER), ROSTER)).toMatchObject({
+  test("a share that rounds to nothing is left out, and isn't counted", () => {
+    expect(resolveSide(2, equalSide(ORDER), ROSTER)).toEqual({
+      ok: true,
       shares: { ana: 1, ben: 1 },
+      status: "2 ways",
     })
   })
 
@@ -413,6 +415,40 @@ describe("editExpenseRoster", () => {
   test("someone ticked whose share rounded to nothing is still on it", () => {
     const tiny = { ...saved, owed: equalSide(["ana", "dee"]), owedShares: { ana: 1 } }
     expect(editExpenseRoster(OLDEST_FIRST, ["ana"], tiny).allowed).toEqual(new Set(["ana", "dee"]))
+  })
+
+  test("an Exact side's hidden ticks put nobody on it", () => {
+    // Eve is ticked from before the side switched to Exact, which doesn't name her.
+    const exactSide = { ...exact({ ana: 1_000, ben: 0, cy: null }), ticked: ["ana", "eve"] }
+    const hidden = { ...saved, paid: exactSide, paidShares: { ana: 1_000 } }
+    expect(editExpenseRoster(OLDEST_FIRST, ["ana"], hidden).allowed).toEqual(
+      new Set(["ana", "dee", "ben", "cy"]),
+    )
+    const editing = editExpenseRoster(OLDEST_FIRST, ORDER, hidden)
+    expect(editing.allowed.has("eve")).toBe(false)
+    // Switching the side back to Equally can't bring her in.
+    expect(resolveSide(1_000, { ...exactSide, mode: "equal" }, editing)).toMatchObject({
+      ok: false,
+      problem: "Only Members can be on an Expense",
+    })
+  })
+
+  test("a Percent side's hidden ticks put nobody on it, nor does a zero or blank percent", () => {
+    const percentSide = {
+      ...percent({ ana: "100", ben: "0", dee: "" }),
+      ticked: ["ana", "eve"],
+    }
+    const hidden = { ...saved, owed: percentSide, owedShares: { ana: 1_000 } }
+    expect(editExpenseRoster(OLDEST_FIRST, [], hidden).allowed).toEqual(new Set(["ana"]))
+  })
+
+  test("a percent above zero whose share rounded to nothing is still on it", () => {
+    const tiny = {
+      ...saved,
+      owed: percent({ ana: "99.99", dee: "0.01" }),
+      owedShares: { ana: 1_000 },
+    }
+    expect(editExpenseRoster(OLDEST_FIRST, [], tiny).allowed).toEqual(new Set(["ana", "dee"]))
   })
 
   test("an Account it can't rank goes last", () => {

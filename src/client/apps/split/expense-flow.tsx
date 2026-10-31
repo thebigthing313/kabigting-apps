@@ -1,7 +1,13 @@
 import { cn } from "cn"
 import { ArrowLeftIcon, CheckIcon, PencilIcon, Trash2Icon } from "lucide-react"
 import { useState } from "react"
-import { authorshipWords, expenseSideWords, people, type People } from "@/apps/split/words"
+import {
+  authorshipWords,
+  expenseSideWords,
+  magnitudes,
+  people,
+  type People,
+} from "@/apps/split/words"
 import { AmountInput } from "@/components/amount-input"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -131,6 +137,8 @@ export function ExpenseFlow({
   const isRefund = (total ?? 0) < 0
   const expense: NewExpense = { description, date, categoryId, total: total ?? 0, note, paid, owed }
   const sides = { paid, owed }
+  // The side the current step asks about, if any.
+  const asking: SideKey | null = step === 1 ? "paid" : step === 2 ? "owed" : null
   const setSide = (key: SideKey, side: Side) => (key === "paid" ? setPaid(side) : setOwed(side))
   const resolution = resolveExpense(expense, roster)
   const problems = resolution.ok ? [] : resolution.problems
@@ -315,15 +323,15 @@ export function ExpenseFlow({
         </Question>
       )}
 
-      {(step === 1 || step === 2) && inEditor[step === 1 ? "paid" : "owed"] && (
+      {asking !== null && inEditor[asking] && (
         <SideEditor
-          label={step === 1 ? "Paid side" : "Owed side"}
+          label={asking === "paid" ? "Paid side" : "Owed side"}
           total={expense.total}
-          side={sides[step === 1 ? "paid" : "owed"]}
+          side={sides[asking]}
           roster={roster}
           rows={answers.map((member) => member.id)}
           who={who}
-          onChange={(side) => setSide(step === 1 ? "paid" : "owed", side)}
+          onChange={(side) => setSide(asking, side)}
         />
       )}
 
@@ -466,7 +474,8 @@ function ReviewLine({
 /**
  * One side's full editor: its Split mode, a row per Member, and a live tally that is green once the
  * side adds up to the total and amber until then. Switching to Exact $ starts from the cents the
- * side comes to now; each mode keeps what was typed for it.
+ * side comes to now when it adds up, replacing any amounts typed before; otherwise, and for the
+ * other modes, the inputs typed for that mode are kept.
  */
 function SideEditor({
   label,
@@ -492,11 +501,7 @@ function SideEditor({
   function setMode(mode: SplitMode) {
     if (mode === side.mode) return
     // Exact $ starts from the current cents, as amounts: a Refund's are typed without a minus.
-    const current = result.ok
-      ? Object.fromEntries(
-          Object.entries(result.shares).map(([id, cents]) => [id, Math.abs(cents)]),
-        )
-      : side.exact
+    const current = result.ok ? magnitudes(result.shares) : side.exact
     onChange({ ...side, mode, exact: mode === "exact" ? current : side.exact })
   }
 

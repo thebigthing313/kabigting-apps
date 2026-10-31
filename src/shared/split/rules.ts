@@ -41,15 +41,31 @@ export function newExpenseRoster(memberIds: readonly string[]): Roster {
 export type SavedSides = { paid: Side; owed: Side; paidShares: Shares; owedShares: Shares }
 
 /**
- * Everyone already on a saved Expense: holding a share, or ticked on a side even when their share
- * rounded to nothing.
+ * Who a side's Split mode names: those ticked for Equal, an amount or a percent above zero for
+ * Exact or Percent. The other modes' inputs are kept for switching back, but name nobody.
+ */
+function namedBy(side: Side): string[] {
+  if (side.mode === "equal") return side.ticked
+  if (side.mode === "exact") {
+    return Object.entries(side.exact)
+      .filter(([, cents]) => cents !== null && cents > 0)
+      .map(([member]) => member)
+  }
+  return Object.entries(side.percent)
+    .filter(([, text]) => (parsePercent(text) ?? 0) > 0)
+    .map(([member]) => member)
+}
+
+/**
+ * Everyone already on a saved Expense: holding a share, or named by a side's Split mode even when
+ * their share rounded to nothing. Inputs of a mode the side isn't in don't count.
  */
 export function accountsOnExpense(saved: SavedSides): Set<string> {
   return new Set([
     ...Object.keys(saved.paidShares),
     ...Object.keys(saved.owedShares),
-    ...saved.paid.ticked,
-    ...saved.owed.ticked,
+    ...namedBy(saved.paid),
+    ...namedBy(saved.owed),
   ])
 }
 
@@ -87,9 +103,15 @@ function nonzero(ids: readonly string[], cents: readonly number[]): Shares {
 
 const OUTSIDER = "Only Members can be on an Expense"
 
-/** "1 Member", "3 ways": how many share a side that balances. */
-function ways(count: number): string {
-  return count === 1 ? "1 Member" : `${count} ways`
+/** "1 Member", "3 ways": how many hold a share of a side that balances. */
+function balanced(shares: Shares): SideResolution {
+  const count = Object.keys(shares).length
+  return { ok: true, shares, status: count === 1 ? "1 Member" : `${count} ways` }
+}
+
+/** A side that doesn't add up yet: "$12.00 left to assign", "4.5% over". */
+function unbalanced(left: number, amount: (magnitude: number) => string): SideResolution {
+  return refused(`${amount(Math.abs(left))} ${left > 0 ? "left to assign" : "over"}`)
 }
 
 /**
@@ -105,14 +127,15 @@ export function resolveSide(total: number, side: Side, roster: Roster): SideReso
   if (ticked.size === 0) return refused("Tick at least one Member")
   if ([...ticked].some((member) => !roster.allowed.has(member))) return refused(OUTSIDER)
   const ids = roster.order.filter((member) => ticked.has(member))
-  const shares = nonzero(
-    ids,
-    allocate(
-      total,
-      ids.map(() => 1),
+  return balanced(
+    nonzero(
+      ids,
+      allocate(
+        total,
+        ids.map(() => 1),
+      ),
     ),
   )
-  return { ok: true, shares, status: ways(ids.length) }
 }
 
 /**
@@ -134,19 +157,15 @@ function exactShares(total: number, exact: Side["exact"], roster: Roster): SideR
   const sum = [...typed.values()].reduce((a, b) => a + b, 0)
   if (!Number.isSafeInteger(sum)) return refused("The shares are too large")
   const left = Math.abs(total) - sum
-  if (left !== 0) {
-    return refused(`${format(Math.abs(left))} ${left > 0 ? "left to assign" : "over"}`)
-  }
+  if (left !== 0) return unbalanced(left, format)
   const sign = total < 0 ? -1 : 1
   const ids = roster.order.filter((member) => typed.has(member))
-  return {
-    ok: true,
-    shares: nonzero(
+  return balanced(
+    nonzero(
       ids,
       ids.map((member) => sign * (typed.get(member) ?? 0)),
     ),
-    status: ways(ids.length),
-  }
+  )
 }
 
 // Up to three digits, then up to two decimals, then an optional "%".
@@ -180,21 +199,17 @@ function percentShares(total: number, percents: Side["percent"], roster: Roster)
   }
   if ([...points.keys()].some((member) => !roster.allowed.has(member))) return refused(OUTSIDER)
   const left = 10_000 - [...points.values()].reduce((a, b) => a + b, 0)
-  if (left !== 0) {
-    return refused(`${percentWords(Math.abs(left))} ${left > 0 ? "left to assign" : "over"}`)
-  }
+  if (left !== 0) return unbalanced(left, percentWords)
   const ids = roster.order.filter((member) => points.has(member))
-  return {
-    ok: true,
-    shares: nonzero(
+  return balanced(
+    nonzero(
       ids,
       allocate(
         total,
         ids.map((member) => points.get(member) ?? 0),
       ),
     ),
-    status: ways(ids.length),
-  }
+  )
 }
 
 /** What identifies an Expense and how it is split; the rest is stored as given. */

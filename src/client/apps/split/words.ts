@@ -89,10 +89,12 @@ export function expenseSideWords(
   who: People,
 ): string {
   if (total >= 0) return sideWords(shares, key === "paid" ? "paid" : "owe", who)
-  const positive = Object.fromEntries(
-    Object.entries(shares).map(([id, cents]) => [id, Math.abs(cents)]),
-  )
-  return sideWords(positive, key === "paid" ? "got back" : "share", who)
+  return sideWords(magnitudes(shares), key === "paid" ? "got back" : "share", who)
+}
+
+/** Shares as positive cents: a Refund's, for words and for amounts typed without a minus. */
+export function magnitudes(shares: Shares): Shares {
+  return Object.fromEntries(Object.entries(shares).map(([id, cents]) => [id, Math.abs(cents)]))
 }
 
 /** Who added an entry and when, and who changed it last and when. */
