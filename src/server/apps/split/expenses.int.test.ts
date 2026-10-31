@@ -185,10 +185,103 @@ describe("create", () => {
     })
   })
 
-  test("refuses Split modes other than Equal for now", async () => {
+  test("each side keeps its own Split mode, with the shares worked out by the server", async () => {
+    const paid = {
+      mode: "exact",
+      ticked: [ana.id],
+      exact: { [ana.id]: 6_000, [ben.id]: 3_001, [admin.id]: null },
+      percent: {},
+    } as const
+    const owed = {
+      mode: "percent",
+      ticked: [],
+      exact: {},
+      percent: { [admin.id]: "33.33", [ana.id]: "33.33", [ben.id]: "33.34" },
+    } as const
+    const expense = await created({ total: 9_001, paid, owed })
+    expect(expense).toMatchObject({
+      paid,
+      owed,
+      paidShares: { [ana.id]: 6_000, [ben.id]: 3_001 },
+      // Each percent of $90.01 comes to $30.00 and a fraction; Ben's 33.34% leaves the largest
+      // remainder, so Ben takes the leftover cent.
+      owedShares: { [admin.id]: 3_000, [ana.id]: 3_000, [ben.id]: 3_001 },
+    })
+    expect((await list(ben.headers)).find((row) => row.id === expense.id)).toEqual(expense)
+  })
+
+  test("a negative total stores a Refund, with negative shares", async () => {
+    const expense = await created({
+      total: -3_000,
+      owed: {
+        mode: "exact",
+        ticked: [],
+        // Amounts as typed: the shares take the Refund's sign.
+        exact: { [ana.id]: 1_000, [ben.id]: 2_000 },
+        percent: {},
+      },
+    })
+    expect(expense).toMatchObject({
+      total: -3_000,
+      // The inputs are kept as typed, so the form reopens on them.
+      owed: { mode: "exact", exact: { [ana.id]: 1_000, [ben.id]: 2_000 } },
+      paidShares: { [ana.id]: -3_000 },
+      owedShares: { [ana.id]: -1_000, [ben.id]: -2_000 },
+    })
+  })
+
+  test("refuses sides that don't add up to the total, naming the problem", async () => {
+    const id = newId()
     const response = await create(
-      body({ paid: { mode: "exact", ticked: [], exact: { [ana.id]: 9_000 }, percent: {} } }),
+      body({
+        id,
+        paid: { mode: "exact", ticked: [], exact: { [ana.id]: 8_000 }, percent: {} },
+        owed: {
+          mode: "percent",
+          ticked: [],
+          exact: {},
+          percent: { [ana.id]: "50", [ben.id]: "45.5" },
+        },
+      }),
     )
+    expect(response.status).toBe(400)
+    expect(await response.json()).toMatchObject({
+      error: {
+        code: "validation_failed",
+        details: [
+          { path: "paid", message: "$10.00 left to assign" },
+          { path: "owed", message: "4.5% left to assign" },
+        ],
+      },
+    })
+    expect((await list()).some((row) => row.id === id)).toBe(false)
+  })
+
+  test("refuses a negative exact amount, and a bad percent", async () => {
+    const response = await create(
+      body({
+        paid: {
+          mode: "exact",
+          ticked: [],
+          exact: { [ana.id]: 10_000, [ben.id]: -1_000 },
+          percent: {},
+        },
+        owed: { mode: "percent", ticked: [], exact: {}, percent: { [ana.id]: "100.001" } },
+      }),
+    )
+    expect(response.status).toBe(400)
+    expect(await response.json()).toMatchObject({
+      error: {
+        details: [
+          { path: "paid", message: "Enter each amount without a minus sign" },
+          { path: "owed", message: "Enter each percent with up to two decimals" },
+        ],
+      },
+    })
+  })
+
+  test("never trusts shares sent by the client", async () => {
+    const response = await create({ ...body(), paidShares: { [ben.id]: 9_000 } })
     expect(response.status).toBe(400)
   })
 

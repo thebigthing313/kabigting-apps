@@ -145,6 +145,50 @@ describe("update", () => {
     expect(await listed(expense.id)).toEqual(edited)
   })
 
+  test("turns an Equal Expense into an Exact and Percent Refund, worked out again", async () => {
+    const expense = await created()
+    const paid = {
+      mode: "exact",
+      ticked: [],
+      // Amounts as typed: the shares take the Refund's sign.
+      exact: { [ana.id]: 4_000, [ben.id]: 2_000 },
+      percent: {},
+    } as const
+    const owed = {
+      mode: "percent",
+      ticked: [],
+      exact: {},
+      percent: { [admin.id]: "33.33", [ana.id]: "33.33", [ben.id]: "33.34" },
+    } as const
+    const edited = await changed(expense.id, fields({ total: -6_000, paid, owed }))
+    expect(edited).toMatchObject({
+      total: -6_000,
+      paid,
+      owed,
+      paidShares: { [ana.id]: -4_000, [ben.id]: -2_000 },
+      // $19.998, $19.998 and $20.004: the two largest remainders, the Admin's and Ana's, take the
+      // leftover cents.
+      owedShares: { [admin.id]: -2_000, [ana.id]: -2_000, [ben.id]: -2_000 },
+    })
+    expect(await listed(expense.id)).toEqual(edited)
+  })
+
+  test("refuses a side that doesn't add up, naming it, and changes nothing", async () => {
+    const expense = await created()
+    const response = await put(
+      expense.id,
+      fields({ paid: { mode: "exact", ticked: [], exact: { [ana.id]: 8_000 }, percent: {} } }),
+    )
+    expect(response.status).toBe(400)
+    expect(await response.json()).toMatchObject({
+      error: {
+        code: "validation_failed",
+        details: [{ path: "paid", message: "$10.00 left to assign" }],
+      },
+    })
+    expect(await listed(expense.id)).toEqual(expense)
+  })
+
   test("names every field that blocks the save, and changes nothing", async () => {
     const expense = await created()
     const response = await put(expense.id, fields({ description: " ", paid: equalSide([]) }))
@@ -210,6 +254,46 @@ describe("an Account that lost App access", () => {
     expect(response.status).toBe(400)
     expect(await response.json()).toMatchObject({
       error: { details: [{ path: "paid", message: "Only Members can be on an Expense" }] },
+    })
+    expect(await listed(expense.id)).toEqual(expense)
+  })
+
+  test("a hidden tick on an Exact or Percent side never brings them in later", async () => {
+    const eve = await account({ apps: ["split"] })
+    const outsider = await account({ apps: ["notes"] })
+    // Ticks kept from before each side left Equally: they name nobody, so nobody is on it.
+    const paid = {
+      mode: "exact",
+      ticked: [ana.id, eve.id, outsider.id],
+      exact: { [ana.id]: 9_000 },
+      percent: {},
+    }
+    const owed = {
+      mode: "percent",
+      ticked: [eve.id, outsider.id],
+      exact: {},
+      percent: { [ana.id]: "50", [ben.id]: "50" },
+    }
+    const expense = await created({ paid, owed })
+    expect(expense).toMatchObject({
+      paidShares: { [ana.id]: 9_000 },
+      owedShares: { [ana.id]: 4_500, [ben.id]: 4_500 },
+    })
+    await setApps(eve, [])
+
+    // Switching back to Equally would tick them: refused on both sides, and nothing changes.
+    const response = await put(
+      expense.id,
+      fields({ paid: { ...paid, mode: "equal" }, owed: { ...owed, mode: "equal" } }),
+    )
+    expect(response.status).toBe(400)
+    expect(await response.json()).toMatchObject({
+      error: {
+        details: [
+          { path: "paid", message: "Only Members can be on an Expense" },
+          { path: "owed", message: "Only Members can be on an Expense" },
+        ],
+      },
     })
     expect(await listed(expense.id)).toEqual(expense)
   })

@@ -5,28 +5,27 @@ import { cents, id, instant, isoDate } from "../schemas/primitives.ts"
 /** An Account's id, as Better Auth makes it: an opaque string, not a UUID. */
 export const memberId = z.string().min(1).max(100)
 
-/**
- * How one side of an Expense is divided. Every mode is stored; only Equal is accepted so far, and
- * Exact and Percent join it with the full Split mode editor.
- */
+/** How one side of an Expense is divided: equally among those ticked, exact dollars, or percent. */
 export const SPLIT_MODES = ["equal", "exact", "percent"] as const
 export type SplitMode = (typeof SPLIT_MODES)[number]
-export const ACCEPTED_SPLIT_MODES = ["equal"] as const satisfies readonly SplitMode[]
 
 /**
  * One side of an Expense as entered: its Split mode and the inputs of every mode, so switching
  * modes keeps what was typed. Only the inputs of `mode` count.
  */
 export const side = z.strictObject({
-  mode: z.enum(ACCEPTED_SPLIT_MODES),
+  mode: z.enum(SPLIT_MODES),
   /** Equal: the Members ticked. */
   ticked: z
     .array(memberId)
     .max(100)
     .refine((ids) => new Set(ids).size === ids.length, "Tick each Member once"),
-  /** Exact: cents per Member, null while blank. */
+  /**
+   * Exact: cents per Member as typed, null while blank. Never negative, even on a Refund: the
+   * shares take the total's sign when resolved.
+   */
   exact: z.record(memberId, cents.nullable()),
-  /** Percent: as typed, up to two decimals. */
+  /** Percent: as typed, up to two decimals, adding up to exactly 100. */
   percent: z.record(memberId, z.string().max(10)),
 })
 

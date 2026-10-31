@@ -21,7 +21,7 @@ import { queryClient } from "@/data/query-client"
 import type { Expense } from "@/data/split"
 import { dismissToasts } from "@/test/toasts"
 import { editExpenseRoster, equalSide, resolveExpense } from "@shared/split/rules"
-import { updateExpense } from "@shared/split/schemas"
+import { updateExpense, type Side } from "@shared/split/schemas"
 
 // Made-up Members, oldest Account first; the viewer is Ana. Dee once was a Member.
 const me = { id: "ana", name: "Ana" }
@@ -98,13 +98,20 @@ describe("the flow, changing a saved Expense", () => {
       .element(screen.getByText("Added by Ben on Oct 3 · changed by you on Oct 5"))
       .toBeVisible()
 
-    // No one-tap answer matches, so none is ticked.
+    // No one-tap answer matches, so the side reopens in the full editor, as it was entered.
     await screen.getByRole("button", { name: "Change Owed" }).click()
     const owed = screen.getByRole("radiogroup", { name: "Who owes for it?" }).getByRole("radio")
-    await expect.element(owed.nth(0)).not.toBeChecked()
-    expect(owed.elements().every((answer) => answer.getAttribute("aria-checked") === "false")).toBe(
-      true,
-    )
+    await expect.element(owed.getByText("Split it differently")).toBeVisible()
+    expect(owed.elements().map((answer) => answer.getAttribute("aria-checked"))).toEqual([
+      "false",
+      "false",
+      "false",
+      "false",
+      "true",
+    ])
+    await expect.element(screen.getByRole("checkbox", { name: "You" })).not.toBeChecked()
+    await expect.element(screen.getByRole("checkbox", { name: "Ben" })).toBeChecked()
+    await expect.element(screen.getByRole("checkbox", { name: "Cy" })).toBeChecked()
     await screen.getByRole("button", { name: "Done" }).click()
 
     await screen.getByRole("button", { name: "Save changes" }).click()
@@ -118,6 +125,70 @@ describe("the flow, changing a saved Expense", () => {
       paid: equalSide(["dee", "ben"]),
       owed: equalSide(["cy", "ben"]),
     })
+  })
+
+  test("a saved Exact or Percent side reopens in the editor, a Refund's amounts without a minus", async () => {
+    const paid: Side = {
+      mode: "exact",
+      ticked: [],
+      exact: { ana: 1_000, ben: 2_000 },
+      percent: {},
+    }
+    const owed: Side = {
+      mode: "percent",
+      ticked: [],
+      exact: {},
+      percent: { ben: "50", ana: "25", cy: "25" },
+    }
+    const { screen, onSave } = await renderEdit(
+      saved({
+        description: "Returned a lamp",
+        total: -3_000,
+        paid,
+        owed,
+        paidShares: { ana: -1_000, ben: -2_000 },
+        owedShares: { ben: -1_500, ana: -750, cy: -750 },
+      }),
+    )
+    await expect.element(screen.getByText("-$30.00 (Refund)")).toBeVisible()
+    await expect.element(screen.getByText("You got back $10.00; Ben got back $20.00")).toBeVisible()
+    await expect
+      .element(screen.getByText("You and Cy share $7.50 each; Ben shares $15.00"))
+      .toBeVisible()
+
+    await screen.getByRole("button", { name: "Change Paid" }).click()
+    await expect
+      .element(screen.getByRole("radio", { name: "Several people got it back" }))
+      .toBeChecked()
+    await expect.element(screen.getByRole("radio", { name: "Exact $" })).toBeChecked()
+    const amountFor = (name: string) => screen.getByRole("textbox", { name: `Amount for ${name}` })
+    await expect.element(amountFor("you")).toHaveValue("$10.00")
+    await expect.element(amountFor("Ben")).toHaveValue("$20.00")
+    await expect.element(amountFor("Cy")).toHaveValue("")
+    const tally = screen.getByRole("status", { name: "Tally" })
+    await expect.element(tally).toHaveTextContent("2 ways")
+    await amountFor("you").fill("5")
+    await expect.element(tally).toHaveTextContent("$5.00 left to assign")
+    await expect.element(screen.getByRole("button", { name: "Done" })).toBeDisabled()
+    await amountFor("Cy").fill("5")
+    await expect.element(tally).toHaveTextContent("3 ways")
+    await screen.getByRole("button", { name: "Done" }).click()
+
+    await screen.getByRole("button", { name: "Change Owed" }).click()
+    await expect.element(screen.getByRole("radio", { name: "Split it differently" })).toBeChecked()
+    await expect.element(screen.getByRole("radio", { name: "Percent" })).toBeChecked()
+    await expect.element(screen.getByRole("textbox", { name: "Percent for Ben" })).toHaveValue("50")
+    await screen.getByRole("button", { name: "Done" }).click()
+
+    await screen.getByRole("button", { name: "Save changes" }).click()
+    await vi.waitFor(() => expect(onSave).toHaveBeenCalledOnce())
+    expect(onSave).toHaveBeenCalledWith(
+      expect.objectContaining({
+        total: -3_000,
+        paid: { ...paid, exact: { ana: 500, ben: 2_000, cy: 500 } },
+        owed,
+      }),
+    )
   })
 
   test("each step returns to Review, and Review's back arrow leaves", async () => {
