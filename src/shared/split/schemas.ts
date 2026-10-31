@@ -75,6 +75,11 @@ export const expenseRow = z.object({
   /** The Account that saved it last; who added it until someone changes it. */
   changedBy: memberId,
   changedAt: instant,
+  /**
+   * Written by the Splitwise import, which shows in place of who added it. The server always
+   * sends it; it is optional only so rows made on the client need not carry it.
+   */
+  imported: z.boolean().optional(),
 })
 
 export const expenseRows = z.object({ rows: z.array(expenseRow) })
@@ -144,6 +149,11 @@ export const paymentRow = z.object({
   addedAt: instant,
   changedBy: memberId,
   changedAt: instant,
+  /**
+   * Written by the Splitwise import, which shows in place of who added it. The server always
+   * sends it; it is optional only so rows made on the client need not carry it.
+   */
+  imported: z.boolean().optional(),
 })
 
 export const paymentRows = z.object({ rows: z.array(paymentRow) })

@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest"
 import {
   addDays,
   addMonthsClamped,
+  dateOfInstant,
   daysBetween,
   formatDisplayDate,
   formatMonth,
@@ -90,6 +91,23 @@ describe("monthOf", () => {
     const { start, end } = monthInstantRange("2026-11")
     expect(monthOf(start)).toBe("2026-11")
     expect(monthOf(end)).toBe("2026-12")
+  })
+})
+
+describe("dateOfInstant", () => {
+  test.each([
+    // Midnight UTC is still the evening before in New York, in winter and in summer.
+    ["2026-01-15T04:59:59Z", "2026-01-14"],
+    ["2026-01-15T05:00:00Z", "2026-01-15"],
+    ["2026-07-15T03:59:59Z", "2026-07-14"],
+    ["2026-07-15T04:00:00Z", "2026-07-15"],
+    // Across the spring and autumn DST changes.
+    ["2026-03-08T04:59:59Z", "2026-03-07"],
+    ["2026-03-09T03:59:59Z", "2026-03-08"],
+    ["2026-11-01T03:59:59Z", "2026-10-31"],
+    ["2026-11-02T04:59:59Z", "2026-11-01"],
+  ])("puts %s on household date %s", (instant, date) => {
+    expect(dateOfInstant(instant)).toBe(date)
   })
 })
 

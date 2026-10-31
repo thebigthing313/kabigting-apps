@@ -33,6 +33,11 @@ export function monthOf(instant: string): string {
   return format(new TZDate(Date.parse(instant), HOUSEHOLD_ZONE), "yyyy-MM")
 }
 
+/** The household calendar date (`YYYY-MM-DD`) an ISO-8601 instant falls on. */
+export function dateOfInstant(instant: string): string {
+  return format(new TZDate(Date.parse(instant), HOUSEHOLD_ZONE), "yyyy-MM-dd")
+}
+
 /** A moment given in milliseconds since the epoch, as an ISO-8601 UTC string. */
 export function instantAt(ms: number): string {
   return new Date(ms).toISOString()

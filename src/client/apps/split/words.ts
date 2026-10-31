@@ -100,15 +100,25 @@ export function magnitudes(shares: Shares): Shares {
   return Object.fromEntries(Object.entries(shares).map(([id, cents]) => [id, Math.abs(cents)]))
 }
 
-/** Who added an entry and when, and who changed it last and when. */
-export type Authorship = { addedBy: string; addedAt: string; changedBy: string; changedAt: string }
+/** Who added an entry and when, and who changed it last and when; whether the import wrote it. */
+export type Authorship = {
+  addedBy: string
+  addedAt: string
+  changedBy: string
+  changedAt: string
+  imported?: boolean | undefined
+}
 
 /**
  * Who added an entry and who changed it, by day in the household zone: "Added by Ana on Oct 3",
- * then " · changed by you on Oct 5" once it has been changed.
+ * or "Imported from Splitwise on Oct 3" for an imported one, then " · changed by you on Oct 5"
+ * once it has been changed.
  */
 export function authorshipWords(entry: Authorship, who: People): string {
-  const added = `Added by ${who.nameOf(entry.addedBy, "within")} on ${formatInstantMonthDay(entry.addedAt)}`
+  const addedOn = formatInstantMonthDay(entry.addedAt)
+  const added = entry.imported
+    ? `Imported from Splitwise on ${addedOn}`
+    : `Added by ${who.nameOf(entry.addedBy, "within")} on ${addedOn}`
   if (entry.changedAt === entry.addedAt) return added
   const by = who.nameOf(entry.changedBy, "within")
   return `${added} · changed by ${by} on ${formatInstantMonthDay(entry.changedAt)}`

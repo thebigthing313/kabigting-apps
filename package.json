@@ -37,6 +37,7 @@
     "admin:ban": "node --env-file-if-exists=.env scripts/admin.ts ban",
     "finances:import": "node --env-file-if-exists=.env scripts/finances-import/run.ts",
     "split:fetch": "node --env-file-if-exists=.env scripts/split-fetch/fetch.ts",
+    "split:import": "node --env-file-if-exists=.env scripts/split-import/run.ts",
     "test:component": "vitest run --project component --project browser",
     "icons:generate": "pwa-assets-generator",
     "test:e2e": "pnpm build && playwright test",
