@@ -44,6 +44,9 @@ export default defineConfig({
       {
         // Interaction tests in real browsers: Chromium and WebKit (iOS Safari's engine).
         extends: "./vite.config.ts",
+        // The browser API listens on Vitest's port 63315 with the dev server's strictPort, so a
+        // second run (another worktree) would refuse to start. Let it take the next free port.
+        server: { strictPort: false },
         test: {
           name: "browser",
           include: ["src/**/*.browser.test.tsx"],
