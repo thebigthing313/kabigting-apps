@@ -24,8 +24,12 @@ import { equalSide, paymentProblems } from "@shared/split/rules"
 import { createPayment, updatePayment } from "@shared/split/schemas"
 
 // Made-up Members, oldest Account first; the viewer is Ana.
-const me = { id: "ana", name: "Ana" }
-const members = [{ id: "ben", name: "Ben" }, me, { id: "cy", name: "Cy" }]
+const me = { id: "ana", name: "Ana", former: false }
+const members = [
+  { id: "ben", name: "Ben", former: false },
+  me,
+  { id: "cy", name: "Cy", former: false },
+]
 const memberIds = new Set(members.map((member) => member.id))
 const GENERAL = "0190a000-0000-7000-8000-000000000002"
 const categories = [{ id: GENERAL, name: "General", archived: false }]

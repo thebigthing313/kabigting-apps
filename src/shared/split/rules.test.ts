@@ -1,11 +1,13 @@
 import fc from "fast-check"
 import { describe, expect, test } from "vitest"
 import {
+  accountsOnSide,
   balances,
   effect,
   editExpenseRoster,
   effectOn,
   equalSide,
+  memberIdsOf,
   newExpenseRoster,
   parsePercent,
   resolveExpense,
@@ -451,6 +453,25 @@ describe("editExpenseRoster", () => {
     expect(editExpenseRoster(OLDEST_FIRST, [], tiny).allowed).toEqual(new Set(["ana", "dee"]))
   })
 
+  test("a Former member's leftover cents follow the Members list's order, as the server's do", () => {
+    // The Members list ranks Members and Former members together, oldest Account first.
+    const people = [
+      { id: "ana", former: false },
+      { id: "dee", former: true },
+      { id: "ben", former: false },
+      { id: "cy", former: false },
+    ]
+    const listed = editExpenseRoster(
+      people.map((person) => person.id),
+      memberIdsOf(people),
+      saved,
+    )
+    expect(listed.order).toEqual(["ana", "dee", "ben", "cy"])
+    expect(resolveSide(1_001, equalSide(["ben", "dee"]), listed)).toMatchObject({
+      shares: { dee: 501, ben: 500 },
+    })
+  })
+
   test("an Account it can't rank goes last", () => {
     expect(editExpenseRoster(["ana"], ["ana", "ben"], saved).order).toEqual([
       "ana",
@@ -458,6 +479,30 @@ describe("editExpenseRoster", () => {
       "dee",
       "cy",
     ])
+  })
+})
+
+describe("Former members", () => {
+  const people = [
+    { id: "dee", former: true },
+    { id: "ana", former: false },
+    { id: "ben", former: false },
+  ]
+
+  test("are never on a new Expense's Roster", () => {
+    const roster = newExpenseRoster(memberIdsOf(people))
+    expect(roster.order).toEqual(["ana", "ben"])
+    expect(resolveSide(1_000, equalSide(["ana", "dee"]), roster)).toMatchObject({
+      ok: false,
+      problem: "Only Members can be on an Expense",
+    })
+  })
+
+  test("are on a side only when its shares or its Split mode name them", () => {
+    expect(accountsOnSide(equalSide(["ana", "dee"]), { ana: 1 })).toEqual(new Set(["ana", "dee"]))
+    const exactSide = { ...exact({ ana: 1_000, dee: 0 }), ticked: ["dee"] }
+    expect(accountsOnSide(exactSide, { ana: 1_000 })).toEqual(new Set(["ana"]))
+    expect(accountsOnSide(percent({ dee: "100" }), {})).toEqual(new Set(["dee"]))
   })
 })
 

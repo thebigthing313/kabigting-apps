@@ -14,7 +14,7 @@ export type People = {
   nameOf: (id: string, place?: Place) => string
 }
 
-/** Builds `People` from the Members, oldest Account first. */
+/** Builds `People` from the Members and Former members, oldest Account first. */
 export function people(viewerId: string, members: readonly { id: string; name: string }[]): People {
   const names = new Map(members.map((member) => [member.id, member.name]))
   return {

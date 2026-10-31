@@ -79,8 +79,12 @@ export const expenseRow = z.object({
 
 export const expenseRows = z.object({ rows: z.array(expenseRow) })
 
-/** A Member as Split shows them; `members` lists them oldest Account first. */
-export const member = z.object({ id: memberId, name: z.string() })
+/**
+ * Someone Split shows, by display name: a Member, or a Former member (`former`), an Account in
+ * Split's data that has lost App access or become a Removed Account. `members` lists both, oldest
+ * Account first: the order leftover cents are handed out in.
+ */
+export const member = z.object({ id: memberId, name: z.string(), former: z.boolean() })
 export const members = z.object({ rows: z.array(member) })
 
 export const categoryRow = z.object({ id, name: z.string(), archived: z.boolean() })

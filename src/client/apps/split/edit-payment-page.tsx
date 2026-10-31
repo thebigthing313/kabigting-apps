@@ -33,17 +33,20 @@ export function EditPaymentPage({ paymentId }: { paymentId: string }) {
       </div>
     )
   }
-  const memberIds = members.data.map((member) => member.id)
   return (
     <PaymentForm
       key={payment.id}
       viewerId={session.user.id}
       members={members.data}
-      balances={householdBalances(expenses, payments, memberIds)}
+      balances={householdBalances(
+        expenses,
+        payments,
+        members.data.map((member) => member.id),
+      )}
       today={today()}
       onCancel={home}
       onSave={async (changed) => {
-        const stored = await changePayment(payment, changed, session.user.id, memberIds)
+        const stored = await changePayment(payment, changed, session.user.id, members.data)
         if (stored) home()
         return stored
       }}

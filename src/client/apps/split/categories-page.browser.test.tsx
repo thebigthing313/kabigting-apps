@@ -23,8 +23,8 @@ import { equalSide } from "@shared/split/rules"
 import { createCategory, updateCategory } from "@shared/split/schemas"
 
 // Made-up Members, oldest Account first; the viewer is Ana.
-const me = { id: "ana", name: "Ana" }
-const members = [{ id: "ben", name: "Ben" }, me]
+const me = { id: "ana", name: "Ana", former: false }
+const members = [{ id: "ben", name: "Ben", former: false }, me]
 const GROCERIES = "0190a000-0000-7000-8000-000000000001"
 const GENERAL = "0190a000-0000-7000-8000-000000000002"
 

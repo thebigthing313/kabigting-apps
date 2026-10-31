@@ -1,14 +1,14 @@
 import { desc, eq, sql, type SQL } from "drizzle-orm"
 import { Hono } from "hono"
 import { z } from "zod"
-import { currentMembers, type Tx } from "#server/apps/split/members.ts"
+import { everyoneInSplit, type Tx } from "#server/apps/split/members.ts"
 import type { AppEnv } from "#server/core/context.ts"
 import { ApiError } from "#server/core/errors.ts"
 import { validate } from "#server/core/validate.ts"
 import type { Db } from "#server/db/client.ts"
 import { splitPayments } from "#server/db/schema/index.ts"
 import { id } from "#shared/schemas/primitives.ts"
-import { editPaymentAllowed, paymentProblems } from "#shared/split/rules.ts"
+import { editPaymentAllowed, newPaymentAllowed, paymentProblems } from "#shared/split/rules.ts"
 import {
   createPayment,
   updatePayment,
@@ -78,13 +78,10 @@ async function lockedPayment(tx: Tx, paymentId: string): Promise<PaymentRow | un
   return saved
 }
 
-async function memberIds(tx: Tx): Promise<string[]> {
-  return (await currentMembers(tx)).map((member) => member.id)
-}
-
 /**
  * Payments, shared by every Member: any Member can change or delete any of them. Each is a
- * positive Amount from one Member to a different one, checked with the same rules as the form.
+ * positive Amount from one Member or Former member to a different one, checked with the same
+ * rules as the form.
  */
 export function paymentRoutes(db: Db) {
   return new Hono<AppEnv>()
@@ -93,8 +90,9 @@ export function paymentRoutes(db: Db) {
       const input = c.req.valid("json")
       const accountId = c.get("account").id
       await db.transaction(async (tx) => {
-        // Only the Members as of this save can be on a new Payment.
-        checkForSave(input, new Set(await memberIds(tx)))
+        // The Members and Former members as of this save can be on a new Payment, so a Former
+        // member's Balance can be settled to zero.
+        checkForSave(input, newPaymentAllowed(await everyoneInSplit(tx)))
         // The client supplies the id; an id already in use is a conflict, never an overwrite.
         const [inserted] = await tx
           .insert(splitPayments)
@@ -119,8 +117,8 @@ export function paymentRoutes(db: Db) {
       const accountId = c.get("account").id
       const row = await db.transaction(async (tx) => {
         const saved = (await lockedPayment(tx, paymentId)) ?? notFound()
-        // Whoever is already on it stays allowed; nobody else who isn't a Member can be added.
-        checkForSave(input, editPaymentAllowed(await memberIds(tx), saved))
+        // Whoever is already on it stays allowed; nobody else outside Split can be added.
+        checkForSave(input, editPaymentAllowed(await everyoneInSplit(tx), saved))
         await tx
           .update(splitPayments)
           .set({ ...storedFields(input), changedById: accountId, changedAt: sql`now()` })

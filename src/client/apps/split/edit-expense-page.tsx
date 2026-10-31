@@ -32,7 +32,6 @@ export function EditExpensePage({ expenseId }: { expenseId: string }) {
       </div>
     )
   }
-  const memberIds = members.data.map((member) => member.id)
   return (
     <ExpenseFlow
       key={expense.id}
@@ -45,7 +44,7 @@ export function EditExpensePage({ expenseId }: { expenseId: string }) {
       today={today()}
       onCancel={home}
       onSave={async (changed) => {
-        const stored = await changeExpense(expense, changed, session.user.id, memberIds)
+        const stored = await changeExpense(expense, changed, session.user.id, members.data)
         if (stored) home()
         return stored
       }}

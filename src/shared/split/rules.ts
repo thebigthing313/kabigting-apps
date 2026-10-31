@@ -18,6 +18,17 @@ export function equalSide(ticked: readonly string[]): Side {
   return { mode: "equal", ticked: [...ticked], exact: {}, percent: {} }
 }
 
+/**
+ * Someone Split shows: a Member, or a Former member, an Account in Split's data that has lost App
+ * access or become a Removed Account.
+ */
+export type Person = { id: string; former: boolean }
+
+/** The Members among `people`, in the same order. */
+export function memberIdsOf(people: readonly Person[]): string[] {
+  return people.filter((person) => !person.former).map((person) => person.id)
+}
+
 /** Who an Expense's cents can go to. */
 export type Roster = {
   /**
@@ -57,22 +68,26 @@ function namedBy(side: Side): string[] {
 }
 
 /**
- * Everyone already on a saved Expense: holding a share, or named by a side's Split mode even when
- * their share rounded to nothing. Inputs of a mode the side isn't in don't count.
+ * Everyone on one side of an Expense: holding one of its `shares`, or named by its Split mode even
+ * when their share rounded to nothing. Inputs of a mode the side isn't in don't count.
  */
+export function accountsOnSide(side: Side, shares: Shares): Set<string> {
+  return new Set([...Object.keys(shares), ...namedBy(side)])
+}
+
+/** Everyone already on a saved Expense, on either side, as `accountsOnSide` counts them. */
 export function accountsOnExpense(saved: SavedSides): Set<string> {
   return new Set([
-    ...Object.keys(saved.paidShares),
-    ...Object.keys(saved.owedShares),
-    ...namedBy(saved.paid),
-    ...namedBy(saved.owed),
+    ...accountsOnSide(saved.paid, saved.paidShares),
+    ...accountsOnSide(saved.owed, saved.owedShares),
   ])
 }
 
 /**
  * The Roster of an Expense being edited: the current Members, plus everyone already on it, Former
- * members included. Nobody else can be added. `oldestFirst` ranks Accounts by
- * age; anyone it doesn't know goes last.
+ * members included. Nobody else can be added. `oldestFirst` ranks Accounts by age, Members and
+ * Former members alike, as the server and the Members list both do; anyone it doesn't know goes
+ * last.
  */
 export function editExpenseRoster(
   oldestFirst: readonly string[],
@@ -292,14 +307,22 @@ export type PaymentField = "fromId" | "toId" | "amount" | "date"
 export type PaymentProblem = { field: PaymentField; message: string }
 
 /**
- * Who can be on an edited Payment: the current Members, plus whoever is already on it, so saving
- * it again never refuses them. Nobody else can be added.
+ * Who can be on a new Payment: the Members and the Former members, so a Former member's Balance
+ * can be settled to zero. Nobody else can be.
+ */
+export function newPaymentAllowed(people: readonly Person[]): Set<string> {
+  return new Set(people.map((person) => person.id))
+}
+
+/**
+ * Who can be on an edited Payment: as on a new one, plus whoever is already on it, so saving it
+ * again never refuses them. Nobody else can be added.
  */
 export function editPaymentAllowed(
-  memberIds: readonly string[],
+  people: readonly Person[],
   saved: Pick<PaymentInput, "fromId" | "toId">,
 ): Set<string> {
-  return new Set([...memberIds, saved.fromId, saved.toId])
+  return new Set([...newPaymentAllowed(people), saved.fromId, saved.toId])
 }
 
 /**

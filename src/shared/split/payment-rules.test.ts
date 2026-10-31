@@ -8,6 +8,7 @@ import {
   equalSide,
   householdBalances,
   newExpenseRoster,
+  newPaymentAllowed,
   paymentEntry,
   paymentProblems,
   resolveExpense,
@@ -17,6 +18,12 @@ import {
 // Made-up Members, oldest Account first.
 const ORDER = ["ana", "ben", "cy"]
 const MEMBERS = new Set(ORDER)
+// Ana and Ben are Members; Dee, oldest of all, has lost App access.
+const PEOPLE = [
+  { id: "dee", former: true },
+  { id: "ana", former: false },
+  { id: "ben", former: false },
+]
 
 function payment(overrides: Partial<PaymentInput> = {}): PaymentInput {
   return { date: "2026-10-31", fromId: "ana", toId: "ben", amount: 4_000, ...overrides }
@@ -50,8 +57,18 @@ describe("paymentProblems", () => {
     ])
   })
 
+  test("a new one can go to or from a Former member, so their Balance can be settled", () => {
+    const allowed = newPaymentAllowed(PEOPLE)
+    expect(paymentProblems(payment({ fromId: "dee" }), allowed)).toEqual([])
+    expect(paymentProblems(payment({ toId: "dee" }), allowed)).toEqual([])
+    expect(paymentProblems(payment({ toId: "eve" }), allowed)).toEqual([
+      { field: "toId", message: "Only Members can be on a Payment" },
+    ])
+  })
+
   test("an edit keeps whoever is already on it, but can't add anyone else", () => {
-    const allowed = editPaymentAllowed(ORDER, { fromId: "dee", toId: "ana" })
+    const allowed = editPaymentAllowed(PEOPLE, { fromId: "fay", toId: "ana" })
+    expect(paymentProblems(payment({ fromId: "fay" }), allowed)).toEqual([])
     expect(paymentProblems(payment({ fromId: "dee" }), allowed)).toEqual([])
     expect(paymentProblems(payment({ toId: "eve" }), allowed)).toEqual([
       { field: "toId", message: "Only Members can be on a Payment" },

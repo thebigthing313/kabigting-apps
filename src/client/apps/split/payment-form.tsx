@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import type { Member, Payment } from "@/data/split"
 import { format } from "@shared/money"
-import { editPaymentAllowed, paymentProblems } from "@shared/split/rules"
+import { editPaymentAllowed, newPaymentAllowed, paymentProblems } from "@shared/split/rules"
 import type { CreatePayment, Shares } from "@shared/split/schemas"
 
 /** A Payment as the form hands it over; the caller gives a new one its id. */
@@ -15,7 +15,10 @@ export type NewPayment = Omit<CreatePayment, "id">
 
 type PaymentFormProps = {
   viewerId: string
-  /** The Members who can be on the Payment, oldest Account first. */
+  /**
+   * Who can be on the Payment, oldest Account first: the Members and the Former members, so a
+   * Former member's Balance can be settled to zero.
+   */
   members: readonly Member[]
   /** Every Member's current Balance, shown on their tile. */
   balances: Shares
@@ -30,8 +33,9 @@ type PaymentFormProps = {
 
 /**
  * Settle up, or change a saved Payment, full page: who's paying and who gets it from avatar tiles
- * showing each Member's Balance, then the Amount, date and an optional note, and the Payment in
- * plain words before it is recorded. A new one starts as the viewer paying the oldest other Member.
+ * showing each Member's Balance, Former members' included, then the Amount, date and an optional
+ * note, and the Payment in plain words before it is recorded. A new one starts as the viewer
+ * paying the oldest other Member.
  */
 export function PaymentForm({
   viewerId,
@@ -43,10 +47,9 @@ export function PaymentForm({
   editing,
 }: PaymentFormProps) {
   const saved = editing?.payment
-  const order = members.map((member) => member.id)
   const [fromId, setFromId] = useState(saved?.fromId ?? viewerId)
   const [toId, setToId] = useState(
-    saved?.toId ?? members.find((member) => member.id !== viewerId)?.id ?? "",
+    saved?.toId ?? members.find((member) => member.id !== viewerId && !member.former)?.id ?? "",
   )
   const [amount, setAmount] = useState<number | null>(saved?.amount ?? null)
   const [date, setDate] = useState(saved?.date ?? today)
@@ -56,7 +59,7 @@ export function PaymentForm({
   const [deleteArmed, setDeleteArmed] = useState(false)
 
   const who = people(viewerId, members)
-  const allowed = saved ? editPaymentAllowed(order, saved) : new Set(order)
+  const allowed = saved ? editPaymentAllowed(members, saved) : newPaymentAllowed(members)
   const payment: NewPayment = { date, fromId, toId, amount: amount ?? 0, note }
   const problems = paymentProblems(payment, allowed)
 
@@ -144,7 +147,10 @@ export function PaymentForm({
   )
 }
 
-/** One avatar tile per Member, each with their Balance; the one picked is checked. */
+/**
+ * One avatar tile per Member and Former member, each with their Balance; the one picked is
+ * checked.
+ */
 function Tiles({
   title,
   members,
@@ -170,6 +176,7 @@ function Tiles({
           // Named by who it is; their Balance describes it.
           const nameId = `${idPrefix}-name-${index}`
           const balanceId = `${idPrefix}-balance-${index}`
+          const formerId = `${idPrefix}-former-${index}`
           return (
             <button
               key={member.id}
@@ -177,7 +184,7 @@ function Tiles({
               role="radio"
               aria-checked={picked}
               aria-labelledby={nameId}
-              aria-describedby={balanceId}
+              aria-describedby={member.former ? `${balanceId} ${formerId}` : balanceId}
               onClick={() => onPick(member.id)}
               className={cn(
                 "flex flex-col items-center gap-1 rounded-xl border p-2 text-sm",
@@ -196,6 +203,11 @@ function Tiles({
               <span id={balanceId} className="text-xs text-muted-foreground tabular-nums">
                 {format(balances[member.id] ?? 0, { sign: "always" })}
               </span>
+              {member.former && (
+                <span id={formerId} className="text-xs text-muted-foreground">
+                  Former member
+                </span>
+              )}
             </button>
           )
         })}
