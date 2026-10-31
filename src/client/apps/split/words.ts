@@ -76,3 +76,20 @@ export function sideWords(
   })
   return phrases.join("; ")
 }
+
+/**
+ * The paid or owed side of an Expense of `total` in words. A Refund's read "You got back $30.00"
+ * and "You and Ben share $15.00 each", never a negative amount.
+ */
+export function expenseSideWords(
+  total: number,
+  shares: Shares,
+  key: "paid" | "owed",
+  who: People,
+): string {
+  if (total >= 0) return sideWords(shares, key === "paid" ? "paid" : "owe", who)
+  const positive = Object.fromEntries(
+    Object.entries(shares).map(([id, cents]) => [id, Math.abs(cents)]),
+  )
+  return sideWords(positive, key === "paid" ? "got back" : "share", who)
+}

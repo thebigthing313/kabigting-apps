@@ -86,6 +86,28 @@ describe("Split's Home", () => {
     ])
   })
 
+  test("a Refund card says so, with who got the money back and who shares it", async () => {
+    // Ana got $30.00 back and shares it with Ben: she now owes Ben his $15.00.
+    const { screen } = await renderHome([
+      expense({
+        description: "Returned a lamp",
+        total: -3_000,
+        paid: equalSide(["ana"]),
+        owed: equalSide(["ben", "ana"]),
+        paidShares: { ana: -3_000 },
+        owedShares: { ben: -1_500, ana: -1_500 },
+      }),
+    ])
+    await expect
+      .element(screen.getByRole("article"))
+      .toHaveTextContent(
+        "Returned a lamp-$30.00Oct 30, 2026 · Groceries · RefundYou got back $30.00You and Ben share $15.00 eachYour Balance -$15.00",
+      )
+    await expect
+      .element(screen.getByRole("region", { name: "Your Balance" }))
+      .toHaveTextContent("Your Balance-$15.00You owe the othersBen is owed $15.00Cy is settled up")
+  })
+
   test("the viewer owing reads as owing the others", async () => {
     const { screen } = await renderHome([
       expense({ paid: equalSide(["ben"]), paidShares: { ben: 9_000 } }),

@@ -1,7 +1,7 @@
 import { PlusIcon } from "lucide-react"
 import {
+  expenseSideWords,
   people,
-  sideWords,
   memberBalanceWords,
   viewerBalanceWords,
   type People,
@@ -104,9 +104,14 @@ function ExpenseCard({
       </div>
       <div className="text-xs text-muted-foreground">
         {formatDisplayDate(expense.date)} · {categoryName}
+        {expense.total < 0 && " · Refund"}
       </div>
-      <div className="text-xs">{sideWords(expense.paidShares, "paid", who)}</div>
-      <div className="text-xs">{sideWords(expense.owedShares, "owe", who)}</div>
+      <div className="text-xs">
+        {expenseSideWords(expense.total, expense.paidShares, "paid", who)}
+      </div>
+      <div className="text-xs">
+        {expenseSideWords(expense.total, expense.owedShares, "owed", who)}
+      </div>
       <div className="text-sm">
         {yours === 0 ? (
           <span className="text-muted-foreground">Doesn't involve you</span>

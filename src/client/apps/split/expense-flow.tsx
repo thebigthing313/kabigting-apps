@@ -1,7 +1,7 @@
 import { cn } from "cn"
 import { ArrowLeftIcon, CheckIcon, PencilIcon } from "lucide-react"
 import { useState } from "react"
-import { people, sideWords, type People } from "@/apps/split/words"
+import { expenseSideWords, people, type People } from "@/apps/split/words"
 import { AmountInput } from "@/components/amount-input"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -19,13 +19,7 @@ import {
   type ExpenseField,
   type Roster,
 } from "@shared/split/rules"
-import {
-  SPLIT_MODES,
-  type CreateExpense,
-  type Shares,
-  type Side,
-  type SplitMode,
-} from "@shared/split/schemas"
+import { SPLIT_MODES, type CreateExpense, type Side, type SplitMode } from "@shared/split/schemas"
 
 /** A new Expense as the flow hands it over; the caller gives it its id. */
 export type NewExpense = Omit<CreateExpense, "id">
@@ -57,11 +51,6 @@ const MODE_LABELS: Record<SplitMode, string> = {
   equal: "Equally",
   exact: "Exact $",
   percent: "Percent",
-}
-
-/** A Refund's shares as positive cents, for its words. */
-function magnitudes(shares: Shares): Shares {
-  return Object.fromEntries(Object.entries(shares).map(([id, cents]) => [id, Math.abs(cents)]))
 }
 
 /** Which fields each step asks for, so Next waits until they're valid. */
@@ -134,10 +123,7 @@ export function ExpenseFlow({
   /** One side on Review, in words even while another field still blocks the save. */
   const sideLine = (key: SideKey) => {
     const side = resolveSide(expense.total, expense[key], roster)
-    if (!side.ok) return side.problem
-    if (isRefund)
-      return sideWords(magnitudes(side.shares), key === "paid" ? "got back" : "share", who)
-    return sideWords(side.shares, key === "paid" ? "paid" : "owe", who)
+    return side.ok ? expenseSideWords(expense.total, side.shares, key, who) : side.problem
   }
 
   function pick(key: SideKey, picked: Answer) {
