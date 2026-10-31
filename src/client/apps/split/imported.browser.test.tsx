@@ -76,6 +76,7 @@ describe("an imported entry", () => {
         onTabChange={() => {}}
         onAddExpense={() => {}}
         onSettleUp={() => {}}
+        onSettleSuggestion={() => {}}
         onOpenExpense={() => {}}
         onOpenPayment={() => {}}
         onManageCategories={() => {}}
@@ -101,6 +102,7 @@ describe("an imported entry", () => {
         onTabChange={() => {}}
         onAddExpense={() => {}}
         onSettleUp={() => {}}
+        onSettleSuggestion={() => {}}
         onOpenExpense={() => {}}
         onOpenPayment={() => {}}
         onManageCategories={() => {}}
