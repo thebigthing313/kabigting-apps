@@ -256,8 +256,8 @@ async function reachReview() {
 describe("someone losing App access while an Expense is added", () => {
   /** The Accounts the server lists right now. */
   let listed: Member[] = []
-  /** A refusal the server gives whatever is sent, when set. */
-  let conflict = false
+  /** When set, the server refuses whatever is sent for its Category, archived meanwhile. */
+  let categoryArchived = false
   let posted = 0
 
   function serve(path: string, method: string, body: unknown): Response {
@@ -266,10 +266,16 @@ describe("someone losing App access while an Expense is added", () => {
     if (path === "/api/split/expenses" && method === "GET") return Response.json({ rows: [] })
     if (path === "/api/split/expenses" && method === "POST") {
       posted += 1
-      if (conflict) {
+      if (categoryArchived) {
         return Response.json(
-          { error: { code: "conflict", message: "An Expense with this id already exists" } },
-          { status: 409 },
+          {
+            error: {
+              code: "validation_failed",
+              message: "The Expense is not valid",
+              details: [{ path: "categoryId", message: "Pick a Category" }],
+            },
+          },
+          { status: 400 },
         )
       }
       const input = createExpense.parse(body)
@@ -296,7 +302,7 @@ describe("someone losing App access while an Expense is added", () => {
 
   beforeEach(() => {
     listed = accounts.map((account) => ({ ...account, standing: "member" }))
-    conflict = false
+    categoryArchived = false
     posted = 0
     vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = new URL(input instanceof Request ? input.url : String(input), location.origin)
@@ -358,7 +364,7 @@ describe("someone losing App access while an Expense is added", () => {
 
   test("a refusal for another reason stays on Review, even once someone later loses access", async () => {
     const screen = await reachReview()
-    conflict = true
+    categoryArchived = true
     await screen.getByRole("button", { name: "Add Expense" }).click()
     await vi.waitFor(() => expect(posted).toBe(1))
     await expect.element(screen.getByRole("button", { name: "Add Expense" })).toBeEnabled()
