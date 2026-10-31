@@ -1,5 +1,6 @@
 import { PlusIcon } from "lucide-react"
 import {
+  authorshipWords,
   people,
   sideWords,
   memberBalanceWords,
@@ -19,6 +20,8 @@ type HomeViewProps = {
   expenses: readonly Expense[]
   categories: readonly Category[]
   onAddExpense: () => void
+  /** Opens an Expense to change it; any Member can, whoever added it. */
+  onOpenExpense: (expenseId: string) => void
 }
 
 /** Newest first: by date, then the one added last. */
@@ -30,7 +33,14 @@ function newestFirst(a: Expense, b: Expense): number {
  * Split's Home: the viewer's Balance and every other Member's, the Add Expense button, and the
  * Activity feed.
  */
-export function HomeView({ viewerId, members, expenses, categories, onAddExpense }: HomeViewProps) {
+export function HomeView({
+  viewerId,
+  members,
+  expenses,
+  categories,
+  onAddExpense,
+  onOpenExpense,
+}: HomeViewProps) {
   const who = people(viewerId, members)
   const totals = balances(
     expenses,
@@ -76,6 +86,7 @@ export function HomeView({ viewerId, members, expenses, categories, onAddExpense
                   expense={expense}
                   categoryName={categoryName.get(expense.categoryId) ?? "No Category"}
                   who={who}
+                  onOpen={() => onOpenExpense(expense.id)}
                 />
               </li>
             ))}
@@ -90,14 +101,23 @@ function ExpenseCard({
   expense,
   categoryName,
   who,
+  onOpen,
 }: {
   expense: Expense
   categoryName: string
   who: People
+  onOpen: () => void
 }) {
   const yours = effectOn(expense, who.viewerId)
   return (
-    <article className="flex flex-col gap-1 rounded-xl border p-3">
+    <article className="relative flex flex-col gap-1 rounded-xl border p-3 hover:bg-muted/50">
+      {/* The whole card opens the Expense. */}
+      <button
+        type="button"
+        aria-label={`Edit ${expense.description}`}
+        onClick={onOpen}
+        className="absolute inset-0 rounded-xl"
+      />
       <div className="flex items-baseline justify-between gap-2">
         <span className="font-medium">{expense.description}</span>
         <span className="tabular-nums">{format(expense.total)}</span>
@@ -114,6 +134,7 @@ function ExpenseCard({
           <>Your Balance {format(yours, { sign: "always" })}</>
         )}
       </div>
+      <div className="text-xs text-muted-foreground">{authorshipWords(expense, who)}</div>
     </article>
   )
 }

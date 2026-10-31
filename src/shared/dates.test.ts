@@ -10,6 +10,7 @@ import {
   HOUSEHOLD_ZONE,
   monthInstantRange,
   monthDates,
+  formatInstantMonthDay,
   monthOf,
   monthOfDate,
   nowInstant,
@@ -88,6 +89,14 @@ describe("monthOf", () => {
     const { start, end } = monthInstantRange("2026-11")
     expect(monthOf(start)).toBe("2026-11")
     expect(monthOf(end)).toBe("2026-12")
+  })
+})
+
+describe("formatInstantMonthDay", () => {
+  test("gives the household's day, not UTC's", () => {
+    // 03:30 UTC on Oct 4 is still Oct 3 in New York.
+    expect(formatInstantMonthDay("2026-10-04T03:30:00.000Z")).toBe("Oct 3")
+    expect(formatInstantMonthDay("2026-10-04T04:30:00.000Z")).toBe("Oct 4")
   })
 })
 

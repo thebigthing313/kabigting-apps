@@ -37,6 +37,7 @@ function expense(overrides: Partial<Expense>): Expense {
 
 async function renderHome(expenses: Expense[]) {
   const onAddExpense = vi.fn<() => void>()
+  const onOpenExpense = vi.fn<(expenseId: string) => void>()
   const screen = await render(
     <HomeView
       viewerId="ana"
@@ -44,9 +45,10 @@ async function renderHome(expenses: Expense[]) {
       expenses={expenses}
       categories={categories}
       onAddExpense={onAddExpense}
+      onOpenExpense={onOpenExpense}
     />,
   )
-  return { screen, onAddExpense }
+  return { screen, onAddExpense, onOpenExpense }
 }
 
 describe("Split's Home", () => {
@@ -81,8 +83,8 @@ describe("Split's Home", () => {
     const cards = screen.getByRole("article")
     await expect.element(cards.nth(0)).toBeVisible()
     expect(cards.elements().map((each) => each.textContent)).toEqual([
-      "Pizza$50.00Oct 31, 2026 · GroceriesCy paid $50.00Ben and Cy owe $25.00 eachDoesn't involve you",
-      "Groceries run$90.00Oct 30, 2026 · GroceriesYou paid $90.00You, Ben and Cy owe $30.00 eachYour Balance +$60.00",
+      "Pizza$50.00Oct 31, 2026 · GroceriesCy paid $50.00Ben and Cy owe $25.00 eachDoesn't involve youAdded by you on Oct 30",
+      "Groceries run$90.00Oct 30, 2026 · GroceriesYou paid $90.00You, Ben and Cy owe $30.00 eachYour Balance +$60.00Added by you on Oct 30",
     ])
   })
 
@@ -94,5 +96,22 @@ describe("Split's Home", () => {
       .element(screen.getByRole("region", { name: "Your Balance" }))
       .toHaveTextContent("Your Balance-$30.00You owe the othersBen is owed $60.00Cy owes $30.00")
     await expect.element(screen.getByText("Your Balance -$30.00")).toBeVisible()
+  })
+
+  test("each card says who added it and who changed it, and opens it whoever added it", async () => {
+    const { screen, onOpenExpense } = await renderHome([
+      expense({
+        addedBy: "ben",
+        // 01:00 UTC on Oct 6 is still Oct 5 in the household zone.
+        changedAt: "2026-10-06T01:00:00.000Z",
+        changedBy: "ana",
+        addedAt: "2026-10-03T15:00:00.000Z",
+      }),
+    ])
+    await expect
+      .element(screen.getByText("Added by Ben on Oct 3 · changed by you on Oct 5"))
+      .toBeVisible()
+    await screen.getByRole("button", { name: "Edit Groceries run" }).click()
+    expect(onOpenExpense).toHaveBeenCalledWith("0190a000-0000-7000-8000-000000000100")
   })
 })

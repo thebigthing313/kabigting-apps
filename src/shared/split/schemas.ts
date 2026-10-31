@@ -52,6 +52,12 @@ export const createExpense = z.strictObject({
   owed: side,
 })
 
+/**
+ * A saved Expense as it now stands, replacing all of it: both sides and every share. The caller is
+ * who changed it last.
+ */
+export const updateExpense = createExpense.omit({ id: true })
+
 export const expenseRow = z.object({
   id,
   description: z.string(),
@@ -84,6 +90,7 @@ export const categoryRows = z.object({ rows: z.array(categoryRow) })
 export type Side = z.infer<typeof side>
 export type Shares = z.infer<typeof shares>
 export type CreateExpense = z.infer<typeof createExpense>
+export type UpdateExpense = z.infer<typeof updateExpense>
 export type ExpenseRow = z.infer<typeof expenseRow>
 export type Member = z.infer<typeof member>
 export type CategoryRow = z.infer<typeof categoryRow>

@@ -37,6 +37,40 @@ export function newExpenseRoster(memberIds: readonly string[]): Roster {
   return { order: memberIds, allowed: new Set(memberIds) }
 }
 
+/** What shows who is already on a saved Expense: its sides as entered and its stored shares. */
+export type SavedSides = { paid: Side; owed: Side; paidShares: Shares; owedShares: Shares }
+
+/**
+ * Everyone already on a saved Expense: holding a share, or ticked on a side even when their share
+ * rounded to nothing.
+ */
+export function accountsOnExpense(saved: SavedSides): Set<string> {
+  return new Set([
+    ...Object.keys(saved.paidShares),
+    ...Object.keys(saved.owedShares),
+    ...saved.paid.ticked,
+    ...saved.owed.ticked,
+  ])
+}
+
+/**
+ * The Roster of an Expense being edited: the current Members, plus everyone already on it, even
+ * those who have since lost App access. Nobody else can be added. `oldestFirst` ranks Accounts by
+ * age; anyone it doesn't know goes last.
+ */
+export function editExpenseRoster(
+  oldestFirst: readonly string[],
+  memberIds: readonly string[],
+  saved: SavedSides,
+): Roster {
+  const allowed = new Set([...memberIds, ...accountsOnExpense(saved)])
+  const rank = (id: string) => {
+    const at = oldestFirst.indexOf(id)
+    return at === -1 ? oldestFirst.length : at
+  }
+  return { order: [...allowed].toSorted((a, b) => rank(a) - rank(b)), allowed }
+}
+
 function refused(problem: string): SideResolution {
   return { ok: false, problem, status: problem }
 }

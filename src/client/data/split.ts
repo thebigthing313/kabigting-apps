@@ -9,21 +9,36 @@ import { defineRestCollection } from "@/data/collection-factory"
 import { readJson } from "@/data/error-handler"
 import { settled } from "@/data/settled"
 import { nowInstant } from "@shared/dates"
-import { newExpenseRoster, resolveExpense } from "@shared/split/rules"
-import type { CreateExpense, ExpenseRow } from "@shared/split/schemas"
+import {
+  editExpenseRoster,
+  newExpenseRoster,
+  resolveExpense,
+  type ExpenseResolution,
+} from "@shared/split/rules"
+import type { CreateExpense, ExpenseRow, UpdateExpense } from "@shared/split/schemas"
 
 export type { CategoryRow as Category, ExpenseRow as Expense, Member } from "@shared/split/schemas"
 
-// Editing and deleting Expenses come later, so the collection only creates.
+/** What a Member enters for an Expense; the server works out the rest. */
+function entered(row: ExpenseRow): UpdateExpense {
+  const { description, date, categoryId, total, note, paid, owed } = row
+  return { description, date, categoryId, total, note, paid, owed }
+}
+
+// A change replaces the whole Expense, so it sends the whole row as changed. One the server says
+// is gone is dropped.
 const expensesCollection = defineRestCollection<ExpenseRow>({
   id: "split-expenses",
   queryKey: ["split", "expenses"],
   fetchRows: async () => (await readJson(await api.split.expenses.$get())).rows,
   create: async (row) => {
-    const { id, description, date, categoryId, total, note, paid, owed } = row
-    const json = { id, description, date, categoryId, total, note, paid, owed }
+    const json = { id: row.id, ...entered(row) }
     return readJson(await api.split.expenses.$post({ json }))
   },
+  update: async (id, _changes, _options, row) =>
+    readJson(await api.split.expenses[":id"].$put({ param: { id }, json: entered(row) })),
+  remove: async (id) => readJson(await api.split.expenses[":id"].$delete({ param: { id } })),
+  dropOnNotFound: true,
 })
 
 /** Every Expense, live, in no particular order. */
@@ -48,6 +63,14 @@ export function useCategories() {
   })
 }
 
+/** Reports an Expense the rules refuse; nothing is sent. */
+function refused(resolved: Extract<ExpenseResolution, { ok: false }>): Promise<false> {
+  toast.error("Saving failed", {
+    description: resolved.problems.map((problem) => problem.message).join(". "),
+  })
+  return Promise.resolve(false)
+}
+
 /**
  * Saves a new Expense added by `viewerId`. It shows at once, with its shares worked out here by
  * the same rules the server applies, among `memberIds` (the Members, oldest Account first); the
@@ -60,12 +83,7 @@ export function addExpense(
   memberIds: readonly string[],
 ): Promise<boolean> {
   const resolved = resolveExpense(input, newExpenseRoster(memberIds))
-  if (!resolved.ok) {
-    toast.error("Saving failed", {
-      description: resolved.problems.map((problem) => problem.message).join(". "),
-    })
-    return Promise.resolve(false)
-  }
+  if (!resolved.ok) return refused(resolved)
   const now = nowInstant()
   return settled(
     expensesCollection().insert({
@@ -78,4 +96,36 @@ export function addExpense(
       changedAt: now,
     }),
   )
+}
+
+/**
+ * Saves `saved` as it now stands, replacing all of it, changed by `viewerId`. As `addExpense`, it
+ * shows at once and the server's row then replaces it; those already on it stay allowed even when
+ * they're no longer among `memberIds`. True once stored; false when refused, or gone (then it
+ * drops out).
+ */
+export function changeExpense(
+  saved: ExpenseRow,
+  input: UpdateExpense,
+  viewerId: string,
+  memberIds: readonly string[],
+): Promise<boolean> {
+  const resolved = resolveExpense(input, editExpenseRoster(memberIds, memberIds, saved))
+  if (!resolved.ok) return refused(resolved)
+  return settled(
+    expensesCollection().update(saved.id, (draft) => {
+      Object.assign(draft, {
+        ...input,
+        paidShares: resolved.paidShares,
+        owedShares: resolved.owedShares,
+        changedBy: viewerId,
+        changedAt: nowInstant(),
+      })
+    }),
+  )
+}
+
+/** Deletes an Expense for good. It goes at once; true once the server has deleted it too. */
+export function deleteExpense(id: string): Promise<boolean> {
+  return settled(expensesCollection().delete(id))
 }
