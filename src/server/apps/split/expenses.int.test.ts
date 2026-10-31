@@ -95,6 +95,9 @@ describe("App access", () => {
 
   test("signed out, every route is 401", async () => {
     expect((await server.app.request("/api/split/expenses")).status).toBe(401)
+    const id = newId()
+    expect((await create(body({ id }), new Headers())).status).toBe(401)
+    expect((await list()).some((row) => row.id === id)).toBe(false)
   })
 })
 

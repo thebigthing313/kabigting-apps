@@ -6,7 +6,7 @@ import { ApiError } from "#server/core/errors.ts"
 import { validate } from "#server/core/validate.ts"
 import type { Db } from "#server/db/client.ts"
 import { splitCategories, splitExpenses, splitShares } from "#server/db/schema/index.ts"
-import { resolveExpense } from "#shared/split/rules.ts"
+import { newExpenseRoster, resolveExpense } from "#shared/split/rules.ts"
 import { createExpense, type ExpenseRow, type Shares } from "#shared/split/schemas.ts"
 
 /** The Expenses matching `where` as wire rows, newest first. */
@@ -67,25 +67,21 @@ export function expenseRoutes(db: Db) {
       await db.transaction(async (tx) => {
         // Only the Members as of this save can be on a new Expense.
         const members = await currentMembers(tx)
-        const resolved = resolveExpense(
-          input,
-          members.map((member) => member.id),
-        )
-        if (!resolved.ok) {
-          throw new ApiError(
-            "validation_failed",
-            "The Expense is not valid",
-            resolved.problems.map(({ field, message }) => ({ path: field, message })),
-          )
-        }
+        const resolved = resolveExpense(input, newExpenseRoster(members.map((member) => member.id)))
         const [category] = await tx
           .select({ id: splitCategories.id })
           .from(splitCategories)
           .where(and(eq(splitCategories.id, input.categoryId), eq(splitCategories.archived, false)))
-        if (!category) {
-          throw new ApiError("validation_failed", "The Expense is not valid", [
-            { path: "categoryId", message: "Pick a Category" },
-          ])
+        const problems = [
+          ...(resolved.ok ? [] : resolved.problems),
+          ...(category ? [] : [{ field: "categoryId", message: "Pick a Category" }]),
+        ]
+        if (!resolved.ok || problems.length > 0) {
+          throw new ApiError(
+            "validation_failed",
+            "The Expense is not valid",
+            problems.map(({ field, message }) => ({ path: field, message })),
+          )
         }
         // The client supplies the id; an id already in use is a conflict, never an overwrite.
         const [inserted] = await tx

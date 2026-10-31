@@ -3,12 +3,13 @@
 // the Shell's focus and reconnect defaults.
 import { useLiveQuery } from "@tanstack/react-db"
 import { useQuery } from "@tanstack/react-query"
+import { toast } from "sonner"
 import { api } from "@/data/api"
 import { defineRestCollection } from "@/data/collection-factory"
 import { readJson } from "@/data/error-handler"
 import { settled } from "@/data/settled"
 import { nowInstant } from "@shared/dates"
-import { resolveExpense } from "@shared/split/rules"
+import { newExpenseRoster, resolveExpense } from "@shared/split/rules"
 import type { CreateExpense, ExpenseRow } from "@shared/split/schemas"
 
 export type { CategoryRow as Category, ExpenseRow as Expense, Member } from "@shared/split/schemas"
@@ -49,17 +50,22 @@ export function useCategories() {
 
 /**
  * Saves a new Expense added by `viewerId`. It shows at once, with its shares worked out here by
- * the same rules the server applies to `order` (the Members, oldest Account first); the server's
- * row then replaces it. True once stored; false after a refusal, which is rolled back and
- * reported.
+ * the same rules the server applies, among `memberIds` (the Members, oldest Account first); the
+ * server's row then replaces it. True once stored. False when it is refused, here by the rules or
+ * by the server, and then it is reported and nothing stays.
  */
 export function addExpense(
   input: CreateExpense,
   viewerId: string,
-  order: readonly string[],
+  memberIds: readonly string[],
 ): Promise<boolean> {
-  const resolved = resolveExpense(input, order)
-  if (!resolved.ok) return Promise.resolve(false)
+  const resolved = resolveExpense(input, newExpenseRoster(memberIds))
+  if (!resolved.ok) {
+    toast.error("Saving failed", {
+      description: resolved.problems.map((problem) => problem.message).join(". "),
+    })
+    return Promise.resolve(false)
+  }
   const now = nowInstant()
   return settled(
     expensesCollection().insert({

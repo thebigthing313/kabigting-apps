@@ -49,7 +49,7 @@ export const splitExpenses = pgTable(
     id: idColumn(),
     description: text().notNull(),
     date: date({ mode: "string" }).notNull(),
-    /** Signed cents, never zero; negative is a Refund. */
+    /** Cents, never zero: positive for a cost, negative for a Refund (not an outflow Amount). */
     totalCents: bigint({ mode: "number" }).notNull(),
     categoryId: uuid()
       .notNull()

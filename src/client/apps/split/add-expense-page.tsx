@@ -22,7 +22,7 @@ export function AddExpensePage() {
   if (!members.data || !categories.data) {
     return <Skeleton className="mx-auto h-64 w-full max-w-md" />
   }
-  const order = members.data.map((member) => member.id)
+  const memberIds = members.data.map((member) => member.id)
   const home = () => void navigate({ to: "/split" })
   return (
     <ExpenseFlow
@@ -32,7 +32,7 @@ export function AddExpensePage() {
       today={startedOn}
       onCancel={home}
       onSave={async (expense) => {
-        const stored = await addExpense({ id, ...expense }, session.user.id, order)
+        const stored = await addExpense({ id, ...expense }, session.user.id, memberIds)
         if (stored) home()
         return stored
       }}

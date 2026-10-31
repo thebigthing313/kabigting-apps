@@ -18,7 +18,7 @@ import { cleanupCollections } from "@/data/collection-factory"
 import type { Expense } from "@/data/split"
 import { queryClient } from "@/data/query-client"
 import { dismissToasts } from "@/test/toasts"
-import { resolveExpense } from "@shared/split/rules"
+import { newExpenseRoster, resolveExpense } from "@shared/split/rules"
 import { createExpense } from "@shared/split/schemas"
 
 // Made-up Members, oldest Account first; the viewer is Ana.
@@ -42,10 +42,7 @@ function serve(path: string, method: string, body: unknown): Response {
   if (path === "/api/split/expenses" && method === "POST") {
     posted.push(body)
     const input = createExpense.parse(body)
-    const resolved = resolveExpense(
-      input,
-      members.map((member) => member.id),
-    )
+    const resolved = resolveExpense(input, newExpenseRoster(members.map((member) => member.id)))
     if (!resolved.ok) {
       return Response.json(
         { error: { code: "validation_failed", message: "Not valid" } },

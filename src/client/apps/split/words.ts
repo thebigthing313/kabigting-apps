@@ -2,12 +2,15 @@
 import { format } from "@shared/money"
 import type { Shares } from "@shared/split/schemas"
 
+/** Where in a sentence a name goes: the viewer is "You" at its start and "you" within it. */
+export type Place = "start" | "within"
+
 /** Names the people Split shows: "You" for the viewer, otherwise their name. */
 export type People = {
   viewerId: string
   /** Everyone's ids, oldest Account first. */
   order: readonly string[]
-  nameOf: (id: string) => string
+  nameOf: (id: string, place?: Place) => string
 }
 
 /** Builds `People` from the Members, oldest Account first. */
@@ -16,7 +19,10 @@ export function people(viewerId: string, members: readonly { id: string; name: s
   return {
     viewerId,
     order: members.map((member) => member.id),
-    nameOf: (id) => (id === viewerId ? "You" : (names.get(id) ?? "Someone")),
+    nameOf: (id, place = "start") => {
+      if (id === viewerId) return place === "start" ? "You" : "you"
+      return names.get(id) ?? "Someone"
+    },
   }
 }
 
@@ -56,11 +62,7 @@ export function sideWords(shares: Shares, verb: "paid" | "owe", who: People): st
   }
   if (groups.size === 0) return "Nobody"
   const phrases = [...groups].map(([cents, ids], index) => {
-    const names = ids.map((id, at) => {
-      const name = who.nameOf(id)
-      // "You" starts a sentence; anywhere else it is "you".
-      return name === "You" && (index > 0 || at > 0) ? "you" : name
-    })
+    const names = ids.map((id, at) => who.nameOf(id, index === 0 && at === 0 ? "start" : "within"))
     const single = ids.length === 1
     const word = verb === "paid" ? "paid" : single && ids[0] !== who.viewerId ? "owes" : "owe"
     return `${list(names)} ${word} ${format(cents)}${single ? "" : " each"}`

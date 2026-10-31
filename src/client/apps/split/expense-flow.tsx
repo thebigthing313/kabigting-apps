@@ -10,7 +10,13 @@ import type { Category, Member } from "@/data/split"
 import { formatDisplayDate } from "@shared/dates"
 import { format } from "@shared/money"
 import { defaultCategory } from "@shared/split/categories"
-import { equalSide, resolveExpense, resolveSide, type ExpenseField } from "@shared/split/rules"
+import {
+  equalSide,
+  newExpenseRoster,
+  resolveExpense,
+  resolveSide,
+  type ExpenseField,
+} from "@shared/split/rules"
 import type { CreateExpense } from "@shared/split/schemas"
 
 /** A new Expense as the flow hands it over; the caller gives it its id. */
@@ -66,6 +72,7 @@ export function ExpenseFlow({
   const [saving, setSaving] = useState(false)
 
   const order = members.map((member) => member.id)
+  const roster = newExpenseRoster(order)
   const who = people(viewerId, members)
   const expense: NewExpense = {
     description,
@@ -76,7 +83,7 @@ export function ExpenseFlow({
     paid: equalSide([paidBy]),
     owed: equalSide(owedBy === null ? order : [owedBy]),
   }
-  const resolution = resolveExpense(expense, order)
+  const resolution = resolveExpense(expense, roster)
   const problems = resolution.ok ? [] : resolution.problems
   const stepValid = (index: number) =>
     !problems.some((problem) => STEP_FIELDS[index]?.includes(problem.field)) &&
@@ -88,7 +95,7 @@ export function ExpenseFlow({
   ]
   /** One side on Review, in words even while another field still blocks the save. */
   const sideLine = (key: "paid" | "owed") => {
-    const side = resolveSide(expense.total, expense[key], order)
+    const side = resolveSide(expense.total, expense[key], roster)
     return side.ok ? sideWords(side.shares, key === "paid" ? "paid" : "owe", who) : side.problem
   }
 
@@ -216,7 +223,7 @@ export function ExpenseFlow({
               selected={owedBy === member.id}
               onSelect={() => setOwedBy(member.id)}
             >
-              Only {member.id === viewerId ? "you" : member.name}
+              Only {who.nameOf(member.id, "within")}
             </Answer>
           ))}
         </Question>

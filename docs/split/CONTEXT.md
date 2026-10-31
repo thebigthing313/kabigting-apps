@@ -1,7 +1,10 @@
 # Split
 
 The household's shared-expense App: who paid for what, who owes for it, and how each Member stands.
-Amounts follow the Shell glossary: signed US cents.
+Money is integer US cents, but an Expense's total is not a Shell Amount, where money out is
+negative: it is positive for a cost and negative for a Refund. Its Paid and Owed shares carry the
+same sign as its total. A Balance is positive when the others owe a Member, and a Payment is
+always positive.
 
 ## Language
 

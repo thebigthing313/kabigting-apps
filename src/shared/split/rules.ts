@@ -2,9 +2,8 @@
  * Split's rules, the same on client and server: how one side of an Expense turns into cents, what
  * blocks an Expense from being saved, and how entries move each Member's Balance.
  *
- * Every function that hands out cents takes the Members oldest Account first (`order`): leftover
- * cents go by the largest remainder, then to the oldest Account, so the same Expense always
- * resolves to the same shares.
+ * Every function that hands out cents takes a `Roster`: leftover cents go by the largest remainder,
+ * then to the oldest Account in its `order`, so the same Expense always resolves to the same shares.
  */
 import { allocate } from "../money.ts"
 import { isoDate } from "../schemas/primitives.ts"
@@ -17,6 +16,25 @@ export type SideResolution =
 /** An Equal side with these Members ticked and nothing typed for the other modes. */
 export function equalSide(ticked: readonly string[]): Side {
   return { mode: "equal", ticked: [...ticked], exact: {}, percent: {} }
+}
+
+/** Who an Expense's cents can go to. */
+export type Roster = {
+  /**
+   * Every Account that may hold a share, oldest Account first: the order leftover cents follow.
+   * The current Members, plus, when editing, anyone already on the Expense.
+   */
+  order: readonly string[]
+  /**
+   * Who may be on the Expense: the current Members, plus, when editing, anyone already on it.
+   * Anyone else ticked is refused. Everyone here is in `order`.
+   */
+  allowed: ReadonlySet<string>
+}
+
+/** The Roster of a new Expense: only the current Members, oldest Account first. */
+export function newExpenseRoster(memberIds: readonly string[]): Roster {
+  return { order: memberIds, allowed: new Set(memberIds) }
 }
 
 function refused(problem: string): SideResolution {
@@ -34,17 +52,16 @@ function nonzero(ids: readonly string[], cents: readonly number[]): Shares {
 }
 
 /**
- * The cents per Member for one side of an Expense of `total`, `order` being every Member who may
- * be on it, oldest Account first. Equal splits the total among the Members ticked.
+ * The cents per Member for one side of an Expense of `total`. Equal splits the total among the
+ * Members ticked, leftover cents going in `roster.order`.
  */
-export function resolveSide(total: number, side: Side, order: readonly string[]): SideResolution {
+export function resolveSide(total: number, side: Side, roster: Roster): SideResolution {
   const ticked = new Set(side.ticked)
   if (ticked.size === 0) return refused("Tick at least one Member")
-  const known = new Set(order)
-  if ([...ticked].some((member) => !known.has(member))) {
+  if ([...ticked].some((member) => !roster.allowed.has(member))) {
     return refused("Only Members can be on an Expense")
   }
-  const ids = order.filter((member) => ticked.has(member))
+  const ids = roster.order.filter((member) => ticked.has(member))
   const shares = nonzero(
     ids,
     allocate(
@@ -52,7 +69,7 @@ export function resolveSide(total: number, side: Side, order: readonly string[])
       ids.map(() => 1),
     ),
   )
-  return { ok: true, shares, status: ids.length === 1 ? "1 person" : `${ids.length} ways` }
+  return { ok: true, shares, status: ids.length === 1 ? "1 Member" : `${ids.length} ways` }
 }
 
 /** What identifies an Expense and how it is split; the rest is stored as given. */
@@ -73,9 +90,9 @@ export type ExpenseResolution =
 
 /**
  * An Expense's Paid and Owed shares, or every problem blocking its save, in the order the form
- * asks for the fields. `order` is every Member who may be on it, oldest Account first.
+ * asks for the fields.
  */
-export function resolveExpense(expense: ExpenseInput, order: readonly string[]): ExpenseResolution {
+export function resolveExpense(expense: ExpenseInput, roster: Roster): ExpenseResolution {
   const problems: ExpenseProblem[] = []
   if (expense.description.trim() === "") {
     problems.push({ field: "description", message: "Add a description" })
@@ -85,8 +102,8 @@ export function resolveExpense(expense: ExpenseInput, order: readonly string[]):
   }
   const total = Number.isSafeInteger(expense.total) ? expense.total : 0
   if (total === 0) problems.push({ field: "total", message: "Enter a total other than zero" })
-  const paid = resolveSide(total, expense.paid, order)
-  const owed = resolveSide(total, expense.owed, order)
+  const paid = resolveSide(total, expense.paid, roster)
+  const owed = resolveSide(total, expense.owed, roster)
   if (!paid.ok) problems.push({ field: "paid", message: paid.problem })
   if (!owed.ok) problems.push({ field: "owed", message: owed.problem })
   if (problems.length > 0 || !paid.ok || !owed.ok) return { ok: false, problems }

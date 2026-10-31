@@ -45,7 +45,7 @@ export const createExpense = z.strictObject({
   description,
   date: isoDate,
   categoryId: id,
-  /** Signed cents, never zero; negative is a Refund. */
+  /** Cents, never zero: positive for a cost, negative for a Refund (not an outflow Amount). */
   total: cents,
   note,
   paid: side,

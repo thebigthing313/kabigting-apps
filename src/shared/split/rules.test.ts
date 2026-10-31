@@ -5,6 +5,7 @@ import {
   effect,
   effectOn,
   equalSide,
+  newExpenseRoster,
   resolveExpense,
   resolveSide,
   type ExpenseInput,
@@ -12,10 +13,11 @@ import {
 
 // Made-up Members, oldest Account first.
 const ORDER = ["ana", "ben", "cy"]
+const ROSTER = newExpenseRoster(ORDER)
 
 describe("resolveSide: Equal", () => {
   test("splits the total evenly among the Members ticked", () => {
-    expect(resolveSide(9_000, equalSide(ORDER), ORDER)).toEqual({
+    expect(resolveSide(9_000, equalSide(ORDER), ROSTER)).toEqual({
       ok: true,
       shares: { ana: 3_000, ben: 3_000, cy: 3_000 },
       status: "3 ways",
@@ -23,40 +25,40 @@ describe("resolveSide: Equal", () => {
   })
 
   test("one Member ticked takes it all: the one-payer answer", () => {
-    expect(resolveSide(5_400, equalSide(["ben"]), ORDER)).toEqual({
+    expect(resolveSide(5_400, equalSide(["ben"]), ROSTER)).toEqual({
       ok: true,
       shares: { ben: 5_400 },
-      status: "1 person",
+      status: "1 Member",
     })
   })
 
   test("leftover cents go to the oldest Accounts first, whatever order they were ticked in", () => {
-    const result = resolveSide(1_000, equalSide(["cy", "ben", "ana"]), ORDER)
+    const result = resolveSide(1_000, equalSide(["cy", "ben", "ana"]), ROSTER)
     expect(result).toMatchObject({ ok: true, shares: { ana: 334, ben: 333, cy: 333 } })
-    const two = resolveSide(1_001, equalSide(["cy", "ana", "ben"]), ORDER)
+    const two = resolveSide(1_001, equalSide(["cy", "ana", "ben"]), ROSTER)
     expect(two).toMatchObject({ shares: { ana: 334, ben: 334, cy: 333 } })
   })
 
   test("only the Members ticked share it, still in Account order", () => {
-    expect(resolveSide(101, equalSide(["cy", "ben"]), ORDER)).toMatchObject({
+    expect(resolveSide(101, equalSide(["cy", "ben"]), ROSTER)).toMatchObject({
       shares: { ben: 51, cy: 50 },
     })
   })
 
   test("a Refund splits the same way, with every share negative", () => {
-    expect(resolveSide(-1_000, equalSide(ORDER), ORDER)).toMatchObject({
+    expect(resolveSide(-1_000, equalSide(ORDER), ROSTER)).toMatchObject({
       shares: { ana: -334, ben: -333, cy: -333 },
     })
   })
 
   test("a share that rounds to nothing is left out", () => {
-    expect(resolveSide(2, equalSide(ORDER), ORDER)).toMatchObject({
+    expect(resolveSide(2, equalSide(ORDER), ROSTER)).toMatchObject({
       shares: { ana: 1, ben: 1 },
     })
   })
 
   test("nobody ticked is a problem", () => {
-    expect(resolveSide(1_000, equalSide([]), ORDER)).toEqual({
+    expect(resolveSide(1_000, equalSide([]), ROSTER)).toEqual({
       ok: false,
       problem: "Tick at least one Member",
       status: "Tick at least one Member",
@@ -64,9 +66,27 @@ describe("resolveSide: Equal", () => {
   })
 
   test("someone ticked who isn't a Member is a problem", () => {
-    expect(resolveSide(1_000, equalSide(["ana", "zed"]), ORDER)).toMatchObject({
+    expect(resolveSide(1_000, equalSide(["ana", "zed"]), ROSTER)).toMatchObject({
       ok: false,
       problem: "Only Members can be on an Expense",
+    })
+  })
+
+  test("someone in the order but not allowed on the Expense is refused", () => {
+    // Dee, an older Account no longer a Member, sets the order but can't be newly added.
+    const roster = { order: ["dee", ...ORDER], allowed: new Set(ORDER) }
+    expect(resolveSide(1_000, equalSide(["dee", "ana"]), roster)).toMatchObject({
+      ok: false,
+      problem: "Only Members can be on an Expense",
+    })
+  })
+
+  test("leftover cents follow the whole order, not only the current Members", () => {
+    // When editing, Dee is already on the Expense and allowed; her older Account comes first.
+    const roster = { order: ["dee", ...ORDER], allowed: new Set(["dee", ...ORDER]) }
+    expect(resolveSide(1_001, equalSide(["ana", "ben", "dee"]), roster)).toMatchObject({
+      ok: true,
+      shares: { dee: 334, ana: 334, ben: 333 },
     })
   })
 
@@ -76,7 +96,7 @@ describe("resolveSide: Equal", () => {
         fc.integer({ min: -10_000_000, max: 10_000_000 }).filter((total) => total !== 0),
         fc.subarray(ORDER, { minLength: 1 }),
         (total, ticked) => {
-          const result = resolveSide(total, equalSide(ticked), ORDER)
+          const result = resolveSide(total, equalSide(ticked), ROSTER)
           if (!result.ok) throw new Error(result.problem)
           const values = ticked.map((member) => result.shares[member] ?? 0)
           expect(values.reduce((a, b) => a + b, 0)).toBe(total)
@@ -100,7 +120,7 @@ function expense(overrides: Partial<ExpenseInput> = {}): ExpenseInput {
 
 describe("resolveExpense", () => {
   test("gives the Paid and Owed shares of a valid Expense", () => {
-    expect(resolveExpense(expense(), ORDER)).toEqual({
+    expect(resolveExpense(expense(), ROSTER)).toEqual({
       ok: true,
       paidShares: { ana: 9_000 },
       owedShares: { ana: 3_000, ben: 3_000, cy: 3_000 },
@@ -109,14 +129,14 @@ describe("resolveExpense", () => {
 
   test("an Expense paid and owed by the same one Member is allowed", () => {
     expect(
-      resolveExpense(expense({ paid: equalSide(["ben"]), owed: equalSide(["ben"]) }), ORDER),
+      resolveExpense(expense({ paid: equalSide(["ben"]), owed: equalSide(["ben"]) }), ROSTER),
     ).toMatchObject({ ok: true, paidShares: { ben: 9_000 }, owedShares: { ben: 9_000 } })
   })
 
   test("names every field that blocks the save", () => {
     const result = resolveExpense(
       expense({ description: "  ", date: "2026-02-30", total: 0, owed: equalSide([]) }),
-      ORDER,
+      ROSTER,
     )
     expect(result).toEqual({
       ok: false,
@@ -162,7 +182,7 @@ describe("Balances", () => {
       .map(([total, payers, owers]) => {
         const resolved = resolveExpense(
           expense({ total, paid: equalSide(payers), owed: equalSide(owers) }),
-          ORDER,
+          ROSTER,
         )
         if (!resolved.ok) throw new Error("Expected a valid Expense")
         return resolved
