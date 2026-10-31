@@ -1,4 +1,6 @@
 import { PlusIcon, TagsIcon } from "lucide-react"
+import { HOME_TABS, type HomeTab } from "@/apps/split/home-tab"
+import { SpendingTab } from "@/apps/split/spending-tab"
 import {
   authorshipWords,
   expenseSideWords,
@@ -8,6 +10,7 @@ import {
   type People,
 } from "@/apps/split/words"
 import { Button } from "@/components/ui/button"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import type { Category, Expense, Member } from "@/data/split"
 import { formatDisplayDate } from "@shared/dates"
 import { format } from "@shared/money"
@@ -19,6 +22,9 @@ type HomeViewProps = {
   members: readonly Member[]
   expenses: readonly Expense[]
   categories: readonly Category[]
+  /** The tab showing under the buttons. */
+  tab: HomeTab
+  onTabChange: (tab: HomeTab) => void
   onAddExpense: () => void
   /** Opens an Expense to change it; any Member can, whoever added it. */
   onOpenExpense: (expenseId: string) => void
@@ -32,13 +38,15 @@ function newestFirst(a: Expense, b: Expense): number {
 
 /**
  * Split's Home: the viewer's Balance and every other Member's, the Add Expense button, the way to
- * the Categories, and the Activity feed.
+ * the Categories, and the Activity and Spending tabs.
  */
 export function HomeView({
   viewerId,
   members,
   expenses,
   categories,
+  tab,
+  onTabChange,
   onAddExpense,
   onOpenExpense,
   onManageCategories,
@@ -77,30 +85,47 @@ export function HomeView({
       <Button variant="outline" className="h-11 self-start" onClick={onManageCategories}>
         <TagsIcon /> Categories
       </Button>
-      <section aria-labelledby="split-activity" className="flex flex-col gap-2">
-        <h2 id="split-activity" className="text-base font-semibold">
-          Activity
-        </h2>
-        {expenses.length === 0 ? (
-          <p className="text-sm text-muted-foreground">Nothing yet. Add an Expense to start.</p>
-        ) : (
-          <ul className="flex flex-col gap-2">
-            {expenses.toSorted(newestFirst).map((expense) => (
-              <li key={expense.id}>
-                <ExpenseCard
-                  expense={expense}
-                  categoryName={categoryName.get(expense.categoryId) ?? "No Category"}
-                  who={who}
-                  onOpen={() => onOpenExpense(expense.id)}
-                />
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
+      <Tabs
+        value={tab}
+        onValueChange={(value) => {
+          const next = HOME_TABS.find((each) => each === value)
+          if (next) onTabChange(next)
+        }}
+      >
+        <TabsList className="w-full">
+          {HOME_TABS.map((each) => (
+            <TabsTrigger key={each} value={each}>
+              {TAB_NAMES[each]}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+        <TabsContent value="activity" className="flex flex-col gap-2">
+          {expenses.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Nothing yet. Add an Expense to start.</p>
+          ) : (
+            <ul className="flex flex-col gap-2">
+              {expenses.toSorted(newestFirst).map((expense) => (
+                <li key={expense.id}>
+                  <ExpenseCard
+                    expense={expense}
+                    categoryName={categoryName.get(expense.categoryId) ?? "No Category"}
+                    who={who}
+                    onOpen={() => onOpenExpense(expense.id)}
+                  />
+                </li>
+              ))}
+            </ul>
+          )}
+        </TabsContent>
+        <TabsContent value="spending">
+          <SpendingTab expenses={expenses} categoryName={categoryName} who={who} />
+        </TabsContent>
+      </Tabs>
     </div>
   )
 }
+
+const TAB_NAMES: Record<HomeTab, string> = { activity: "Activity", spending: "Spending" }
 
 function ExpenseCard({
   expense,

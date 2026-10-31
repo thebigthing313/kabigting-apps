@@ -44,6 +44,8 @@ async function renderHome(expenses: Expense[]) {
       members={members}
       expenses={expenses}
       categories={categories}
+      tab="activity"
+      onTabChange={() => {}}
       onAddExpense={onAddExpense}
       onOpenExpense={onOpenExpense}
       onManageCategories={() => {}}
