@@ -8,6 +8,7 @@ import {
   equalSide,
   householdBalances,
   newExpenseRoster,
+  newPaymentAllowed,
   paymentEntry,
   paymentProblems,
   resolveExpense,
@@ -17,6 +18,13 @@ import {
 // Made-up Members, oldest Account first.
 const ORDER = ["ana", "ben", "cy"]
 const MEMBERS = new Set(ORDER)
+// Ana and Ben are Members; Dee, oldest of all, has lost App access; Gus only added an entry.
+const ACCOUNTS = [
+  { id: "dee", standing: "former" },
+  { id: "ana", standing: "member" },
+  { id: "ben", standing: "member" },
+  { id: "gus", standing: "author" },
+] as const
 
 function payment(overrides: Partial<PaymentInput> = {}): PaymentInput {
   return { date: "2026-10-31", fromId: "ana", toId: "ben", amount: 4_000, ...overrides }
@@ -50,8 +58,22 @@ describe("paymentProblems", () => {
     ])
   })
 
+  test("a new one can go to or from a Former member, so their Balance can be settled", () => {
+    const allowed = newPaymentAllowed(ACCOUNTS)
+    expect(paymentProblems(payment({ fromId: "dee" }), allowed)).toEqual([])
+    expect(paymentProblems(payment({ toId: "dee" }), allowed)).toEqual([])
+    expect(paymentProblems(payment({ toId: "eve" }), allowed)).toEqual([
+      { field: "toId", message: "Only Members can be on a Payment" },
+    ])
+    // Someone who only added an entry has no Balance to settle.
+    expect(paymentProblems(payment({ toId: "gus" }), allowed)).toEqual([
+      { field: "toId", message: "Only Members can be on a Payment" },
+    ])
+  })
+
   test("an edit keeps whoever is already on it, but can't add anyone else", () => {
-    const allowed = editPaymentAllowed(ORDER, { fromId: "dee", toId: "ana" })
+    const allowed = editPaymentAllowed(ACCOUNTS, { fromId: "fay", toId: "ana" })
+    expect(paymentProblems(payment({ fromId: "fay" }), allowed)).toEqual([])
     expect(paymentProblems(payment({ fromId: "dee" }), allowed)).toEqual([])
     expect(paymentProblems(payment({ toId: "eve" }), allowed)).toEqual([
       { field: "toId", message: "Only Members can be on a Payment" },

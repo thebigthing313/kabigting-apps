@@ -4,7 +4,7 @@ import { PaymentForm } from "@/apps/split/payment-form"
 import { Skeleton } from "@/components/ui/skeleton"
 import { changePayment, deletePayment, useExpenses, useMembers, usePayments } from "@/data/split"
 import { today } from "@shared/dates"
-import { householdBalances } from "@shared/split/rules"
+import { householdBalances, withBalances } from "@shared/split/rules"
 
 const appRoute = getRouteApi("/_app")
 
@@ -23,18 +23,22 @@ export function EditPaymentPage({ paymentId }: { paymentId: string }) {
     return <Skeleton className="mx-auto h-64 w-full max-w-md" />
   }
   if (!payment) return <DeletedEntry kind="Payment" onBack={entry.leave} />
-  const memberIds = members.data.map((member) => member.id)
+  const accounts = members.data
   return (
     <PaymentForm
       key={entry.formKey}
       viewerId={session.user.id}
       members={members.data}
-      balances={householdBalances(expenses, payments, memberIds)}
+      balances={householdBalances(
+        expenses,
+        payments,
+        withBalances(members.data).map((member) => member.id),
+      )}
       today={today()}
       notice={entry.notice}
       onCancel={entry.leave}
       onSave={(changed) =>
-        entry.save(() => changePayment(payment, changed, session.user.id, memberIds))
+        entry.save(() => changePayment(payment, changed, session.user.id, accounts))
       }
       editing={{
         payment,

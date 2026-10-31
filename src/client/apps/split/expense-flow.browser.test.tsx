@@ -2,14 +2,14 @@ import "@/styles.css"
 import { describe, expect, test, vi } from "vitest"
 import { render } from "vitest-browser-react"
 import { ExpenseFlow, type NewExpense } from "@/apps/split/expense-flow"
-import type { Category, Member } from "@/data/split"
+import type { Category, EntryOutcome, Member } from "@/data/split"
 import { equalSide } from "@shared/split/rules"
 
 // Made-up Members, oldest Account first; the viewer is Ana, who is not the oldest.
 const members: Member[] = [
-  { id: "ben", name: "Ben" },
-  { id: "ana", name: "Ana" },
-  { id: "cy", name: "Cy" },
+  { id: "ben", name: "Ben", standing: "member" },
+  { id: "ana", name: "Ana", standing: "member" },
+  { id: "cy", name: "Cy", standing: "member" },
 ]
 
 const GROCERIES = "0190a000-0000-7000-8000-000000000001"
@@ -20,7 +20,7 @@ const categories: Category[] = [
 ]
 
 async function renderFlow() {
-  const onSave = vi.fn<(expense: NewExpense) => Promise<boolean>>(async () => true)
+  const onSave = vi.fn<(expense: NewExpense) => Promise<EntryOutcome>>(async () => "saved")
   const onCancel = vi.fn<() => void>()
   const screen = await render(
     <ExpenseFlow

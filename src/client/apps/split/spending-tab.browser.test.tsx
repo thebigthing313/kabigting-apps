@@ -10,9 +10,9 @@ import { equalSide } from "@shared/split/rules"
 
 // Made-up Members, oldest Account first; the viewer is Ana.
 const members: Member[] = [
-  { id: "ben", name: "Ben" },
-  { id: "ana", name: "Ana" },
-  { id: "cy", name: "Cy" },
+  { id: "ben", name: "Ben", standing: "member" },
+  { id: "ana", name: "Ana", standing: "member" },
+  { id: "cy", name: "Cy", standing: "member" },
 ]
 
 const GROCERIES = "0190a000-0000-7000-8000-000000000001"

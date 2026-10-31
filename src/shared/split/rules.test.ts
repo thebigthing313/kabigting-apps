@@ -1,11 +1,13 @@
 import fc from "fast-check"
 import { describe, expect, test } from "vitest"
 import {
+  accountsOnSide,
   balances,
   effect,
   editExpenseRoster,
   effectOn,
   equalSide,
+  memberIdsOf,
   newExpenseRoster,
   parsePercent,
   resolveExpense,
@@ -451,13 +453,58 @@ describe("editExpenseRoster", () => {
     expect(editExpenseRoster(OLDEST_FIRST, [], tiny).allowed).toEqual(new Set(["ana", "dee"]))
   })
 
-  test("an Account it can't rank goes last", () => {
-    expect(editExpenseRoster(["ana"], ["ana", "ben"], saved).order).toEqual([
+  test("a Former member's leftover cents follow the Members list's order, as the server's do", () => {
+    // The Members list ranks Members and Former members together, oldest Account first.
+    const accounts = [
+      { id: "ana", standing: "member" },
+      { id: "dee", standing: "former" },
+      { id: "ben", standing: "member" },
+      { id: "cy", standing: "member" },
+    ] as const
+    const listed = editExpenseRoster(
+      accounts.map((account) => account.id),
+      memberIdsOf(accounts),
+      saved,
+    )
+    expect(listed.order).toEqual(["ana", "dee", "ben", "cy"])
+    expect(resolveSide(1_001, equalSide(["ben", "dee"]), listed)).toMatchObject({
+      shares: { dee: 501, ben: 500 },
+    })
+  })
+
+  test("an id the Members list doesn't rank goes last, as the server's does", () => {
+    // Never expected: the list ranks everyone on an Expense. Both ends still agree if it happens.
+    expect(editExpenseRoster(["ana", "ben", "cy"], ["ana", "ben"], saved).order).toEqual([
       "ana",
       "ben",
-      "dee",
       "cy",
+      "dee",
     ])
+  })
+})
+
+describe("Former members", () => {
+  const accounts = [
+    { id: "dee", standing: "former" },
+    { id: "ana", standing: "member" },
+    { id: "ben", standing: "member" },
+    { id: "gus", standing: "author" },
+  ] as const
+
+  test("are never on a new Expense's Roster", () => {
+    const roster = newExpenseRoster(memberIdsOf(accounts))
+    expect(roster.order).toEqual(["ana", "ben"])
+    expect(resolveSide(1_000, equalSide(["ana", "dee"]), roster)).toMatchObject({
+      ok: false,
+      problem: "Only Members can be on an Expense",
+    })
+  })
+
+  test("are on a side only when its shares or its Split mode name them", () => {
+    expect(accountsOnSide(equalSide(["ana", "dee"]), { ana: 1 })).toEqual(new Set(["ana", "dee"]))
+    const exactSide = { ...exact({ ana: 1_000, dee: 0 }), ticked: ["dee"] }
+    expect(accountsOnSide(exactSide, { ana: 1_000 })).toEqual(new Set(["ana"]))
+    expect(accountsOnSide(percent({ dee: "100" }), {})).toEqual(new Set(["dee"]))
   })
 })
 

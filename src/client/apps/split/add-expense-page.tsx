@@ -3,7 +3,7 @@ import { useState } from "react"
 import { useEntryForm } from "@/apps/split/entry-form"
 import { ExpenseFlow } from "@/apps/split/expense-flow"
 import { Skeleton } from "@/components/ui/skeleton"
-import { addExpense, useCategories, useMembers } from "@/data/split"
+import { addExpense, useCategories, useMembers, latestMembers } from "@/data/split"
 import { today } from "@shared/dates"
 import { newId } from "@shared/ids"
 
@@ -23,17 +23,18 @@ export function AddExpensePage() {
   if (!members.data || !categories.data) {
     return <Skeleton className="mx-auto h-64 w-full max-w-md" />
   }
-  const memberIds = members.data.map((member) => member.id)
+  const accounts = members.data
   return (
     <ExpenseFlow
       viewerId={session.user.id}
       members={members.data}
       categories={categories.data.filter((category) => !category.archived)}
       today={startedOn}
+      latestMembers={latestMembers}
       notice={entry.notice}
       onCancel={entry.leave}
       onSave={(expense) =>
-        entry.save(() => addExpense({ id, ...expense }, session.user.id, memberIds))
+        entry.save(() => addExpense({ id, ...expense }, session.user.id, accounts))
       }
     />
   )

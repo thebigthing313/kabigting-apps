@@ -16,9 +16,10 @@ there are no groups.
 _Avoid_: User, participant, friend, person
 
 **Former member**:
-An Account that appears in Split's history but has lost App access or become a Removed Account. It
-keeps a Balance and its existing shares, can still send or receive Payments, and is never added to
-new Expenses.
+An Account that Split's money names, on a share, a side of an Expense or a Payment, but that has
+lost App access or become a Removed Account. It keeps a Balance and its existing shares, can still
+send or receive Payments, and is never added to new Expenses. An Account named only as who added or
+changed an entry is not one: Split shows its name there and nowhere else.
 _Avoid_: Inactive member, deleted member
 
 ### Money

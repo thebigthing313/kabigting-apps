@@ -103,8 +103,12 @@ describe("App access", () => {
 
 describe("Members", () => {
   test("are the Admin plus every Account holding Split, oldest Account first", async () => {
-    const ids = await memberIds()
-    expect(ids).toEqual([admin.id, ana.id, ben.id])
+    const response = await server.app.request("/api/split/members", { headers: ana.headers })
+    expect(membersSchema.parse(await response.json()).rows).toEqual([
+      { id: admin.id, name: expect.any(String), standing: "member" },
+      { id: ana.id, name: expect.any(String), standing: "member" },
+      { id: ben.id, name: expect.any(String), standing: "member" },
+    ])
   })
 })
 

@@ -2,7 +2,14 @@ import { getRouteApi } from "@tanstack/react-router"
 import { DeletedEntry, useEntryForm } from "@/apps/split/entry-form"
 import { ExpenseFlow } from "@/apps/split/expense-flow"
 import { Skeleton } from "@/components/ui/skeleton"
-import { changeExpense, deleteExpense, useCategories, useExpenses, useMembers } from "@/data/split"
+import {
+  changeExpense,
+  deleteExpense,
+  useCategories,
+  useExpenses,
+  useMembers,
+  latestMembers,
+} from "@/data/split"
 import { today } from "@shared/dates"
 
 const appRoute = getRouteApi("/_app")
@@ -22,7 +29,7 @@ export function EditExpensePage({ expenseId }: { expenseId: string }) {
     return <Skeleton className="mx-auto h-64 w-full max-w-md" />
   }
   if (!expense) return <DeletedEntry kind="Expense" onBack={entry.leave} />
-  const memberIds = members.data.map((member) => member.id)
+  const accounts = members.data
   return (
     <ExpenseFlow
       key={entry.formKey}
@@ -33,10 +40,11 @@ export function EditExpensePage({ expenseId }: { expenseId: string }) {
         (category) => !category.archived || category.id === expense.categoryId,
       )}
       today={today()}
+      latestMembers={latestMembers}
       notice={entry.notice}
       onCancel={entry.leave}
       onSave={(changed) =>
-        entry.save(() => changeExpense(expense, changed, session.user.id, memberIds))
+        entry.save(() => changeExpense(expense, changed, session.user.id, accounts))
       }
       editing={{
         expense,

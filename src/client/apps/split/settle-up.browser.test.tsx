@@ -18,14 +18,18 @@ import { SettleUpPage } from "@/apps/split/settle-up-page"
 import { SplitHome } from "@/apps/split/split-home"
 import { cleanupCollections } from "@/data/collection-factory"
 import { queryClient } from "@/data/query-client"
-import type { Expense, Payment } from "@/data/split"
+import type { EntryOutcome, Expense, Member, Payment } from "@/data/split"
 import { dismissToasts } from "@/test/toasts"
 import { equalSide, paymentProblems } from "@shared/split/rules"
 import { createPayment, updatePayment } from "@shared/split/schemas"
 
 // Made-up Members, oldest Account first; the viewer is Ana.
-const me = { id: "ana", name: "Ana" }
-const members = [{ id: "ben", name: "Ben" }, me, { id: "cy", name: "Cy" }]
+const me: Member = { id: "ana", name: "Ana", standing: "member" }
+const members: Member[] = [
+  { id: "ben", name: "Ben", standing: "member" },
+  me,
+  { id: "cy", name: "Cy", standing: "member" },
+]
 const memberIds = new Set(members.map((member) => member.id))
 const GENERAL = "0190a000-0000-7000-8000-000000000002"
 const categories = [{ id: GENERAL, name: "General", archived: false }]
@@ -69,7 +73,7 @@ function saved(overrides: Partial<Payment> = {}): Payment {
 }
 
 async function renderForm(editing?: Payment) {
-  const onSave = vi.fn<(payment: NewPayment) => Promise<boolean>>(async () => true)
+  const onSave = vi.fn<(payment: NewPayment) => Promise<EntryOutcome>>(async () => "saved")
   const onCancel = vi.fn<() => void>()
   const onDelete = vi.fn<() => void>()
   const screen = await render(

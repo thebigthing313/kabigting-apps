@@ -5,6 +5,7 @@ import { EntryNoticeLine, type EntryNotice } from "@/apps/split/entry-form"
 import {
   authorshipWords,
   expenseSideWords,
+  FORMER_MEMBER,
   magnitudes,
   people,
   type People,
@@ -14,13 +15,15 @@ import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
-import type { Category, Expense, Member } from "@/data/split"
+import type { Category, EntryOutcome, Expense, Member } from "@/data/split"
 import { formatDisplayDate } from "@shared/dates"
 import { format } from "@shared/money"
 import { defaultCategory } from "@shared/split/categories"
 import {
+  accountsOnSide,
   editExpenseRoster,
   equalSide,
+  memberIdsOf,
   newExpenseRoster,
   resolveExpense,
   resolveSide,
@@ -48,14 +51,22 @@ function everyone(side: Side, order: readonly string[]): boolean {
 
 type ExpenseFlowProps = {
   viewerId: string
-  /** The Members who can be newly added to the Expense, oldest Account first. */
+  /**
+   * The Accounts Split shows, oldest Account first. Only Members can be newly added; a Former
+   * member shows only in a side's full editor, and only when already on that side.
+   */
   members: readonly Member[]
   /** The Categories offered: those not archived, and the one an edited Expense already has. */
   categories: readonly Category[]
   /** The household's date today, the date a new Expense starts on. */
   today: string
-  /** Saves the Expense; resolves true when the flow closes. */
-  onSave: (expense: NewExpense) => Promise<boolean>
+  /** Saves the Expense; resolves to how the save ended, the flow closing unless refused or unreached. */
+  onSave: (expense: NewExpense) => Promise<EntryOutcome>
+  /**
+   * The Accounts as last fetched, read after a refusal, once they have been fetched again: someone
+   * on a side may have lost App access since the form opened.
+   */
+  latestMembers?: () => readonly Member[] | undefined
   onCancel: () => void
   /** A newer version saved by someone else, or a save that didn't reach the server. */
   notice?: EntryNotice | null
@@ -82,6 +93,22 @@ function oneTap(key: SideKey, side: Side, order: readonly string[]): boolean {
   return order.some((id) => only(side, id)) || (key === "owed" && everyone(side, order))
 }
 
+/** Who can be on the Expense among `accounts`: the Members, plus anyone on the saved one. */
+function rosterAmong(accounts: readonly Member[], saved: Expense | undefined): Roster {
+  const members = memberIdsOf(accounts)
+  if (!saved) return newExpenseRoster(members)
+  return editExpenseRoster(
+    accounts.map((account) => account.id),
+    members,
+    saved,
+  )
+}
+
+/** Whoever a side names who can't be on the Expense: someone who lost App access meanwhile. */
+function outsidersOn(side: Side, roster: Roster): string[] {
+  return [...accountsOnSide(side, {})].filter((id) => !roster.allowed.has(id))
+}
+
 /** Which fields each step asks for, so Next waits until they're valid. */
 const STEP_FIELDS: readonly (readonly ExpenseField[])[] = [
   ["description", "date", "total"],
@@ -104,12 +131,14 @@ export function ExpenseFlow({
   categories,
   today,
   onSave,
+  latestMembers,
   onCancel,
   notice,
   editing,
 }: ExpenseFlowProps) {
   const saved = editing?.expense
-  const order = members.map((member) => member.id)
+  // The Members: the one-tap answers, and who a new Expense can have.
+  const order = memberIdsOf(members)
   const [step, setStep] = useState(saved ? REVIEW : 0)
   const [reached, setReached] = useState(saved ? REVIEW : 0)
   const [total, setTotal] = useState<number | null>(saved?.total ?? null)
@@ -136,7 +165,8 @@ export function ExpenseFlow({
   // Deleting takes a second tap; leaving Review disarms it.
   const [deleteArmed, setDeleteArmed] = useState(false)
 
-  const roster = saved ? editExpenseRoster(order, order, saved) : newExpenseRoster(order)
+  const roster = rosterAmong(members, saved)
+  const memberSet = new Set(order)
   const who = people(viewerId, members)
   const isRefund = (total ?? 0) < 0
   const expense: NewExpense = { description, date, categoryId, total: total ?? 0, note, paid, owed }
@@ -152,8 +182,28 @@ export function ExpenseFlow({
   // The viewer first, then everyone else oldest Account first.
   const answers = [
     ...members.filter((member) => member.id === viewerId),
-    ...members.filter((member) => member.id !== viewerId),
+    ...members.filter((member) => member.id !== viewerId && member.standing === "member"),
   ]
+  // A side naming someone who lost App access keeps its editor open on them, flagged, until they
+  // are taken off.
+  const editorShown = (key: SideKey) => inEditor[key] || outsidersOn(sides[key], roster).length > 0
+  /**
+   * A side's editor rows: the Members, the viewer first; then any Former member already on that
+   * side of the saved Expense, oldest Account first; then anyone flagged on it now, even one Split
+   * no longer lists. A Former member already on the other side has no row here, though the rules
+   * would let the edit add them, as the PRD's Validate rule allows anyone already on the Expense.
+   */
+  const editorRows = (key: SideKey) => {
+    const savedOn = saved
+      ? accountsOnSide(saved[key], key === "paid" ? saved.paidShares : saved.owedShares)
+      : new Set<string>()
+    const former = members
+      .filter((member) => member.standing === "former" && savedOn.has(member.id))
+      .map((member) => member.id)
+    const shown = [...answers.map((member) => member.id), ...former]
+    return [...shown, ...outsidersOn(sides[key], roster).filter((id) => !shown.includes(id))]
+  }
+
   /** One side on Review, in words even while another field still blocks the save. */
   const sideLine = (key: SideKey) => {
     const side = resolveSide(expense.total, expense[key], roster)
@@ -162,14 +212,14 @@ export function ExpenseFlow({
 
   /** Picks a one-tap answer, keeping what the editor held in case it is reopened. */
   function pick(key: SideKey, side: Side) {
-    if (inEditor[key]) setStashed((was) => ({ ...was, [key]: sides[key] }))
+    if (editorShown(key)) setStashed((was) => ({ ...was, [key]: sides[key] }))
     setInEditor((was) => ({ ...was, [key]: false }))
     setSide(key, side)
   }
 
   /** Opens a side's full editor, on what it held before or else the side as it stands. */
   function openEditor(key: SideKey) {
-    if (inEditor[key]) return
+    if (editorShown(key)) return
     const held = stashed[key]
     if (held) setSide(key, held)
     setInEditor((was) => ({ ...was, [key]: true }))
@@ -189,14 +239,25 @@ export function ExpenseFlow({
   }
 
   /**
-   * On success the caller leaves the flow; a refusal (already reported), or a save that never
-   * reached the server, stays on Review with everything kept.
+   * On success the caller leaves the flow. A refusal (already reported) stays on Review, unless
+   * the Accounts fetched since show someone on a side lost App access: then that side's step
+   * opens its editor with them flagged. A save that never reached the server stays on Review with
+   * everything kept.
    */
   async function save() {
     if (!resolution.ok || saving) return
     setSaving(true)
-    await onSave({ ...expense, description: description.trim(), note: note.trim() })
+    const outcome = await onSave({ ...expense, description: description.trim(), note: note.trim() })
     setSaving(false)
+    // Only a refusal can be someone who lost access; anything else is the caller's to act on.
+    if (outcome !== "refused") return
+    const fresh = rosterAmong(latestMembers?.() ?? members, saved)
+    const lost = (["paid", "owed"] as const).find(
+      (key) => outsidersOn(sides[key], fresh).length > 0,
+    )
+    if (lost === undefined) return
+    goTo(lost === "paid" ? 1 : 2)
+    setInEditor((was) => ({ ...was, [lost]: true }))
   }
 
   return (
@@ -295,13 +356,13 @@ export function ExpenseFlow({
           {answers.map((member) => (
             <Answer
               key={member.id}
-              selected={!inEditor.paid && only(paid, member.id)}
+              selected={!editorShown("paid") && only(paid, member.id)}
               onSelect={() => pick("paid", equalSide([member.id]))}
             >
               {who.nameOf(member.id)} {isRefund ? "got it all back" : "paid it all"}
             </Answer>
           ))}
-          <Answer selected={inEditor.paid} onSelect={() => openEditor("paid")}>
+          <Answer selected={editorShown("paid")} onSelect={() => openEditor("paid")}>
             {isRefund ? "Several people got it back" : "Several people paid"}
           </Answer>
         </Question>
@@ -310,7 +371,7 @@ export function ExpenseFlow({
       {step === 2 && (
         <Question title={isRefund ? "Who shares the Refund?" : "Who owes for it?"}>
           <Answer
-            selected={!inEditor.owed && everyone(owed, order)}
+            selected={!editorShown("owed") && everyone(owed, order)}
             onSelect={() => pick("owed", equalSide(order))}
           >
             Everyone equally
@@ -318,26 +379,27 @@ export function ExpenseFlow({
           {answers.map((member) => (
             <Answer
               key={member.id}
-              selected={!inEditor.owed && only(owed, member.id)}
+              selected={!editorShown("owed") && only(owed, member.id)}
               onSelect={() => pick("owed", equalSide([member.id]))}
             >
               Only {who.nameOf(member.id, "within")}
             </Answer>
           ))}
-          <Answer selected={inEditor.owed} onSelect={() => openEditor("owed")}>
+          <Answer selected={editorShown("owed")} onSelect={() => openEditor("owed")}>
             Split it differently
           </Answer>
         </Question>
       )}
 
-      {asking !== null && inEditor[asking] && (
+      {asking !== null && editorShown(asking) && (
         <SideEditor
           label={asking === "paid" ? "Paid side" : "Owed side"}
           total={expense.total}
           side={sides[asking]}
           roster={roster}
-          rows={answers.map((member) => member.id)}
+          rows={editorRows(asking)}
           who={who}
+          memberIds={memberSet}
           onChange={(side) => setSide(asking, side)}
         />
       )}
@@ -495,15 +557,18 @@ function SideEditor({
   roster,
   rows,
   who,
+  memberIds,
   onChange,
 }: {
   label: string
   total: number
   side: Side
   roster: Roster
-  /** The Members offered, in the order shown. */
+  /** Who is offered, in the order shown: the Members, then anyone else on it. */
   rows: readonly string[]
   who: People
+  /** The Members; anyone else is marked, and flagged when they can't be on this Expense. */
+  memberIds: ReadonlySet<string>
   onChange: (side: Side) => void
 }) {
   const result = resolveSide(total, side, roster)
@@ -542,6 +607,16 @@ function SideEditor({
       </div>
       {rows.map((id) => {
         const share = shares[id]
+        const mark = !memberIds.has(id) && (
+          <span
+            className={cn(
+              "block text-xs",
+              roster.allowed.has(id) ? "text-muted-foreground" : "text-destructive",
+            )}
+          >
+            {roster.allowed.has(id) ? FORMER_MEMBER : "No longer a Member: take them off"}
+          </span>
+        )
         return (
           <div key={id} className="flex min-h-9 items-center gap-2">
             {side.mode === "equal" ? (
@@ -551,10 +626,16 @@ function SideEditor({
                   checked={side.ticked.includes(id)}
                   onCheckedChange={(checked) => toggle(id, checked)}
                 />
-                {who.nameOf(id)}
+                <span>
+                  {who.nameOf(id)}
+                  {mark}
+                </span>
               </label>
             ) : (
-              <span className="flex-1">{who.nameOf(id)}</span>
+              <span className="flex-1">
+                {who.nameOf(id)}
+                {mark}
+              </span>
             )}
             {side.mode === "exact" && (
               <AmountInput

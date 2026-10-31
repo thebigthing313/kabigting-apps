@@ -7,7 +7,7 @@
  */
 import { allocate, format } from "../money.ts"
 import { isoDate } from "../schemas/primitives.ts"
-import type { Shares, Side } from "./schemas.ts"
+import type { Shares, Side, Standing } from "./schemas.ts"
 
 /** One side resolved: the cents per Member, or what still blocks it. Both have a short status. */
 export type SideResolution =
@@ -16,6 +16,24 @@ export type SideResolution =
 /** An Equal side with these Members ticked and nothing typed for the other modes. */
 export function equalSide(ticked: readonly string[]): Side {
   return { mode: "equal", ticked: [...ticked], exact: {}, percent: {} }
+}
+
+/** An Account Split shows, by its standing: a Member, a Former member, or only an author. */
+export type ListedAccount = { id: string; standing: Standing }
+
+/** The Members among `accounts`, in the same order. */
+export function memberIdsOf(accounts: readonly ListedAccount[]): string[] {
+  return accounts.filter((account) => account.standing === "member").map((account) => account.id)
+}
+
+/**
+ * The Members and Former members among `accounts`, in the same order: everyone with a Balance.
+ * An Account named only as who added or changed an entry has none.
+ */
+export function withBalances<Account extends ListedAccount>(
+  accounts: readonly Account[],
+): Account[] {
+  return accounts.filter((account) => account.standing !== "author")
 }
 
 /** Who an Expense's cents can go to. */
@@ -57,22 +75,30 @@ function namedBy(side: Side): string[] {
 }
 
 /**
- * Everyone already on a saved Expense: holding a share, or named by a side's Split mode even when
- * their share rounded to nothing. Inputs of a mode the side isn't in don't count.
+ * Everyone on one side of an Expense: holding one of its `shares`, or named by its Split mode even
+ * when their share rounded to nothing. Inputs of a mode the side isn't in don't count.
  */
+export function accountsOnSide(side: Side, shares: Shares): Set<string> {
+  return new Set([...Object.keys(shares), ...namedBy(side)])
+}
+
+/** Everyone already on a saved Expense, on either side, as `accountsOnSide` counts them. */
 export function accountsOnExpense(saved: SavedSides): Set<string> {
   return new Set([
-    ...Object.keys(saved.paidShares),
-    ...Object.keys(saved.owedShares),
-    ...namedBy(saved.paid),
-    ...namedBy(saved.owed),
+    ...accountsOnSide(saved.paid, saved.paidShares),
+    ...accountsOnSide(saved.owed, saved.owedShares),
   ])
 }
 
 /**
  * The Roster of an Expense being edited: the current Members, plus everyone already on it, Former
- * members included. Nobody else can be added. `oldestFirst` ranks Accounts by
- * age; anyone it doesn't know goes last.
+ * members included. Nobody else can be added. `oldestFirst` ranks Accounts by age, Members and
+ * Former members alike, as the server and the Members list both do; anyone it doesn't know goes
+ * last.
+ *
+ * Per the PRD's Validate rule the Roster is the whole Expense's: a Former member already on either
+ * side may be on both sides of the edit. The form's editor is stricter, giving them a row only on
+ * the side they are already on.
  */
 export function editExpenseRoster(
   oldestFirst: readonly string[],
@@ -292,19 +318,27 @@ export type PaymentField = "fromId" | "toId" | "amount" | "date"
 export type PaymentProblem = { field: PaymentField; message: string }
 
 /**
- * Who can be on an edited Payment: the current Members, plus whoever is already on it, so saving
- * it again never refuses them. Nobody else can be added.
+ * Who can be on a new Payment: the Members and the Former members, so a Former member's Balance
+ * can be settled to zero. Nobody else can be.
+ */
+export function newPaymentAllowed(accounts: readonly ListedAccount[]): Set<string> {
+  return new Set(withBalances(accounts).map((account) => account.id))
+}
+
+/**
+ * Who can be on an edited Payment: as on a new one, plus whoever is already on it, so saving it
+ * again never refuses them. Nobody else can be added.
  */
 export function editPaymentAllowed(
-  memberIds: readonly string[],
+  accounts: readonly ListedAccount[],
   saved: Pick<PaymentInput, "fromId" | "toId">,
 ): Set<string> {
-  return new Set([...memberIds, saved.fromId, saved.toId])
+  return new Set([...newPaymentAllowed(accounts), saved.fromId, saved.toId])
 }
 
 /**
  * Every problem blocking a Payment's save, in the order the form asks for the fields: it goes
- * between two different people in `allowed`, for an Amount above zero, on a date.
+ * between two different Accounts in `allowed`, for an Amount above zero, on a date.
  */
 export function paymentProblems(
   payment: PaymentInput,

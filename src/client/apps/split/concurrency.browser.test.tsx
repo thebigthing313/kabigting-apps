@@ -26,8 +26,12 @@ import { editExpenseRoster, equalSide, newExpenseRoster, resolveExpense } from "
 import { createExpense, createPayment, updateExpense, updatePayment } from "@shared/split/schemas"
 
 // Made-up Members, oldest Account first; the viewer is Ana.
-const me = { id: "ana", name: "Ana" }
-const members = [{ id: "ben", name: "Ben" }, me, { id: "cy", name: "Cy" }]
+const me = { id: "ana", name: "Ana", standing: "member" }
+const members = [
+  { id: "ben", name: "Ben", standing: "member" },
+  me,
+  { id: "cy", name: "Cy", standing: "member" },
+]
 const memberIds = members.map((member) => member.id)
 const GENERAL = "0190a000-0000-7000-8000-000000000002"
 const categories = [{ id: GENERAL, name: "General", archived: false }]

@@ -21,7 +21,9 @@ import { newId } from "@shared/ids"
 import {
   editExpenseRoster,
   editPaymentAllowed,
+  memberIdsOf,
   newExpenseRoster,
+  newPaymentAllowed,
   paymentProblems,
   resolveExpense,
   type ExpenseResolution,
@@ -32,6 +34,7 @@ import type {
   CreateExpense,
   CreatePayment,
   ExpenseRow,
+  Member,
   PaymentRow,
   UpdateCategory,
   UpdateExpense,
@@ -73,10 +76,16 @@ export function useExpenses() {
   return useLiveQuery((q) => q.from({ expense: expenses }), [expenses])
 }
 
-/** Split's Members, oldest Account first. */
+const MEMBERS_KEY = ["split", "members"]
+
+/**
+ * Every Account Split shows, oldest Account first, by standing: the Members; the Former members,
+ * who keep their shares and Balance but are never added to a new Expense; and those named only as
+ * who added or changed an entry.
+ */
 export function useMembers() {
   return useQuery({
-    queryKey: ["split", "members"],
+    queryKey: MEMBERS_KEY,
     queryFn: async () => (await readJson(await api.split.members.$get())).rows,
   })
 }
@@ -221,17 +230,32 @@ function refused(resolved: Extract<ExpenseResolution, { ok: false }>): Promise<E
 }
 
 /**
+ * After an entry is refused, here or by the server, fetches the Accounts again before answering:
+ * someone on it may have lost App access since the form opened, and the form then flags them.
+ * Any other outcome leaves them be.
+ */
+async function refetchMembersOn(outcome: EntryOutcome): Promise<EntryOutcome> {
+  if (outcome === "refused") await queryClient.invalidateQueries({ queryKey: MEMBERS_KEY })
+  return outcome
+}
+
+/** The Accounts as last fetched, if they have been. */
+export function latestMembers(): Member[] | undefined {
+  return queryClient.getQueryData<Member[]>(MEMBERS_KEY)
+}
+
+/**
  * Saves a new Expense added by `viewerId`. It shows at once, with its shares worked out here by
- * the same rules the server applies, among `memberIds` (the Members, oldest Account first); the
+ * the same rules the server applies, among the Members in `accounts` (oldest Account first); the
  * server's row then replaces it. Anything but stored leaves nothing behind; see `EntryOutcome`.
  */
 export function addExpense(
   input: CreateExpense,
   viewerId: string,
-  memberIds: readonly string[],
+  accounts: readonly Member[],
 ): Promise<EntryOutcome> {
-  const resolved = resolveExpense(input, newExpenseRoster(memberIds))
-  if (!resolved.ok) return refused(resolved)
+  const resolved = resolveExpense(input, newExpenseRoster(memberIdsOf(accounts)))
+  if (!resolved.ok) return refused(resolved).then(refetchMembersOn)
   const now = nowInstant()
   const expenses = expensesCollection()
   return entryOutcome(
@@ -248,7 +272,7 @@ export function addExpense(
       ENTRY_WRITE,
     ),
     () => expenses.utils.refetch(),
-  )
+  ).then(refetchMembersOn)
 }
 
 /**
@@ -260,10 +284,12 @@ export function changeExpense(
   saved: ExpenseRow,
   input: UpdateExpense,
   viewerId: string,
-  memberIds: readonly string[],
+  accounts: readonly Member[],
 ): Promise<EntryOutcome> {
-  const resolved = resolveExpense(input, editExpenseRoster(memberIds, memberIds, saved))
-  if (!resolved.ok) return refused(resolved)
+  const oldestFirst = accounts.map((account) => account.id)
+  const roster = editExpenseRoster(oldestFirst, memberIdsOf(accounts), saved)
+  const resolved = resolveExpense(input, roster)
+  if (!resolved.ok) return refused(resolved).then(refetchMembersOn)
   const expenses = expensesCollection()
   if (!expenses.has(saved.id)) return Promise.resolve("gone")
   return entryOutcome(
@@ -276,7 +302,7 @@ export function changeExpense(
         changedAt: nowInstant(),
       })
     }),
-  )
+  ).then(refetchMembersOn)
 }
 
 /**
@@ -323,16 +349,17 @@ function refusedPayment(problems: readonly PaymentProblem[]): Promise<EntryOutco
 }
 
 /**
- * Records a new Payment added by `viewerId`, between two of `memberIds`. As `addExpense`, it shows
- * at once and the server's row then replaces it; outcomes as for `addExpense`.
+ * Records a new Payment added by `viewerId`, between two of `accounts`, Former members included.
+ * As `addExpense`, it shows at once and the server's row then replaces it; outcomes as for
+ * `addExpense`.
  */
 export function addPayment(
   input: CreatePayment,
   viewerId: string,
-  memberIds: readonly string[],
+  accounts: readonly Member[],
 ): Promise<EntryOutcome> {
-  const problems = paymentProblems(input, new Set(memberIds))
-  if (problems.length > 0) return refusedPayment(problems)
+  const problems = paymentProblems(input, newPaymentAllowed(accounts))
+  if (problems.length > 0) return refusedPayment(problems).then(refetchMembersOn)
   const now = nowInstant()
   const payments = paymentsCollection()
   return entryOutcome(
@@ -341,28 +368,29 @@ export function addPayment(
       ENTRY_WRITE,
     ),
     () => payments.utils.refetch(),
-  )
+  ).then(refetchMembersOn)
 }
 
 /**
- * Saves `saved` as it now stands, replacing all of it, changed by `viewerId`. Whoever is already
- * on it stays allowed. Outcomes as for `changeExpense`.
+ * Saves `saved` as it now stands, replacing all of it, changed by `viewerId`. A Member or Former
+ * member in `accounts` can be on it, and whoever is already on it stays allowed. Outcomes as for
+ * `changeExpense`.
  */
 export function changePayment(
   saved: PaymentRow,
   input: UpdatePayment,
   viewerId: string,
-  memberIds: readonly string[],
+  accounts: readonly Member[],
 ): Promise<EntryOutcome> {
-  const problems = paymentProblems(input, editPaymentAllowed(memberIds, saved))
-  if (problems.length > 0) return refusedPayment(problems)
+  const problems = paymentProblems(input, editPaymentAllowed(accounts, saved))
+  if (problems.length > 0) return refusedPayment(problems).then(refetchMembersOn)
   const payments = paymentsCollection()
   if (!payments.has(saved.id)) return Promise.resolve("gone")
   return entryOutcome(
     payments.update(saved.id, ENTRY_WRITE, (draft) => {
       Object.assign(draft, { ...input, changedBy: viewerId, changedAt: nowInstant() })
     }),
-  )
+  ).then(refetchMembersOn)
 }
 
 /** Deletes a Payment for good; outcomes as for `deleteExpense`. */

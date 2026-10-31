@@ -41,7 +41,8 @@ type Phase = "open" | "saving" | "closing"
  * - `formKey` mounts the form: it changes with the entry, and on **Load their version**, so the
  *   draft starts again from that version.
  * - `notice` is the newer-version or offline notice, or null.
- * - `save` sends a save and acts on its outcome; true when the form closes.
+ * - `save` sends a save, acts on its outcome and hands it back, so the form can follow up on a
+ *   refusal.
  * - `remove` leaves for Split's Home at once, then deletes in the background.
  * - `leave` goes back to Split's Home.
  *
@@ -126,13 +127,14 @@ export function useEntryForm<Row extends Changed>(kind: EntryKind, opened?: Open
     return true
   }
 
-  async function save(write: () => Promise<EntryOutcome>): Promise<boolean> {
+  async function save(write: () => Promise<EntryOutcome>): Promise<EntryOutcome> {
     setOffline(false)
     setPhase("saving")
-    const closes = settle(await write())
+    const outcome = await write()
+    const closes = settle(outcome)
     // Closing, the row shows this save until the form is gone: never someone else's.
     setPhase(closes ? "closing" : "open")
-    return closes
+    return outcome
   }
 
   function remove(write: () => Promise<EntryOutcome>) {
