@@ -1,4 +1,4 @@
-import { PlusIcon } from "lucide-react"
+import { PlusIcon, TagsIcon } from "lucide-react"
 import {
   authorshipWords,
   people,
@@ -22,6 +22,7 @@ type HomeViewProps = {
   onAddExpense: () => void
   /** Opens an Expense to change it; any Member can, whoever added it. */
   onOpenExpense: (expenseId: string) => void
+  onManageCategories: () => void
 }
 
 /** Newest first: by date, then the one added last. */
@@ -30,8 +31,8 @@ function newestFirst(a: Expense, b: Expense): number {
 }
 
 /**
- * Split's Home: the viewer's Balance and every other Member's, the Add Expense button, and the
- * Activity feed.
+ * Split's Home: the viewer's Balance and every other Member's, the Add Expense button, the way to
+ * the Categories, and the Activity feed.
  */
 export function HomeView({
   viewerId,
@@ -40,6 +41,7 @@ export function HomeView({
   categories,
   onAddExpense,
   onOpenExpense,
+  onManageCategories,
 }: HomeViewProps) {
   const who = people(viewerId, members)
   const totals = balances(
@@ -71,6 +73,9 @@ export function HomeView({
       </section>
       <Button size="lg" className="h-12" onClick={onAddExpense}>
         <PlusIcon /> Add Expense
+      </Button>
+      <Button variant="outline" className="h-11 self-start" onClick={onManageCategories}>
+        <TagsIcon /> Categories
       </Button>
       <section aria-labelledby="split-activity" className="flex flex-col gap-2">
         <h2 id="split-activity" className="text-base font-semibold">

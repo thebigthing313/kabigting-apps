@@ -1,7 +1,7 @@
 import { and, eq, isNull, sql } from "drizzle-orm"
 import { Hono } from "hono"
 import { z } from "zod"
-import { isUniqueViolation } from "#server/apps/finances/db-errors.ts"
+import { isUniqueViolation } from "#server/db/errors.ts"
 import { isReconciledActual } from "#server/apps/finances/transactions.ts"
 import { transferToRow } from "#server/apps/finances/transfers.ts"
 import type { AppEnv } from "#server/core/context.ts"

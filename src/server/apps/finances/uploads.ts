@@ -1,7 +1,7 @@
 import { and, eq, inArray, sql } from "drizzle-orm"
 import { Hono } from "hono"
 import { z } from "zod"
-import { isUniqueViolation } from "#server/apps/finances/db-errors.ts"
+import { isUniqueViolation } from "#server/db/errors.ts"
 import { OfxError, type OfxStatement, parseOfx } from "#server/apps/finances/ofx.ts"
 import { toTransactionRow } from "#server/apps/finances/transactions.ts"
 import { toWalletRow } from "#server/apps/finances/wallets.ts"

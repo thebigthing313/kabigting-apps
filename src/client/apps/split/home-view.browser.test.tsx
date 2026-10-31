@@ -46,6 +46,7 @@ async function renderHome(expenses: Expense[]) {
       categories={categories}
       onAddExpense={onAddExpense}
       onOpenExpense={onOpenExpense}
+      onManageCategories={() => {}}
     />,
   )
   return { screen, onAddExpense, onOpenExpense }

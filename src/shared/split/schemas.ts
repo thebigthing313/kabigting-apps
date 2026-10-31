@@ -87,6 +87,18 @@ export const members = z.object({ rows: z.array(member) })
 export const categoryRow = z.object({ id, name: z.string(), archived: z.boolean() })
 export const categoryRows = z.object({ rows: z.array(categoryRow) })
 
+/** A Category's name, trimmed; unique regardless of case, which the database enforces. */
+const categoryName = z.string().trim().min(1, "Enter a name").max(100)
+
+/** A new Category under an id the client made. It starts in use. */
+export const createCategory = z.strictObject({ id, name: categoryName })
+
+/** Renaming or archiving a Category, or both. There is no delete. */
+export const updateCategory = z
+  .strictObject({ name: categoryName, archived: z.boolean() })
+  .partial()
+  .refine((changes) => Object.keys(changes).length > 0, "Change at least one field")
+
 export type Side = z.infer<typeof side>
 export type Shares = z.infer<typeof shares>
 export type CreateExpense = z.infer<typeof createExpense>
@@ -94,3 +106,4 @@ export type UpdateExpense = z.infer<typeof updateExpense>
 export type ExpenseRow = z.infer<typeof expenseRow>
 export type Member = z.infer<typeof member>
 export type CategoryRow = z.infer<typeof categoryRow>
+export type UpdateCategory = z.infer<typeof updateCategory>

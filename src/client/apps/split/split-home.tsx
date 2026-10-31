@@ -25,6 +25,7 @@ export function SplitHome() {
       onOpenExpense={(expenseId) =>
         void navigate({ to: "/split/expenses/$expenseId", params: { expenseId } })
       }
+      onManageCategories={() => void navigate({ to: "/split/categories" })}
     />
   )
 }

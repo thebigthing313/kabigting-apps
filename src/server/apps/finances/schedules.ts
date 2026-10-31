@@ -1,7 +1,7 @@
 import { and, asc, eq, gt, gte, inArray, sql } from "drizzle-orm"
 import { Hono } from "hono"
 import { z } from "zod"
-import { isForeignKeyViolation, violatedCheck } from "#server/apps/finances/db-errors.ts"
+import { isForeignKeyViolation, violatedCheck } from "#server/db/errors.ts"
 import {
   notReconciled,
   occurrenceToRow,

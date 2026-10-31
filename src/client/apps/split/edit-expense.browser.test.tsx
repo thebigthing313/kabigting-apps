@@ -29,9 +29,11 @@ const members = [{ id: "ben", name: "Ben" }, me, { id: "cy", name: "Cy" }]
 const memberIds = members.map((member) => member.id)
 const GROCERIES = "0190a000-0000-7000-8000-000000000001"
 const GENERAL = "0190a000-0000-7000-8000-000000000002"
+const ARCHIVED = "0190a000-0000-7000-8000-000000000003"
 const categories = [
   { id: GROCERIES, name: "Groceries", archived: false },
   { id: GENERAL, name: "General", archived: false },
+  { id: ARCHIVED, name: "Old stuff", archived: true },
 ]
 const EXPENSE_ID = "0190a000-0000-7000-8000-000000000100"
 const ADDED_AT = "2026-10-03T16:00:00.000Z"
@@ -298,6 +300,18 @@ describe("from Split's Home", () => {
         },
       },
     ])
+  })
+
+  test("an archived Category is offered only on the Expense that already has it", async () => {
+    expenses = [saved({ categoryId: ARCHIVED })]
+    const { screen } = await openSplit()
+    await screen.getByRole("button", { name: "Edit Groceries run" }).click()
+    await screen.getByRole("button", { name: "Change What" }).click()
+    const chips = screen.getByRole("radiogroup", { name: "Category" }).getByRole("radio")
+    await expect.element(screen.getByRole("radio", { name: "Old stuff" })).toBeChecked()
+    expect(chips.elements().map((chip) => chip.textContent)).toContain("Old stuff")
+    await screen.getByRole("radio", { name: "General" }).click()
+    await expect.element(screen.getByRole("radio", { name: "Old stuff" })).not.toBeChecked()
   })
 
   test("a second tap deletes it for good, and the Balances move at once", async () => {
