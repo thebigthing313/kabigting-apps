@@ -17,9 +17,10 @@ test("an Occurrence is overridden, skipped, then put back on its Schedule", asyn
   const run = runName(testInfo)
   const checking = `E2E checking ${run}`
   const walletId = await post(page, "wallets", { name: checking })
-  // Monthly, starting next month, so its first two Occurrences are upcoming.
+  // Monthly, starting next month, so its first two Occurrences are upcoming. The second is a
+  // month after the first, as the Schedule counts it: from Nov 30, that is Dec 30, not Dec 31.
   const first = addMonthsClamped(today(), 1)
-  const second = addMonthsClamped(today(), 2)
+  const second = addMonthsClamped(first, 1)
   await post(page, "schedules", {
     walletId,
     amountCents: -150_000,
