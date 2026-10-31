@@ -166,6 +166,8 @@ describe("Home", () => {
         expenses={[lunch]}
         payments={[]}
         categories={categories}
+        tab="activity"
+        onTabChange={() => {}}
         onAddExpense={() => {}}
         onSettleUp={() => {}}
         onOpenExpense={() => {}}
