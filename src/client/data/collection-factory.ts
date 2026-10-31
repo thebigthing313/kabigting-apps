@@ -29,19 +29,32 @@ export type WriteOptions = {
    * gets no error toast. The row is still dropped.
    */
   quietWhenGone?: boolean
+  /**
+   * The caller counts a create refused because its id is already stored (409) as saved: an
+   * earlier try whose answer was lost got there. That failure gets no error toast.
+   */
+  quietWhenTaken?: boolean
+  /**
+   * The caller tells the viewer itself when they no longer have access to the App (403
+   * `forbidden_app`), so that failure gets no error toast.
+   */
+  quietWhenNoAccess?: boolean
 }
+
+const WRITE_FLAGS = [
+  "keepalive",
+  "quietWhenUnreached",
+  "quietWhenGone",
+  "quietWhenTaken",
+  "quietWhenNoAccess",
+] as const satisfies readonly (keyof WriteOptions)[]
 
 function writeOptions(metadata: unknown): WriteOptions {
   if (typeof metadata !== "object" || metadata === null) return {}
-  return {
-    ...("keepalive" in metadata && metadata.keepalive === true ? { keepalive: true } : {}),
-    ...("quietWhenUnreached" in metadata && metadata.quietWhenUnreached === true
-      ? { quietWhenUnreached: true }
-      : {}),
-    ...("quietWhenGone" in metadata && metadata.quietWhenGone === true
-      ? { quietWhenGone: true }
-      : {}),
-  }
+  const given = new Map(Object.entries(metadata))
+  const options: WriteOptions = {}
+  for (const flag of WRITE_FLAGS) if (given.get(flag) === true) options[flag] = true
+  return options
 }
 
 type RestWrites<Row extends { id: string }> = {
@@ -78,10 +91,22 @@ export function isNotFound(error: unknown): boolean {
   return error instanceof ApiRequestError && error.status === 404
 }
 
+/** Whether the server refused a create because its id is already stored. */
+export function isTaken(error: unknown): boolean {
+  return error instanceof ApiRequestError && error.status === 409
+}
+
+/** Whether the server refused because the viewer no longer has access to the App. */
+export function isNoAccess(error: unknown): boolean {
+  return error instanceof ApiRequestError && error.code === "forbidden_app"
+}
+
 /** Reports a failed write, unless the caller shows that failure itself. */
 function report(error: unknown, action: string, options: WriteOptions) {
   if (options.quietWhenUnreached && isUnreached(error)) return
   if (options.quietWhenGone && isNotFound(error)) return
+  if (options.quietWhenTaken && isTaken(error)) return
+  if (options.quietWhenNoAccess && isNoAccess(error)) return
   reportError(error, action)
 }
 
@@ -145,14 +170,16 @@ function writeHandlers<Row extends { id: string }>(spec: RestWrites<Row>) {
     },
     onDelete: async ({ transaction, collection }) => {
       let key: string | undefined
+      let options: WriteOptions = {}
       try {
         for (const mutation of transaction.mutations) {
           key = mutation.key
+          options = writeOptions(mutation.metadata)
           await spec.remove(mutation.key)
           await collection.utils.writeDelete(mutation.key)
         }
       } catch (error) {
-        return failed(error, "Deleting", {}, key, (gone) => collection.utils.writeDelete(gone))
+        return failed(error, "Deleting", options, key, (gone) => collection.utils.writeDelete(gone))
       }
       return { refetch: false }
     },

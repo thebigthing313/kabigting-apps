@@ -1,6 +1,7 @@
 import { cn } from "cn"
 import { ArrowLeftIcon, CheckIcon, PencilIcon, Trash2Icon } from "lucide-react"
 import { useState } from "react"
+import { EntryNoticeLine, type EntryNotice } from "@/apps/split/entry-form"
 import {
   authorshipWords,
   expenseSideWords,
@@ -53,9 +54,11 @@ type ExpenseFlowProps = {
   categories: readonly Category[]
   /** The household's date today, the date a new Expense starts on. */
   today: string
-  /** Saves the Expense; resolves true once stored. */
+  /** Saves the Expense; resolves true when the flow closes. */
   onSave: (expense: NewExpense) => Promise<boolean>
   onCancel: () => void
+  /** A newer version saved by someone else, or a save that didn't reach the server. */
+  notice?: EntryNotice | null
   /**
    * The saved Expense being changed, absent when adding one. It opens on Review as it was
    * entered, each step returns to Review, and Review offers `onDelete`.
@@ -102,6 +105,7 @@ export function ExpenseFlow({
   today,
   onSave,
   onCancel,
+  notice,
   editing,
 }: ExpenseFlowProps) {
   const saved = editing?.expense
@@ -184,7 +188,10 @@ export function ExpenseFlow({
     else goTo(saved ? REVIEW : step - 1)
   }
 
-  /** On success the caller leaves the flow; a refusal (already reported) stays on Review. */
+  /**
+   * On success the caller leaves the flow; a refusal (already reported), or a save that never
+   * reached the server, stays on Review with everything kept.
+   */
   async function save() {
     if (!resolution.ok || saving) return
     setSaving(true)
@@ -374,6 +381,10 @@ export function ExpenseFlow({
         </div>
       )}
 
+      {/* Steps work offline, so a failed save is told, with Try again, only on Review. */}
+      {notice && (notice.kind === "newer" || step === REVIEW) && (
+        <EntryNoticeLine notice={notice} who={who} onRetry={() => void save()} />
+      )}
       {step < REVIEW ? (
         <Button
           size="lg"
