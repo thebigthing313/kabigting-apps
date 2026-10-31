@@ -386,3 +386,46 @@ export function householdBalances(
 ): Shares {
   return balances([...expenses, ...[...payments].map(paymentEntry)], memberIds)
 }
+
+/** A Payment suggested to settle the household up: shown, never stored. */
+export type SuggestedPayment = Pick<PaymentInput, "fromId" | "toId" | "amount">
+
+/**
+ * One way to bring every Balance to zero: the biggest debtor pays the biggest creditor as much as
+ * one of them needs, again and again until nobody is left owing or owed. Equal Balances go in
+ * `oldestFirst` order, anyone it doesn't know after, by id, so the same Balances always give the
+ * same suggestions. Each one zeroes someone, so there is at least one fewer than the Accounts not
+ * at zero. These are a suggestion worked out from the Balances alone, never who owes whom.
+ */
+export function suggestedPayments(
+  totals: Shares,
+  oldestFirst: readonly string[],
+): SuggestedPayment[] {
+  const rank = (id: string) => {
+    const at = oldestFirst.indexOf(id)
+    return at === -1 ? oldestFirst.length : at
+  }
+  const byAge = (a: string, b: string) => rank(a) - rank(b) || (a < b ? -1 : a > b ? 1 : 0)
+  const left = new Map(Object.entries(totals).filter(([, cents]) => cents !== 0))
+  /** Whoever is furthest from zero on one side, the oldest of any tied. */
+  const biggest = (sign: 1 | -1) =>
+    [...left.keys()]
+      .filter((id) => Math.sign(left.get(id) ?? 0) === sign)
+      .toSorted((a, b) => Math.abs(left.get(b) ?? 0) - Math.abs(left.get(a) ?? 0) || byAge(a, b))[0]
+  const suggestions: SuggestedPayment[] = []
+  for (;;) {
+    const fromId = biggest(-1)
+    const toId = biggest(1)
+    if (fromId === undefined || toId === undefined) return suggestions
+    const amount = Math.min(-(left.get(fromId) ?? 0), left.get(toId) ?? 0)
+    suggestions.push({ fromId, toId, amount })
+    for (const [id, move] of [
+      [fromId, amount],
+      [toId, -amount],
+    ] as const) {
+      const now = (left.get(id) ?? 0) + move
+      if (now === 0) left.delete(id)
+      else left.set(id, now)
+    }
+  }
+}

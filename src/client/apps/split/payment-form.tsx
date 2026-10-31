@@ -18,6 +18,7 @@ import {
   editPaymentAllowed,
   newPaymentAllowed,
   paymentProblems,
+  type SuggestedPayment,
   withBalances,
 } from "@shared/split/rules"
 import type { CreatePayment, Shares } from "@shared/split/schemas"
@@ -36,6 +37,8 @@ type PaymentFormProps = {
   balances: Shares
   /** The household's date today, the date a new Payment starts on. */
   today: string
+  /** A suggested Payment a new one starts as, when it opens from the Balances tab. */
+  suggested?: SuggestedPayment
   /** Saves the Payment; resolves to how the save ended, the form closing unless refused or unreached. */
   onSave: (payment: NewPayment) => Promise<EntryOutcome>
   onCancel: () => void
@@ -48,27 +51,29 @@ type PaymentFormProps = {
 /**
  * Settle up, or change a saved Payment, full page: who's paying and who gets it from avatar tiles
  * showing each Member's Balance, Former members' included, then the Amount, date and an optional
- * note, and the Payment in plain words before it is recorded. A new one starts as the viewer
- * paying the oldest other Member.
+ * note, and the Payment in plain words before it is recorded. A new one starts as the suggestion
+ * it opened from, or else as the viewer paying the oldest other Member.
  */
 export function PaymentForm({
   viewerId,
   members,
   balances,
   today,
+  suggested,
   onSave,
   onCancel,
   notice,
   editing,
 }: PaymentFormProps) {
   const saved = editing?.payment
-  const [fromId, setFromId] = useState(saved?.fromId ?? viewerId)
+  const start = saved ?? suggested
+  const [fromId, setFromId] = useState(start?.fromId ?? viewerId)
   const [toId, setToId] = useState(
-    saved?.toId ??
+    start?.toId ??
       members.find((member) => member.id !== viewerId && member.standing === "member")?.id ??
       "",
   )
-  const [amount, setAmount] = useState<number | null>(saved?.amount ?? null)
+  const [amount, setAmount] = useState<number | null>(start?.amount ?? null)
   const [date, setDate] = useState(saved?.date ?? today)
   const [note, setNote] = useState(saved?.note ?? "")
   const [saving, setSaving] = useState(false)
