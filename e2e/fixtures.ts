@@ -13,6 +13,15 @@ const accountsFile = z.object({
   member: z.object({ email: z.string(), password: z.string() }),
   guest: z.object({ email: z.string(), password: z.string() }),
   newcomers: z.record(z.string(), z.object({ email: z.string(), temporaryPassword: z.string() })),
+  split: z.record(
+    z.string(),
+    z.object({
+      email: z.string(),
+      password: z.string(),
+      name: z.string(),
+      partnerName: z.string(),
+    }),
+  ),
 })
 
 /** The Accounts `scripts/e2e-setup.ts` seeded for this run. */

@@ -123,6 +123,7 @@ function Harness() {
       onTabChange={setTab}
       onAddExpense={() => {}}
       onSettleUp={() => {}}
+      onSettleSuggestion={() => {}}
       onOpenExpense={() => {}}
       onOpenPayment={() => {}}
       onManageCategories={() => {}}
@@ -134,7 +135,11 @@ async function openSpending() {
   const screen = await render(<Harness />)
   const tabs = screen.getByRole("tab")
   await expect.element(tabs.first()).toHaveAccessibleName("Activity")
-  expect(tabs.elements().map((each) => each.textContent)).toEqual(["Activity", "Spending"])
+  expect(tabs.elements().map((each) => each.textContent)).toEqual([
+    "Activity",
+    "Balances",
+    "Spending",
+  ])
   await expect.element(tabs.first()).toHaveAttribute("aria-selected", "true")
   await screen.getByRole("tab", { name: "Spending" }).click()
   return screen
@@ -260,6 +265,7 @@ describe("the Spending tab", () => {
         onTabChange={() => {}}
         onAddExpense={() => {}}
         onSettleUp={() => {}}
+        onSettleSuggestion={() => {}}
         onOpenExpense={() => {}}
         onOpenPayment={() => {}}
         onManageCategories={() => {}}

@@ -172,6 +172,7 @@ describe("Home", () => {
         onTabChange={() => {}}
         onAddExpense={() => {}}
         onSettleUp={() => {}}
+        onSettleSuggestion={() => {}}
         onOpenExpense={() => {}}
         onOpenPayment={() => {}}
         onManageCategories={() => {}}
