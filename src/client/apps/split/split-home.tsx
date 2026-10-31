@@ -7,8 +7,8 @@ const appRoute = getRouteApi("/_app")
 const homeRoute = getRouteApi("/_app/split/")
 
 /**
- * The Split App's home: Balances, Add Expense, Settle up, and the Activity and Spending tabs, each
- * Expense or Payment opening it. The tab showing is in the address, so coming back to Home
+ * The Split App's home: Balances, Add Expense, Settle up, and the Activity, Balances and Spending
+ * tabs, each Expense or Payment opening it and each suggested Payment opening Settle up filled in. The tab showing is in the address, so coming back to Home
  * returns to it.
  */
 export function SplitHome() {
@@ -39,6 +39,9 @@ export function SplitHome() {
       }
       onAddExpense={() => void navigate({ to: "/split/expenses/new" })}
       onSettleUp={() => void navigate({ to: "/split/payments/new" })}
+      onSettleSuggestion={({ fromId, toId, amount }) =>
+        void navigate({ to: "/split/payments/new", search: { fromId, toId, amount } })
+      }
       onOpenExpense={(expenseId) =>
         void navigate({ to: "/split/expenses/$expenseId", params: { expenseId } })
       }

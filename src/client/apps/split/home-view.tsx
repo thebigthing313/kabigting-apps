@@ -1,4 +1,5 @@
 import { HandCoinsIcon, PlusIcon, TagsIcon } from "lucide-react"
+import { BalancesTab } from "@/apps/split/balances-tab"
 import { HOME_TABS, type HomeTab } from "@/apps/split/home-tab"
 import { PaymentCard } from "@/apps/split/payment-card"
 import { SpendingTab } from "@/apps/split/spending-tab"
@@ -16,7 +17,12 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import type { Category, Expense, Member, Payment } from "@/data/split"
 import { formatDisplayDate } from "@shared/dates"
 import { format } from "@shared/money"
-import { effectOn, householdBalances, withBalances } from "@shared/split/rules"
+import {
+  effectOn,
+  householdBalances,
+  withBalances,
+  type SuggestedPayment,
+} from "@shared/split/rules"
 
 type HomeViewProps = {
   viewerId: string
@@ -30,6 +36,8 @@ type HomeViewProps = {
   onTabChange: (tab: HomeTab) => void
   onAddExpense: () => void
   onSettleUp: () => void
+  /** Opens Settle up filled in with a suggested Payment. */
+  onSettleSuggestion: (payment: SuggestedPayment) => void
   /** Opens an Expense to change it; any Member can, whoever added it. */
   onOpenExpense: (expenseId: string) => void
   /** Opens a Payment to change it; any Member can, whoever added it. */
@@ -48,7 +56,7 @@ function newestFirst({ entry: a }: Activity, { entry: b }: Activity): number {
 /**
  * Split's Home: the viewer's Balance and every other Member's, Former members included, the Add
  * Expense and Settle up buttons, the way to the Categories, and the tabs: the Activity feed of
- * Expenses and Payments, and Spending.
+ * Expenses and Payments, Balances with suggested Payments, and Spending.
  */
 export function HomeView({
   viewerId,
@@ -60,6 +68,7 @@ export function HomeView({
   onTabChange,
   onAddExpense,
   onSettleUp,
+  onSettleSuggestion,
   onOpenExpense,
   onOpenPayment,
   onManageCategories,
@@ -156,6 +165,9 @@ export function HomeView({
             </ul>
           )}
         </TabsContent>
+        <TabsContent value="balances">
+          <BalancesTab holders={holders} totals={totals} who={who} onSettle={onSettleSuggestion} />
+        </TabsContent>
         <TabsContent value="spending">
           <SpendingTab expenses={expenses} categoryName={categoryName} who={who} />
         </TabsContent>
@@ -164,7 +176,11 @@ export function HomeView({
   )
 }
 
-const TAB_NAMES: Record<HomeTab, string> = { activity: "Activity", spending: "Spending" }
+const TAB_NAMES: Record<HomeTab, string> = {
+  activity: "Activity",
+  balances: "Balances",
+  spending: "Spending",
+}
 
 function ExpenseCard({
   expense,

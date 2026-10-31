@@ -68,6 +68,7 @@ async function renderHome(expenses: Expense[], payments: Payment[] = []) {
       onTabChange={() => {}}
       onAddExpense={onAddExpense}
       onSettleUp={onSettleUp}
+      onSettleSuggestion={() => {}}
       onOpenExpense={onOpenExpense}
       onOpenPayment={onOpenPayment}
       onManageCategories={() => {}}

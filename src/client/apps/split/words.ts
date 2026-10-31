@@ -42,6 +42,13 @@ export function memberBalanceWords(name: string, cents: number): string {
   return cents > 0 ? `${name} is owed ${format(cents)}` : `${name} owes ${format(-cents)}`
 }
 
+/** Anyone's Balance in words, the viewer's as "You're owed $12.00", "You owe $5.00". */
+export function balanceWords(id: string, cents: number, who: People): string {
+  if (id !== who.viewerId) return memberBalanceWords(who.nameOf(id), cents)
+  if (cents === 0) return "You're settled up"
+  return cents > 0 ? `You're owed ${format(cents)}` : `You owe ${format(-cents)}`
+}
+
 /** "A", "A and B", "A, B and C". */
 function list(names: readonly string[]): string {
   if (names.length <= 1) return names.join("")
