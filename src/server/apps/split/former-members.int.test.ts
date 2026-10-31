@@ -99,7 +99,7 @@ function postPayment(fromId: string, toId: string, amount: number) {
   )
 }
 
-async function everyone(): Promise<Member[]> {
+async function listed(): Promise<Member[]> {
   const response = await server.app.request("/api/split/members", { headers: ana.headers })
   expect(response.status).toBe(200)
   return membersSchema.parse(await response.json()).rows
@@ -120,13 +120,15 @@ describe("the Members list", () => {
   test("marks an Account that lost App access as a Former member, keeping its shares and Balance", async () => {
     const cy = await account({ apps: ["split"] })
     const expense = await createdExpense({ owed: equalSide([ana.id, cy.id]) })
-    expect(await everyone()).toContainEqual(expect.objectContaining({ id: cy.id, former: false }))
+    expect(await listed()).toContainEqual(
+      expect.objectContaining({ id: cy.id, standing: "member" }),
+    )
     await revoke(cy)
 
-    const listed = await everyone()
-    expect(listed).toContainEqual(expect.objectContaining({ id: cy.id, former: true }))
+    const accounts = await listed()
+    expect(accounts).toContainEqual(expect.objectContaining({ id: cy.id, standing: "former" }))
     // Oldest Account first, Former members among the Members.
-    const ids = listed.map((person) => person.id)
+    const ids = accounts.map((row) => row.id)
     expect(ids.indexOf(admin.id)).toBeLessThan(ids.indexOf(ana.id))
     expect(ids.indexOf(ana.id)).toBeLessThan(ids.indexOf(cy.id))
     expect((await expenses()).find((row) => row.id === expense.id)).toEqual(expense)
@@ -137,7 +139,9 @@ describe("the Members list", () => {
     const dee = await account({ apps: ["split"] })
     await createdExpense({ paid: equalSide([dee.id]), owed: equalSide([ana.id]) })
     await removeAccount(dee)
-    expect(await everyone()).toContainEqual(expect.objectContaining({ id: dee.id, former: true }))
+    expect(await listed()).toContainEqual(
+      expect.objectContaining({ id: dee.id, standing: "former" }),
+    )
     expect(await balanceOf(dee.id)).toBe(9_000)
   })
 
@@ -154,12 +158,34 @@ describe("the Members list", () => {
       },
     })
     await revoke(eve)
-    const ids = (await everyone()).map((person) => person.id)
+    const ids = (await listed()).map((row) => row.id)
     expect(ids).not.toContain(outsider.id)
     expect(ids).not.toContain(eve.id)
   })
 
-  test("names who added an entry after they lost App access", async () => {
+  test("marks a Former member whose share on a side rounded to nothing", async () => {
+    const kim = await account({ apps: ["split"] })
+    const lee = await account({ apps: ["split"] })
+    // One cent split two ways goes to Ana, the older; Kim is ticked but holds no share.
+    await createdExpense({ total: 1, owed: equalSide([ana.id, kim.id]) })
+    // Lee's 0.01% of one cent rounds to nothing too.
+    await createdExpense({
+      total: 1,
+      owed: {
+        mode: "percent",
+        ticked: [],
+        exact: {},
+        percent: { [ana.id]: "99.99", [lee.id]: "0.01" },
+      },
+    })
+    await revoke(kim)
+    await revoke(lee)
+    const accounts = await listed()
+    expect(accounts).toContainEqual(expect.objectContaining({ id: kim.id, standing: "former" }))
+    expect(accounts).toContainEqual(expect.objectContaining({ id: lee.id, standing: "former" }))
+  })
+
+  test("names who only added an entry after they lost App access, as an author", async () => {
     const fay = await account({ apps: ["split"] })
     const response = await server.app.request(
       "/api/split/expenses",
@@ -167,7 +193,14 @@ describe("the Members list", () => {
     )
     expect(response.status).toBe(201)
     await revoke(fay)
-    expect(await everyone()).toContainEqual({ id: fay.id, name: expect.any(String), former: true })
+    expect(await listed()).toContainEqual({
+      id: fay.id,
+      name: expect.any(String),
+      standing: "author",
+    })
+    // With no Balance, there is nothing to settle with them.
+    const refused = await postPayment(ana.id, fay.id, 1_000)
+    expect(refused.status).toBe(400)
   })
 })
 
@@ -227,10 +260,10 @@ describe("an Expense", () => {
     const stored = expenseRow.parse(await response.json())
     // Ivy is the older Account, so the leftover cent is hers, as the client works it out.
     expect(stored.owedShares).toEqual({ [ivy.id]: 501, [jo.id]: 500 })
-    const people = await everyone()
+    const accounts = await listed()
     const roster = editExpenseRoster(
-      people.map((person) => person.id),
-      memberIdsOf(people),
+      accounts.map((row) => row.id),
+      memberIdsOf(accounts),
       expense,
     )
     expect(resolveExpense(changes, roster)).toMatchObject({

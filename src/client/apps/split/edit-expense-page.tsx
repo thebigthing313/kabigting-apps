@@ -2,7 +2,14 @@ import { getRouteApi, useNavigate } from "@tanstack/react-router"
 import { ExpenseFlow } from "@/apps/split/expense-flow"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
-import { changeExpense, deleteExpense, useCategories, useExpenses, useMembers } from "@/data/split"
+import {
+  changeExpense,
+  deleteExpense,
+  useCategories,
+  useExpenses,
+  useMembers,
+  latestMembers,
+} from "@/data/split"
 import { today } from "@shared/dates"
 
 const appRoute = getRouteApi("/_app")
@@ -42,6 +49,7 @@ export function EditExpensePage({ expenseId }: { expenseId: string }) {
         (category) => !category.archived || category.id === expense.categoryId,
       )}
       today={today()}
+      latestMembers={latestMembers}
       onCancel={home}
       onSave={async (changed) => {
         const stored = await changeExpense(expense, changed, session.user.id, members.data)

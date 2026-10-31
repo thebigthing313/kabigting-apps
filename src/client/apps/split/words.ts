@@ -3,6 +3,9 @@ import { formatInstantMonthDay } from "@shared/dates"
 import { format } from "@shared/money"
 import type { Shares } from "@shared/split/schemas"
 
+/** How a Former member is marked beside their name. */
+export const FORMER_MEMBER = "Former member"
+
 /** Where in a sentence a name goes: the viewer is "You" at its start and "you" within it. */
 export type Place = "start" | "within"
 
@@ -14,7 +17,7 @@ export type People = {
   nameOf: (id: string, place?: Place) => string
 }
 
-/** Builds `People` from the Members and Former members, oldest Account first. */
+/** Builds `People` from every Account Split shows, oldest Account first. */
 export function people(viewerId: string, members: readonly { id: string; name: string }[]): People {
   const names = new Map(members.map((member) => [member.id, member.name]))
   return {

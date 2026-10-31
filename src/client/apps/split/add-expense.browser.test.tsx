@@ -22,11 +22,11 @@ import { newExpenseRoster, resolveExpense } from "@shared/split/rules"
 import { createExpense } from "@shared/split/schemas"
 
 // Made-up Members, oldest Account first; the viewer is Ana.
-const me = { id: "ana", name: "Ana", former: false }
+const me = { id: "ana", name: "Ana", standing: "member" }
 const members = [
-  { id: "ben", name: "Ben", former: false },
+  { id: "ben", name: "Ben", standing: "member" },
   me,
-  { id: "cy", name: "Cy", former: false },
+  { id: "cy", name: "Cy", standing: "member" },
 ]
 const GENERAL = "0190a000-0000-7000-8000-000000000002"
 const categories = [

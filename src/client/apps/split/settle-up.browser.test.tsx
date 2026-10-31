@@ -18,17 +18,17 @@ import { SettleUpPage } from "@/apps/split/settle-up-page"
 import { SplitHome } from "@/apps/split/split-home"
 import { cleanupCollections } from "@/data/collection-factory"
 import { queryClient } from "@/data/query-client"
-import type { Expense, Payment } from "@/data/split"
+import type { Expense, Member, Payment } from "@/data/split"
 import { dismissToasts } from "@/test/toasts"
 import { equalSide, paymentProblems } from "@shared/split/rules"
 import { createPayment, updatePayment } from "@shared/split/schemas"
 
 // Made-up Members, oldest Account first; the viewer is Ana.
-const me = { id: "ana", name: "Ana", former: false }
-const members = [
-  { id: "ben", name: "Ben", former: false },
+const me: Member = { id: "ana", name: "Ana", standing: "member" }
+const members: Member[] = [
+  { id: "ben", name: "Ben", standing: "member" },
   me,
-  { id: "cy", name: "Cy", former: false },
+  { id: "cy", name: "Cy", standing: "member" },
 ]
 const memberIds = new Set(members.map((member) => member.id))
 const GENERAL = "0190a000-0000-7000-8000-000000000002"

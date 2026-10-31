@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { changePayment, deletePayment, useExpenses, useMembers, usePayments } from "@/data/split"
 import { today } from "@shared/dates"
-import { householdBalances } from "@shared/split/rules"
+import { householdBalances, withBalances } from "@shared/split/rules"
 
 const appRoute = getRouteApi("/_app")
 
@@ -41,7 +41,7 @@ export function EditPaymentPage({ paymentId }: { paymentId: string }) {
       balances={householdBalances(
         expenses,
         payments,
-        members.data.map((member) => member.id),
+        withBalances(members.data).map((member) => member.id),
       )}
       today={today()}
       onCancel={home}

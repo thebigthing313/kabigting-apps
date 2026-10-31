@@ -455,15 +455,15 @@ describe("editExpenseRoster", () => {
 
   test("a Former member's leftover cents follow the Members list's order, as the server's do", () => {
     // The Members list ranks Members and Former members together, oldest Account first.
-    const people = [
-      { id: "ana", former: false },
-      { id: "dee", former: true },
-      { id: "ben", former: false },
-      { id: "cy", former: false },
-    ]
+    const accounts = [
+      { id: "ana", standing: "member" },
+      { id: "dee", standing: "former" },
+      { id: "ben", standing: "member" },
+      { id: "cy", standing: "member" },
+    ] as const
     const listed = editExpenseRoster(
-      people.map((person) => person.id),
-      memberIdsOf(people),
+      accounts.map((account) => account.id),
+      memberIdsOf(accounts),
       saved,
     )
     expect(listed.order).toEqual(["ana", "dee", "ben", "cy"])
@@ -472,25 +472,27 @@ describe("editExpenseRoster", () => {
     })
   })
 
-  test("an Account it can't rank goes last", () => {
-    expect(editExpenseRoster(["ana"], ["ana", "ben"], saved).order).toEqual([
+  test("an id the Members list doesn't rank goes last, as the server's does", () => {
+    // Never expected: the list ranks everyone on an Expense. Both ends still agree if it happens.
+    expect(editExpenseRoster(["ana", "ben", "cy"], ["ana", "ben"], saved).order).toEqual([
       "ana",
       "ben",
-      "dee",
       "cy",
+      "dee",
     ])
   })
 })
 
 describe("Former members", () => {
-  const people = [
-    { id: "dee", former: true },
-    { id: "ana", former: false },
-    { id: "ben", former: false },
-  ]
+  const accounts = [
+    { id: "dee", standing: "former" },
+    { id: "ana", standing: "member" },
+    { id: "ben", standing: "member" },
+    { id: "gus", standing: "author" },
+  ] as const
 
   test("are never on a new Expense's Roster", () => {
-    const roster = newExpenseRoster(memberIdsOf(people))
+    const roster = newExpenseRoster(memberIdsOf(accounts))
     expect(roster.order).toEqual(["ana", "ben"])
     expect(resolveSide(1_000, equalSide(["ana", "dee"]), roster)).toMatchObject({
       ok: false,

@@ -71,6 +71,8 @@ export const splitExpenses = pgTable(
     check("split_expenses_total_not_zero", sql`${table.totalCents} <> 0`),
     index("split_expenses_date").on(table.date),
     index("split_expenses_category_id").on(table.categoryId),
+    index("split_expenses_added_by_id").on(table.addedById),
+    index("split_expenses_changed_by_id").on(table.changedById),
   ],
 )
 
@@ -128,5 +130,7 @@ export const splitPayments = pgTable(
     index("split_payments_date").on(table.date),
     index("split_payments_from_id").on(table.fromId),
     index("split_payments_to_id").on(table.toId),
+    index("split_payments_added_by_id").on(table.addedById),
+    index("split_payments_changed_by_id").on(table.changedById),
   ],
 )

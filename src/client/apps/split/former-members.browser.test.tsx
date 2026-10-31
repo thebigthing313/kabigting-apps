@@ -24,14 +24,16 @@ import { dismissToasts } from "@/test/toasts"
 import { equalSide, memberIdsOf, newExpenseRoster, resolveExpense } from "@shared/split/rules"
 import { createExpense } from "@shared/split/schemas"
 
-// Made-up people, oldest Account first; the viewer is Ana. Dee, the oldest, lost App access.
-const dee: Member = { id: "dee", name: "Dee", former: true }
-const me: Member = { id: "ana", name: "Ana", former: false }
-const people: Member[] = [
+// Made-up Accounts, oldest first; the viewer is Ana. Dee, the oldest, lost App access; Gus lost
+// it too, having only added an entry.
+const dee: Member = { id: "dee", name: "Dee", standing: "former" }
+const me: Member = { id: "ana", name: "Ana", standing: "member" }
+const accounts: Member[] = [
   dee,
-  { id: "ben", name: "Ben", former: false },
+  { id: "ben", name: "Ben", standing: "member" },
   me,
-  { id: "cy", name: "Cy", former: false },
+  { id: "cy", name: "Cy", standing: "member" },
+  { id: "gus", name: "Gus", standing: "author" },
 ]
 const GENERAL = "0190a000-0000-7000-8000-000000000002"
 const categories = [{ id: GENERAL, name: "General", archived: false }]
@@ -65,7 +67,7 @@ async function renderFlow(editing?: Expense) {
   const screen = await render(
     <ExpenseFlow
       viewerId="ana"
-      members={people}
+      members={accounts}
       categories={categories}
       today="2026-10-31"
       onSave={onSave}
@@ -158,11 +160,11 @@ describe("an edited Expense", () => {
 })
 
 describe("Home", () => {
-  test("lists a Former member's Balance, even at zero", async () => {
+  test("lists a Former member's Balance, even at zero, but not someone who only added an entry", async () => {
     const screen = await render(
       <HomeView
         viewerId="ana"
-        members={[...people, { id: "eve", name: "Eve", former: true }]}
+        members={[...accounts, { id: "eve", name: "Eve", standing: "former" }]}
         expenses={[lunch]}
         payments={[]}
         categories={categories}
@@ -190,7 +192,7 @@ describe("Settle up", () => {
     const screen = await render(
       <PaymentForm
         viewerId="ana"
-        members={people}
+        members={accounts}
         balances={{ dee: 6_000, ben: -3_000, ana: -3_000, cy: 0 }}
         today="2026-10-31"
         onSave={onSave}
@@ -200,6 +202,7 @@ describe("Settle up", () => {
     const getting = screen.getByRole("radiogroup", { name: "Who gets it?" })
     // A new Payment still starts with the oldest other Member, not a Former member.
     await expect.element(getting.getByRole("radio", { name: "Ben" })).toBeChecked()
+    expect(getting.getByRole("radio", { name: "Gus" }).elements()).toEqual([])
     const tile = getting.getByRole("radio", { name: "Dee" })
     await expect.element(tile).toHaveAccessibleDescription("+$60.00 Former member")
     await tile.click()
@@ -215,19 +218,62 @@ describe("Settle up", () => {
   })
 })
 
+/** Adds an Expense that only Dee owes, as far as Review, on the real page. */
+async function reachReview() {
+  const rootRoute = createRootRoute()
+  const appRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    id: "_app",
+    beforeLoad: () => ({ session: { user: me }, apps: ["split"] }),
+  })
+  const newRoute = createRoute({
+    getParentRoute: () => appRoute,
+    path: "/split/expenses/new",
+    component: AddExpensePage,
+  })
+  const router = createRouter({
+    routeTree: rootRoute.addChildren([appRoute.addChildren([newRoute])]),
+    history: createMemoryHistory({ initialEntries: ["/split/expenses/new"] }),
+  })
+  await router.load()
+  const screen = await render(
+    <>
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>
+      <Toaster />
+    </>,
+  )
+  await screen.getByRole("textbox", { name: "Total" }).fill("90")
+  await screen.getByRole("textbox", { name: "Description" }).fill("Pizza")
+  await screen.getByRole("button", { name: "Next" }).click()
+  await screen.getByRole("button", { name: "Next" }).click()
+  await screen.getByRole("radio", { name: "Only Dee" }).click()
+  await screen.getByRole("button", { name: "Next" }).click()
+  return screen
+}
+
 describe("someone losing App access while an Expense is added", () => {
-  /** Who the server counts as Members right now. */
-  let everyone: Member[] = []
+  /** The Accounts the server lists right now. */
+  let listed: Member[] = []
+  /** A refusal the server gives whatever is sent, when set. */
+  let conflict = false
   let posted = 0
 
   function serve(path: string, method: string, body: unknown): Response {
-    if (path === "/api/split/members") return Response.json({ rows: everyone })
+    if (path === "/api/split/members") return Response.json({ rows: listed })
     if (path === "/api/split/categories") return Response.json({ rows: categories })
     if (path === "/api/split/expenses" && method === "GET") return Response.json({ rows: [] })
     if (path === "/api/split/expenses" && method === "POST") {
       posted += 1
+      if (conflict) {
+        return Response.json(
+          { error: { code: "conflict", message: "An Expense with this id already exists" } },
+          { status: 409 },
+        )
+      }
       const input = createExpense.parse(body)
-      const resolved = resolveExpense(input, newExpenseRoster(memberIdsOf(everyone)))
+      const resolved = resolveExpense(input, newExpenseRoster(memberIdsOf(listed)))
       if (!resolved.ok) {
         return Response.json(
           {
@@ -249,7 +295,8 @@ describe("someone losing App access while an Expense is added", () => {
   }
 
   beforeEach(() => {
-    everyone = people.map((person) => ({ ...person, former: false }))
+    listed = accounts.map((account) => ({ ...account, standing: "member" }))
+    conflict = false
     posted = 0
     vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = new URL(input instanceof Request ? input.url : String(input), location.origin)
@@ -267,60 +314,59 @@ describe("someone losing App access while an Expense is added", () => {
     vi.unstubAllGlobals()
   })
 
-  test("is refused by the server, and the form goes back to their step with them flagged", async () => {
-    const rootRoute = createRootRoute()
-    const appRoute = createRoute({
-      getParentRoute: () => rootRoute,
-      id: "_app",
-      beforeLoad: () => ({ session: { user: me }, apps: ["split"] }),
-    })
-    const newRoute = createRoute({
-      getParentRoute: () => appRoute,
-      path: "/split/expenses/new",
-      component: AddExpensePage,
-    })
-    const router = createRouter({
-      routeTree: rootRoute.addChildren([appRoute.addChildren([newRoute])]),
-      history: createMemoryHistory({ initialEntries: ["/split/expenses/new"] }),
-    })
-    await router.load()
-    const screen = await render(
-      <>
-        <QueryClientProvider client={queryClient}>
-          <RouterProvider router={router} />
-        </QueryClientProvider>
-        <Toaster />
-      </>,
-    )
+  test.each([
+    {
+      when: "who is now a Former member",
+      after: () => accounts,
+      name: "Dee",
+    },
+    {
+      // With nothing else in Split, she drops out of the list and her name is no longer known.
+      when: "who drops out of the list",
+      after: () => accounts.filter((account) => account.id !== "dee"),
+      name: "Someone",
+    },
+  ])(
+    "is refused by the server, and the form flags her on her step, $when",
+    async ({ after, name }) => {
+      const screen = await reachReview()
+      listed = after()
+      await screen.getByRole("button", { name: "Add Expense" }).click()
+      await vi.waitFor(() => expect(posted).toBe(1))
 
-    await screen.getByRole("textbox", { name: "Total" }).fill("90")
-    await screen.getByRole("textbox", { name: "Description" }).fill("Pizza")
-    await screen.getByRole("button", { name: "Next" }).click()
-    await screen.getByRole("button", { name: "Next" }).click()
-    await screen.getByRole("radio", { name: "Only Dee" }).click()
-    await screen.getByRole("button", { name: "Next" }).click()
+      await expect
+        .element(screen.getByRole("radiogroup", { name: "Who owes for it?" }))
+        .toBeVisible()
+      const editor = screen.getByRole("region", { name: "Owed side" })
+      await expect.element(editor.getByRole("checkbox", { name })).toBeChecked()
+      await expect.element(editor.getByText("No longer a Member: take them off")).toBeVisible()
+      await expect
+        .element(editor.getByRole("status", { name: "Tally" }))
+        .toHaveTextContent("Only Members can be on an Expense")
+      await expect.element(screen.getByRole("button", { name: "Next" })).toBeDisabled()
 
-    // Dee loses App access before the save.
-    everyone = people
+      // Taking her off clears it, and her row goes: she can't be added back.
+      await editor.getByRole("checkbox", { name }).click()
+      await editor.getByRole("checkbox", { name: "Ben" }).click()
+      await expect
+        .element(editor.getByRole("status", { name: "Tally" }))
+        .toHaveTextContent("1 Member")
+      expect(editor.getByRole("checkbox", { name }).elements()).toEqual([])
+      await expect.element(screen.getByRole("button", { name: "Next" })).toBeEnabled()
+    },
+  )
+
+  test("a refusal for another reason stays on Review, even once someone later loses access", async () => {
+    const screen = await reachReview()
+    conflict = true
     await screen.getByRole("button", { name: "Add Expense" }).click()
     await vi.waitFor(() => expect(posted).toBe(1))
+    await expect.element(screen.getByRole("button", { name: "Add Expense" })).toBeEnabled()
 
-    const owed = screen.getByRole("radiogroup", { name: "Who owes for it?" })
-    await expect.element(owed).toBeVisible()
-    const editor = screen.getByRole("region", { name: "Owed side" })
-    await expect.element(editor.getByRole("checkbox", { name: "Dee" })).toBeChecked()
-    await expect.element(editor.getByText("No longer a Member: take them off")).toBeVisible()
-    await expect
-      .element(editor.getByRole("status", { name: "Tally" }))
-      .toHaveTextContent("Only Members can be on an Expense")
-    await expect.element(screen.getByRole("button", { name: "Next" })).toBeDisabled()
-
-    // Taking her off clears it.
-    await editor.getByRole("checkbox", { name: "Dee" }).click()
-    await editor.getByRole("checkbox", { name: "Ben" }).click()
-    await expect
-      .element(editor.getByRole("status", { name: "Tally" }))
-      .toHaveTextContent("1 Member")
-    expect(editor.getByRole("checkbox", { name: "Dee" }).elements()).toEqual([])
+    // A later refetch shows Dee gone: Review says what blocks the save, but nothing jumps.
+    listed = accounts
+    await queryClient.invalidateQueries()
+    await expect.element(screen.getByText("Owed: Only Members can be on an Expense")).toBeVisible()
+    expect(screen.getByRole("radiogroup", { name: "Who owes for it?" }).elements()).toEqual([])
   })
 })

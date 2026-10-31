@@ -2,7 +2,7 @@ import { getRouteApi, useNavigate } from "@tanstack/react-router"
 import { useState } from "react"
 import { ExpenseFlow } from "@/apps/split/expense-flow"
 import { Skeleton } from "@/components/ui/skeleton"
-import { addExpense, useCategories, useMembers } from "@/data/split"
+import { addExpense, useCategories, useMembers, latestMembers } from "@/data/split"
 import { today } from "@shared/dates"
 import { newId } from "@shared/ids"
 
@@ -29,6 +29,7 @@ export function AddExpensePage() {
       members={members.data}
       categories={categories.data.filter((category) => !category.archived)}
       today={startedOn}
+      latestMembers={latestMembers}
       onCancel={home}
       onSave={async (expense) => {
         const stored = await addExpense({ id, ...expense }, session.user.id, members.data)

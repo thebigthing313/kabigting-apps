@@ -1,13 +1,24 @@
 import { cn } from "cn"
 import { ArrowLeftIcon, CheckIcon, Trash2Icon } from "lucide-react"
 import { useId, useState } from "react"
-import { authorshipWords, paymentWords, people, type People } from "@/apps/split/words"
+import {
+  authorshipWords,
+  FORMER_MEMBER,
+  paymentWords,
+  people,
+  type People,
+} from "@/apps/split/words"
 import { AmountInput } from "@/components/amount-input"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import type { Member, Payment } from "@/data/split"
 import { format } from "@shared/money"
-import { editPaymentAllowed, newPaymentAllowed, paymentProblems } from "@shared/split/rules"
+import {
+  editPaymentAllowed,
+  newPaymentAllowed,
+  paymentProblems,
+  withBalances,
+} from "@shared/split/rules"
 import type { CreatePayment, Shares } from "@shared/split/schemas"
 
 /** A Payment as the form hands it over; the caller gives a new one its id. */
@@ -16,8 +27,8 @@ export type NewPayment = Omit<CreatePayment, "id">
 type PaymentFormProps = {
   viewerId: string
   /**
-   * Who can be on the Payment, oldest Account first: the Members and the Former members, so a
-   * Former member's Balance can be settled to zero.
+   * Every Account Split shows, oldest Account first. The Members and Former members get tiles, so
+   * a Former member's Balance can be settled to zero.
    */
   members: readonly Member[]
   /** Every Member's current Balance, shown on their tile. */
@@ -49,7 +60,9 @@ export function PaymentForm({
   const saved = editing?.payment
   const [fromId, setFromId] = useState(saved?.fromId ?? viewerId)
   const [toId, setToId] = useState(
-    saved?.toId ?? members.find((member) => member.id !== viewerId && !member.former)?.id ?? "",
+    saved?.toId ??
+      members.find((member) => member.id !== viewerId && member.standing === "member")?.id ??
+      "",
   )
   const [amount, setAmount] = useState<number | null>(saved?.amount ?? null)
   const [date, setDate] = useState(saved?.date ?? today)
@@ -81,7 +94,7 @@ export function PaymentForm({
       </div>
       <Tiles
         title="Who's paying?"
-        members={members}
+        members={withBalances(members)}
         balances={balances}
         who={who}
         value={fromId}
@@ -89,7 +102,7 @@ export function PaymentForm({
       />
       <Tiles
         title="Who gets it?"
-        members={members}
+        members={withBalances(members)}
         balances={balances}
         who={who}
         value={toId}
@@ -184,7 +197,9 @@ function Tiles({
               role="radio"
               aria-checked={picked}
               aria-labelledby={nameId}
-              aria-describedby={member.former ? `${balanceId} ${formerId}` : balanceId}
+              aria-describedby={
+                member.standing === "former" ? `${balanceId} ${formerId}` : balanceId
+              }
               onClick={() => onPick(member.id)}
               className={cn(
                 "flex flex-col items-center gap-1 rounded-xl border p-2 text-sm",
@@ -203,9 +218,9 @@ function Tiles({
               <span id={balanceId} className="text-xs text-muted-foreground tabular-nums">
                 {format(balances[member.id] ?? 0, { sign: "always" })}
               </span>
-              {member.former && (
+              {member.standing === "former" && (
                 <span id={formerId} className="text-xs text-muted-foreground">
-                  Former member
+                  {FORMER_MEMBER}
                 </span>
               )}
             </button>

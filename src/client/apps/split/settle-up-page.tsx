@@ -5,7 +5,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { addPayment, useExpenses, useMembers, usePayments } from "@/data/split"
 import { today } from "@shared/dates"
 import { newId } from "@shared/ids"
-import { householdBalances } from "@shared/split/rules"
+import { householdBalances, withBalances } from "@shared/split/rules"
 
 const appRoute = getRouteApi("/_app")
 
@@ -32,7 +32,7 @@ export function SettleUpPage() {
       balances={householdBalances(
         expenses,
         payments,
-        members.data.map((member) => member.id),
+        withBalances(members.data).map((member) => member.id),
       )}
       today={startedOn}
       onCancel={home}

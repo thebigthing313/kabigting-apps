@@ -1,7 +1,7 @@
 import { desc, eq, sql, type SQL } from "drizzle-orm"
 import { Hono } from "hono"
 import { z } from "zod"
-import { everyoneInSplit, type Tx } from "#server/apps/split/members.ts"
+import { accountsInSplit, type Tx } from "#server/apps/split/members.ts"
 import type { AppEnv } from "#server/core/context.ts"
 import { ApiError } from "#server/core/errors.ts"
 import { validate } from "#server/core/validate.ts"
@@ -92,7 +92,7 @@ export function paymentRoutes(db: Db) {
       await db.transaction(async (tx) => {
         // The Members and Former members as of this save can be on a new Payment, so a Former
         // member's Balance can be settled to zero.
-        checkForSave(input, newPaymentAllowed(await everyoneInSplit(tx)))
+        checkForSave(input, newPaymentAllowed(await accountsInSplit(tx)))
         // The client supplies the id; an id already in use is a conflict, never an overwrite.
         const [inserted] = await tx
           .insert(splitPayments)
@@ -118,7 +118,7 @@ export function paymentRoutes(db: Db) {
       const row = await db.transaction(async (tx) => {
         const saved = (await lockedPayment(tx, paymentId)) ?? notFound()
         // Whoever is already on it stays allowed; nobody else outside Split can be added.
-        checkForSave(input, editPaymentAllowed(await everyoneInSplit(tx), saved))
+        checkForSave(input, editPaymentAllowed(await accountsInSplit(tx), saved))
         await tx
           .update(splitPayments)
           .set({ ...storedFields(input), changedById: accountId, changedAt: sql`now()` })

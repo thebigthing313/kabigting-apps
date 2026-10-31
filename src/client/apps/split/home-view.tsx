@@ -6,6 +6,7 @@ import {
   authorshipWords,
   expenseSideWords,
   people,
+  FORMER_MEMBER,
   memberBalanceWords,
   viewerBalanceWords,
   type People,
@@ -15,11 +16,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import type { Category, Expense, Member, Payment } from "@/data/split"
 import { formatDisplayDate } from "@shared/dates"
 import { format } from "@shared/money"
-import { effectOn, householdBalances } from "@shared/split/rules"
+import { effectOn, householdBalances, withBalances } from "@shared/split/rules"
 
 type HomeViewProps = {
   viewerId: string
-  /** The Members and Former members, oldest Account first. */
+  /** Every Account Split shows, oldest Account first. */
   members: readonly Member[]
   expenses: readonly Expense[]
   payments: readonly Payment[]
@@ -64,13 +65,14 @@ export function HomeView({
   onManageCategories,
 }: HomeViewProps) {
   const who = people(viewerId, members)
+  const holders = withBalances(members)
   const totals = householdBalances(
     expenses,
     payments,
-    members.map((member) => member.id),
+    holders.map((member) => member.id),
   )
   const mine = totals[viewerId] ?? 0
-  const others = members.filter((member) => member.id !== viewerId)
+  const others = holders.filter((member) => member.id !== viewerId)
   const categoryName = new Map(categories.map((category) => [category.id, category.name]))
   const activity: Activity[] = [
     ...expenses.map((entry) => ({ kind: "expense" as const, entry })),
@@ -93,7 +95,9 @@ export function HomeView({
             {others.map((member) => (
               <li key={member.id}>
                 {memberBalanceWords(member.name, totals[member.id] ?? 0)}
-                {member.former && <span className="opacity-80"> · Former member</span>}
+                {member.standing === "former" && (
+                  <span className="opacity-80"> · {FORMER_MEMBER}</span>
+                )}
               </li>
             ))}
           </ul>

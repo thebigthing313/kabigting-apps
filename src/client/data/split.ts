@@ -72,8 +72,9 @@ export function useExpenses() {
 const MEMBERS_KEY = ["split", "members"]
 
 /**
- * Everyone Split shows, oldest Account first: the Members, and the Former members (`former`), who
- * keep their shares and Balance but are never added to a new Expense.
+ * Every Account Split shows, oldest Account first, by standing: the Members; the Former members,
+ * who keep their shares and Balance but are never added to a new Expense; and those named only as
+ * who added or changed an entry.
  */
 export function useMembers() {
   return useQuery({
@@ -151,7 +152,7 @@ function refused(resolved: Extract<ExpenseResolution, { ok: false }>): Promise<f
 }
 
 /**
- * After the server refuses an Expense, fetches the Members again: someone on it may have lost App
+ * After the server refuses an entry, fetches the Accounts again: someone on it may have lost App
  * access since the form opened, and the form then flags them.
  */
 async function refetchMembersUnless(stored: boolean): Promise<boolean> {
@@ -159,18 +160,23 @@ async function refetchMembersUnless(stored: boolean): Promise<boolean> {
   return stored
 }
 
+/** The Accounts as last fetched, if they have been. */
+export function latestMembers(): Member[] | undefined {
+  return queryClient.getQueryData<Member[]>(MEMBERS_KEY)
+}
+
 /**
  * Saves a new Expense added by `viewerId`. It shows at once, with its shares worked out here by
- * the same rules the server applies, among the Members in `people` (oldest Account first); the
+ * the same rules the server applies, among the Members in `accounts` (oldest Account first); the
  * server's row then replaces it. True once stored. False when it is refused, here by the rules or
  * by the server, and then it is reported and nothing stays.
  */
 export function addExpense(
   input: CreateExpense,
   viewerId: string,
-  people: readonly Member[],
+  accounts: readonly Member[],
 ): Promise<boolean> {
-  const resolved = resolveExpense(input, newExpenseRoster(memberIdsOf(people)))
+  const resolved = resolveExpense(input, newExpenseRoster(memberIdsOf(accounts)))
   if (!resolved.ok) return refused(resolved)
   const now = nowInstant()
   return settled(
@@ -196,10 +202,10 @@ export function changeExpense(
   saved: ExpenseRow,
   input: UpdateExpense,
   viewerId: string,
-  people: readonly Member[],
+  accounts: readonly Member[],
 ): Promise<boolean> {
-  const oldestFirst = people.map((person) => person.id)
-  const roster = editExpenseRoster(oldestFirst, memberIdsOf(people), saved)
+  const oldestFirst = accounts.map((account) => account.id)
+  const roster = editExpenseRoster(oldestFirst, memberIdsOf(accounts), saved)
   const resolved = resolveExpense(input, roster)
   if (!resolved.ok) return refused(resolved)
   return settled(
@@ -256,16 +262,16 @@ function refusedPayment(problems: readonly PaymentProblem[]): Promise<false> {
 }
 
 /**
- * Records a new Payment added by `viewerId`, between two of `people`, Former members included. As
+ * Records a new Payment added by `viewerId`, between two of `accounts`, Former members included. As
  * `addExpense`, it shows at once and the server's row then replaces it. True once stored; false
  * when refused, here by the rules or by the server, and then it is reported and nothing stays.
  */
 export function addPayment(
   input: CreatePayment,
   viewerId: string,
-  people: readonly Member[],
+  accounts: readonly Member[],
 ): Promise<boolean> {
-  const problems = paymentProblems(input, newPaymentAllowed(people))
+  const problems = paymentProblems(input, newPaymentAllowed(accounts))
   if (problems.length > 0) return refusedPayment(problems)
   const now = nowInstant()
   return settled(
@@ -276,11 +282,11 @@ export function addPayment(
       changedBy: viewerId,
       changedAt: now,
     }),
-  )
+  ).then(refetchMembersUnless)
 }
 
 /**
- * Saves `saved` as it now stands, replacing all of it, changed by `viewerId`. Anyone in `people`
+ * Saves `saved` as it now stands, replacing all of it, changed by `viewerId`. A Member or Former member in `accounts`
  * can be on it, and whoever is already on it stays allowed. True once stored; false when refused,
  * or gone (then it drops out).
  */
@@ -288,15 +294,15 @@ export function changePayment(
   saved: PaymentRow,
   input: UpdatePayment,
   viewerId: string,
-  people: readonly Member[],
+  accounts: readonly Member[],
 ): Promise<boolean> {
-  const problems = paymentProblems(input, editPaymentAllowed(people, saved))
+  const problems = paymentProblems(input, editPaymentAllowed(accounts, saved))
   if (problems.length > 0) return refusedPayment(problems)
   return settled(
     paymentsCollection().update(saved.id, (draft) => {
       Object.assign(draft, { ...input, changedBy: viewerId, changedAt: nowInstant() })
     }),
-  )
+  ).then(refetchMembersUnless)
 }
 
 /** Deletes a Payment for good. It goes at once; true once the server has deleted it too. */
