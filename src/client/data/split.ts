@@ -1,7 +1,7 @@
-// The Split App's client data: every Expense in one eager collection, as every Member sees all of
-// them and Balances need them all; the Members and Categories as plain queries. Refetches follow
-// the Shell's focus and reconnect defaults.
-import { useLiveQuery } from "@tanstack/react-db"
+// The Split App's client data: every Expense and every Category in eager collections, as every
+// Member sees all of them and Balances need them all; the Members as a plain query. Refetches
+// follow the Shell's focus and reconnect defaults.
+import { lower, useLiveQuery } from "@tanstack/react-db"
 import { useQuery } from "@tanstack/react-query"
 import { toast } from "sonner"
 import { api } from "@/data/api"
@@ -9,21 +9,43 @@ import { defineRestCollection } from "@/data/collection-factory"
 import { readJson } from "@/data/error-handler"
 import { settled } from "@/data/settled"
 import { nowInstant } from "@shared/dates"
-import { newExpenseRoster, resolveExpense } from "@shared/split/rules"
-import type { CreateExpense, ExpenseRow } from "@shared/split/schemas"
+import { newId } from "@shared/ids"
+import {
+  editExpenseRoster,
+  newExpenseRoster,
+  resolveExpense,
+  type ExpenseResolution,
+} from "@shared/split/rules"
+import type {
+  CategoryRow,
+  CreateExpense,
+  ExpenseRow,
+  UpdateCategory,
+  UpdateExpense,
+} from "@shared/split/schemas"
 
 export type { CategoryRow as Category, ExpenseRow as Expense, Member } from "@shared/split/schemas"
 
-// Editing and deleting Expenses come later, so the collection only creates.
+/** What a Member enters for an Expense; the server works out the rest. */
+function entered(row: ExpenseRow): UpdateExpense {
+  const { description, date, categoryId, total, note, paid, owed } = row
+  return { description, date, categoryId, total, note, paid, owed }
+}
+
+// A change replaces the whole Expense, so it sends the whole row as changed. One the server says
+// is gone is dropped.
 const expensesCollection = defineRestCollection<ExpenseRow>({
   id: "split-expenses",
   queryKey: ["split", "expenses"],
   fetchRows: async () => (await readJson(await api.split.expenses.$get())).rows,
   create: async (row) => {
-    const { id, description, date, categoryId, total, note, paid, owed } = row
-    const json = { id, description, date, categoryId, total, note, paid, owed }
+    const json = { id: row.id, ...entered(row) }
     return readJson(await api.split.expenses.$post({ json }))
   },
+  update: async (id, _changes, _options, row) =>
+    readJson(await api.split.expenses[":id"].$put({ param: { id }, json: entered(row) })),
+  remove: async (id) => readJson(await api.split.expenses[":id"].$delete({ param: { id } })),
+  dropOnNotFound: true,
 })
 
 /** Every Expense, live, in no particular order. */
@@ -40,12 +62,72 @@ export function useMembers() {
   })
 }
 
-/** Every Category, archived ones included, by name. */
+function editable(changes: Partial<CategoryRow>): UpdateCategory {
+  const { name, archived } = changes
+  return {
+    ...(name === undefined ? {} : { name }),
+    ...(archived === undefined ? {} : { archived }),
+  }
+}
+
+// Categories are never deleted, only archived, so removing one is refused here.
+const categoriesCollection = defineRestCollection<CategoryRow>({
+  id: "split-categories",
+  queryKey: ["split", "categories"],
+  fetchRows: async () => (await readJson(await api.split.categories.$get())).rows,
+  create: async ({ id, name }) =>
+    readJson(await api.split.categories.$post({ json: { id, name } })),
+  update: async (id, changes) =>
+    readJson(await api.split.categories[":id"].$patch({ param: { id }, json: editable(changes) })),
+  remove: () => Promise.reject(new Error("Categories are archived, never deleted")),
+})
+
+/**
+ * Every Category, archived ones included, by name regardless of case, live. `data` is undefined
+ * until they have loaded.
+ */
 export function useCategories() {
-  return useQuery({
-    queryKey: ["split", "categories"],
-    queryFn: async () => (await readJson(await api.split.categories.$get())).rows,
+  const categories = categoriesCollection()
+  const { data, isLoading } = useLiveQuery(
+    (q) =>
+      q
+        .from({ category: categories })
+        .orderBy(({ category }) => lower(category.name), "asc")
+        .orderBy(({ category }) => category.id, "asc"),
+    [categories],
+  )
+  return { data: isLoading ? undefined : data, isLoading }
+}
+
+/** Adds a Category, in use, shown at once; a refusal, such as a taken name, rolls it back. */
+export function addCategory(name: string): Promise<boolean> {
+  return settled(categoriesCollection().insert({ id: newId(), name, archived: false }))
+}
+
+/** Renames a Category for every Member; a refusal puts the old name back. */
+export function renameCategory(id: string, name: string): Promise<boolean> {
+  return settled(
+    categoriesCollection().update(id, (draft) => {
+      draft.name = name
+    }),
+  )
+}
+
+/** Archives a Category, or puts it back in use; it stays on its Expenses either way. */
+export function setCategoryArchived(id: string, archived: boolean): Promise<boolean> {
+  return settled(
+    categoriesCollection().update(id, (draft) => {
+      draft.archived = archived
+    }),
+  )
+}
+
+/** Reports an Expense the rules refuse; nothing is sent. */
+function refused(resolved: Extract<ExpenseResolution, { ok: false }>): Promise<false> {
+  toast.error("Saving failed", {
+    description: resolved.problems.map((problem) => problem.message).join(". "),
   })
+  return Promise.resolve(false)
 }
 
 /**
@@ -60,12 +142,7 @@ export function addExpense(
   memberIds: readonly string[],
 ): Promise<boolean> {
   const resolved = resolveExpense(input, newExpenseRoster(memberIds))
-  if (!resolved.ok) {
-    toast.error("Saving failed", {
-      description: resolved.problems.map((problem) => problem.message).join(". "),
-    })
-    return Promise.resolve(false)
-  }
+  if (!resolved.ok) return refused(resolved)
   const now = nowInstant()
   return settled(
     expensesCollection().insert({
@@ -78,4 +155,36 @@ export function addExpense(
       changedAt: now,
     }),
   )
+}
+
+/**
+ * Saves `saved` as it now stands, replacing all of it, changed by `viewerId`. As `addExpense`, it
+ * shows at once and the server's row then replaces it; those already on it stay allowed, Former
+ * members included. True once stored; false when refused, or gone (then it
+ * drops out).
+ */
+export function changeExpense(
+  saved: ExpenseRow,
+  input: UpdateExpense,
+  viewerId: string,
+  memberIds: readonly string[],
+): Promise<boolean> {
+  const resolved = resolveExpense(input, editExpenseRoster(memberIds, memberIds, saved))
+  if (!resolved.ok) return refused(resolved)
+  return settled(
+    expensesCollection().update(saved.id, (draft) => {
+      Object.assign(draft, {
+        ...input,
+        paidShares: resolved.paidShares,
+        owedShares: resolved.owedShares,
+        changedBy: viewerId,
+        changedAt: nowInstant(),
+      })
+    }),
+  )
+}
+
+/** Deletes an Expense for good. It goes at once; true once the server has deleted it too. */
+export function deleteExpense(id: string): Promise<boolean> {
+  return settled(expensesCollection().delete(id))
 }

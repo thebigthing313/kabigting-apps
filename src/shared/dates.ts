@@ -124,6 +124,11 @@ export function weekdayName(date: string): string {
   return format(toPickerDate(date), "EEEE")
 }
 
+/** The month and day an instant falls on in the household zone, e.g. "Mar 5". */
+export function formatInstantMonthDay(instant: string): string {
+  return format(new TZDate(Date.parse(instant), HOUSEHOLD_ZONE), "MMM d")
+}
+
 /** A calendar date's month and day, e.g. "Mar 5". */
 export function formatMonthDay(date: string): string {
   return format(toPickerDate(date), "MMM d")

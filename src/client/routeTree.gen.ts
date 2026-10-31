@@ -22,12 +22,14 @@ import { Route as AppFinancesSummaryRouteImport } from './routes/_app/finances/s
 import { Route as AppNotesIndexRouteImport } from './routes/_app/notes/index'
 import { Route as AppNotesNoteIdRouteImport } from './routes/_app/notes/$noteId'
 import { Route as AppSplitIndexRouteImport } from './routes/_app/split/index'
+import { Route as AppSplitCategoriesRouteImport } from './routes/_app/split/categories'
 import { Route as AppFinancesCategoriesIndexRouteImport } from './routes/_app/finances/categories/index'
 import { Route as AppFinancesCategoriesCategoryIdRouteImport } from './routes/_app/finances/categories/$categoryId'
 import { Route as AppFinancesSchedulesIndexRouteImport } from './routes/_app/finances/schedules/index'
 import { Route as AppFinancesSchedulesScheduleIdRouteImport } from './routes/_app/finances/schedules/$scheduleId'
 import { Route as AppFinancesWalletsIndexRouteImport } from './routes/_app/finances/wallets/index'
 import { Route as AppFinancesWalletsWalletIdRouteImport } from './routes/_app/finances/wallets/$walletId'
+import { Route as AppSplitExpensesExpenseIdRouteImport } from './routes/_app/split/expenses/$expenseId'
 import { Route as AppSplitExpensesNewRouteImport } from './routes/_app/split/expenses/new'
 
 const AppRoute = AppRouteImport.update({
@@ -94,6 +96,11 @@ const AppSplitIndexRoute = AppSplitIndexRouteImport.update({
   path: '/',
   getParentRoute: () => AppSplitRouteRoute,
 } as any)
+const AppSplitCategoriesRoute = AppSplitCategoriesRouteImport.update({
+  id: '/categories',
+  path: '/categories',
+  getParentRoute: () => AppSplitRouteRoute,
+} as any)
 const AppFinancesCategoriesIndexRoute =
   AppFinancesCategoriesIndexRouteImport.update({
     id: '/categories/',
@@ -129,6 +136,12 @@ const AppFinancesWalletsWalletIdRoute =
     path: '/wallets/$walletId',
     getParentRoute: () => AppFinancesRouteRoute,
   } as any)
+const AppSplitExpensesExpenseIdRoute =
+  AppSplitExpensesExpenseIdRouteImport.update({
+    id: '/expenses/$expenseId',
+    path: '/expenses/$expenseId',
+    getParentRoute: () => AppSplitRouteRoute,
+  } as any)
 const AppSplitExpensesNewRoute = AppSplitExpensesNewRouteImport.update({
   id: '/expenses/new',
   path: '/expenses/new',
@@ -145,12 +158,14 @@ export interface FileRoutesByFullPath {
   '/admin/accounts': typeof AppAdminAccountsRoute
   '/finances/summary': typeof AppFinancesSummaryRoute
   '/notes/$noteId': typeof AppNotesNoteIdRoute
+  '/split/categories': typeof AppSplitCategoriesRoute
   '/finances/': typeof AppFinancesIndexRoute
   '/notes/': typeof AppNotesIndexRoute
   '/split/': typeof AppSplitIndexRoute
   '/finances/categories/$categoryId': typeof AppFinancesCategoriesCategoryIdRoute
   '/finances/schedules/$scheduleId': typeof AppFinancesSchedulesScheduleIdRoute
   '/finances/wallets/$walletId': typeof AppFinancesWalletsWalletIdRoute
+  '/split/expenses/$expenseId': typeof AppSplitExpensesExpenseIdRoute
   '/split/expenses/new': typeof AppSplitExpensesNewRoute
   '/finances/categories/': typeof AppFinancesCategoriesIndexRoute
   '/finances/schedules/': typeof AppFinancesSchedulesIndexRoute
@@ -163,12 +178,14 @@ export interface FileRoutesByTo {
   '/admin/accounts': typeof AppAdminAccountsRoute
   '/finances/summary': typeof AppFinancesSummaryRoute
   '/notes/$noteId': typeof AppNotesNoteIdRoute
+  '/split/categories': typeof AppSplitCategoriesRoute
   '/finances': typeof AppFinancesIndexRoute
   '/notes': typeof AppNotesIndexRoute
   '/split': typeof AppSplitIndexRoute
   '/finances/categories/$categoryId': typeof AppFinancesCategoriesCategoryIdRoute
   '/finances/schedules/$scheduleId': typeof AppFinancesSchedulesScheduleIdRoute
   '/finances/wallets/$walletId': typeof AppFinancesWalletsWalletIdRoute
+  '/split/expenses/$expenseId': typeof AppSplitExpensesExpenseIdRoute
   '/split/expenses/new': typeof AppSplitExpensesNewRoute
   '/finances/categories': typeof AppFinancesCategoriesIndexRoute
   '/finances/schedules': typeof AppFinancesSchedulesIndexRoute
@@ -186,12 +203,14 @@ export interface FileRoutesById {
   '/_app/admin/accounts': typeof AppAdminAccountsRoute
   '/_app/finances/summary': typeof AppFinancesSummaryRoute
   '/_app/notes/$noteId': typeof AppNotesNoteIdRoute
+  '/_app/split/categories': typeof AppSplitCategoriesRoute
   '/_app/finances/': typeof AppFinancesIndexRoute
   '/_app/notes/': typeof AppNotesIndexRoute
   '/_app/split/': typeof AppSplitIndexRoute
   '/_app/finances/categories/$categoryId': typeof AppFinancesCategoriesCategoryIdRoute
   '/_app/finances/schedules/$scheduleId': typeof AppFinancesSchedulesScheduleIdRoute
   '/_app/finances/wallets/$walletId': typeof AppFinancesWalletsWalletIdRoute
+  '/_app/split/expenses/$expenseId': typeof AppSplitExpensesExpenseIdRoute
   '/_app/split/expenses/new': typeof AppSplitExpensesNewRoute
   '/_app/finances/categories/': typeof AppFinancesCategoriesIndexRoute
   '/_app/finances/schedules/': typeof AppFinancesSchedulesIndexRoute
@@ -209,12 +228,14 @@ export interface FileRouteTypes {
     | '/admin/accounts'
     | '/finances/summary'
     | '/notes/$noteId'
+    | '/split/categories'
     | '/finances/'
     | '/notes/'
     | '/split/'
     | '/finances/categories/$categoryId'
     | '/finances/schedules/$scheduleId'
     | '/finances/wallets/$walletId'
+    | '/split/expenses/$expenseId'
     | '/split/expenses/new'
     | '/finances/categories/'
     | '/finances/schedules/'
@@ -227,12 +248,14 @@ export interface FileRouteTypes {
     | '/admin/accounts'
     | '/finances/summary'
     | '/notes/$noteId'
+    | '/split/categories'
     | '/finances'
     | '/notes'
     | '/split'
     | '/finances/categories/$categoryId'
     | '/finances/schedules/$scheduleId'
     | '/finances/wallets/$walletId'
+    | '/split/expenses/$expenseId'
     | '/split/expenses/new'
     | '/finances/categories'
     | '/finances/schedules'
@@ -249,12 +272,14 @@ export interface FileRouteTypes {
     | '/_app/admin/accounts'
     | '/_app/finances/summary'
     | '/_app/notes/$noteId'
+    | '/_app/split/categories'
     | '/_app/finances/'
     | '/_app/notes/'
     | '/_app/split/'
     | '/_app/finances/categories/$categoryId'
     | '/_app/finances/schedules/$scheduleId'
     | '/_app/finances/wallets/$walletId'
+    | '/_app/split/expenses/$expenseId'
     | '/_app/split/expenses/new'
     | '/_app/finances/categories/'
     | '/_app/finances/schedules/'
@@ -360,6 +385,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppSplitIndexRouteImport
       parentRoute: typeof AppSplitRouteRoute
     }
+    '/_app/split/categories': {
+      id: '/_app/split/categories'
+      path: '/categories'
+      fullPath: '/split/categories'
+      preLoaderRoute: typeof AppSplitCategoriesRouteImport
+      parentRoute: typeof AppSplitRouteRoute
+    }
     '/_app/finances/categories/': {
       id: '/_app/finances/categories/'
       path: '/categories'
@@ -401,6 +433,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/finances/wallets/$walletId'
       preLoaderRoute: typeof AppFinancesWalletsWalletIdRouteImport
       parentRoute: typeof AppFinancesRouteRoute
+    }
+    '/_app/split/expenses/$expenseId': {
+      id: '/_app/split/expenses/$expenseId'
+      path: '/expenses/$expenseId'
+      fullPath: '/split/expenses/$expenseId'
+      preLoaderRoute: typeof AppSplitExpensesExpenseIdRouteImport
+      parentRoute: typeof AppSplitRouteRoute
     }
     '/_app/split/expenses/new': {
       id: '/_app/split/expenses/new'
@@ -452,12 +491,16 @@ const AppNotesRouteRouteWithChildren = AppNotesRouteRoute._addFileChildren(
 )
 
 interface AppSplitRouteRouteChildren {
+  AppSplitCategoriesRoute: typeof AppSplitCategoriesRoute
   AppSplitIndexRoute: typeof AppSplitIndexRoute
+  AppSplitExpensesExpenseIdRoute: typeof AppSplitExpensesExpenseIdRoute
   AppSplitExpensesNewRoute: typeof AppSplitExpensesNewRoute
 }
 
 const AppSplitRouteRouteChildren: AppSplitRouteRouteChildren = {
+  AppSplitCategoriesRoute: AppSplitCategoriesRoute,
   AppSplitIndexRoute: AppSplitIndexRoute,
+  AppSplitExpensesExpenseIdRoute: AppSplitExpensesExpenseIdRoute,
   AppSplitExpensesNewRoute: AppSplitExpensesNewRoute,
 }
 

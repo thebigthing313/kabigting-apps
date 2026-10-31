@@ -5,7 +5,7 @@ import { useCategories, useExpenses, useMembers } from "@/data/split"
 
 const appRoute = getRouteApi("/_app")
 
-/** The Split App's home: Balances, Add Expense and the Activity feed. */
+/** The Split App's home: Balances, Add Expense and the Activity feed, each Expense opening it. */
 export function SplitHome() {
   const { session } = appRoute.useRouteContext()
   const { data: expenses, isLoading } = useExpenses()
@@ -22,6 +22,10 @@ export function SplitHome() {
       expenses={expenses}
       categories={categories.data}
       onAddExpense={() => void navigate({ to: "/split/expenses/new" })}
+      onOpenExpense={(expenseId) =>
+        void navigate({ to: "/split/expenses/$expenseId", params: { expenseId } })
+      }
+      onManageCategories={() => void navigate({ to: "/split/categories" })}
     />
   )
 }

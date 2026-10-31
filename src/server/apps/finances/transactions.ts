@@ -1,7 +1,7 @@
 import { and, asc, desc, eq, gt, gte, inArray, isNull, lt, lte, or, sql } from "drizzle-orm"
 import { Hono } from "hono"
 import { z } from "zod"
-import { isForeignKeyViolation } from "#server/apps/finances/db-errors.ts"
+import { isForeignKeyViolation } from "#server/db/errors.ts"
 import type { AppEnv } from "#server/core/context.ts"
 import { ApiError } from "#server/core/errors.ts"
 import { queryLimit, withinCap } from "#server/core/query-limit.ts"

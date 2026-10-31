@@ -1,17 +1,18 @@
 import { cn } from "cn"
-import { ArrowLeftIcon, CheckIcon, PencilIcon } from "lucide-react"
+import { ArrowLeftIcon, CheckIcon, PencilIcon, Trash2Icon } from "lucide-react"
 import { useState } from "react"
-import { expenseSideWords, people, type People } from "@/apps/split/words"
+import { authorshipWords, expenseSideWords, people, type People } from "@/apps/split/words"
 import { AmountInput } from "@/components/amount-input"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
-import type { Category, Member } from "@/data/split"
+import type { Category, Expense, Member } from "@/data/split"
 import { formatDisplayDate } from "@shared/dates"
 import { format } from "@shared/money"
 import { defaultCategory } from "@shared/split/categories"
 import {
+  editExpenseRoster,
   equalSide,
   newExpenseRoster,
   resolveExpense,
@@ -21,36 +22,55 @@ import {
 } from "@shared/split/rules"
 import { SPLIT_MODES, type CreateExpense, type Side, type SplitMode } from "@shared/split/schemas"
 
-/** A new Expense as the flow hands it over; the caller gives it its id. */
+/** An Expense as the flow hands it over; the caller gives a new one its id. */
 export type NewExpense = Omit<CreateExpense, "id">
+
+/** Whether a side is the one-tap answer "only this Member", equally. */
+function only(side: Side, memberId: string): boolean {
+  return side.mode === "equal" && side.ticked.length === 1 && side.ticked[0] === memberId
+}
+
+/** Whether a side is the one-tap answer "everyone equally". */
+function everyone(side: Side, order: readonly string[]): boolean {
+  return (
+    side.mode === "equal" &&
+    side.ticked.length === order.length &&
+    order.every((id) => side.ticked.includes(id))
+  )
+}
 
 type ExpenseFlowProps = {
   viewerId: string
-  /** The Members who can be on a new Expense, oldest Account first. */
+  /** The Members who can be newly added to the Expense, oldest Account first. */
   members: readonly Member[]
-  /** The Categories offered: those not archived. */
+  /** The Categories offered: those not archived, and the one an edited Expense already has. */
   categories: readonly Category[]
   /** The household's date today, the date a new Expense starts on. */
   today: string
   /** Saves the Expense; resolves true once stored. */
   onSave: (expense: NewExpense) => Promise<boolean>
   onCancel: () => void
+  /**
+   * The saved Expense being changed, absent when adding one. It opens on Review as it was
+   * entered, each step returns to Review, and Review offers `onDelete`.
+   */
+  editing?: { expense: Expense; onDelete: () => void }
 }
 
 const STEPS = ["What", "Who paid", "Who owes", "Review"] as const
+const REVIEW = STEPS.length - 1
 
 type SideKey = "paid" | "owed"
-
-/**
- * The answer to "Who paid" or "Who owes": one Member, everyone equally (owed only), or the full
- * editor with its own Side.
- */
-type Answer = { kind: "one"; id: string } | { kind: "everyone" } | { kind: "editor" }
 
 const MODE_LABELS: Record<SplitMode, string> = {
   equal: "Equally",
   exact: "Exact $",
   percent: "Percent",
+}
+
+/** Whether a side is one of its question's one-tap answers, rather than the full editor's. */
+function oneTap(key: SideKey, side: Side, order: readonly string[]): boolean {
+  return order.some((id) => only(side, id)) || (key === "owed" && everyone(side, order))
 }
 
 /** Which fields each step asks for, so Next waits until they're valid. */
@@ -62,11 +82,12 @@ const STEP_FIELDS: readonly (readonly ExpenseField[])[] = [
 ]
 
 /**
- * Adding an Expense, full page, in four steps: What → Who paid → Who owes → Review. The step bar
- * jumps back to any step already reached, and Next waits until the step is valid. Who paid and
- * Who owes take one-tap answers (one Member paid it all; everyone or only one Member owes it,
- * equally), or open a full editor for the side with its own Split mode. A negative total is a
- * Refund, and the questions say so.
+ * Adding or changing an Expense, full page, in four steps: What → Who paid → Who owes → Review.
+ * The step bar jumps back to any step already reached, and Next waits until the step is valid.
+ * Who paid and Who owes take one-tap answers (one Member paid it all; everyone or only one Member
+ * owes it, equally), or open a full editor for the side with its own Split mode. A saved Expense
+ * keeps each side as it was entered, reopening in the editor when no one-tap answer matches it.
+ * A negative total is a Refund, and the questions say so.
  */
 export function ExpenseFlow({
   viewerId,
@@ -75,48 +96,49 @@ export function ExpenseFlow({
   today,
   onSave,
   onCancel,
+  editing,
 }: ExpenseFlowProps) {
-  const [step, setStep] = useState(0)
-  const [reached, setReached] = useState(0)
-  const [total, setTotal] = useState<number | null>(null)
-  const [description, setDescription] = useState("")
-  const [date, setDate] = useState(today)
-  const [categoryId, setCategoryId] = useState(defaultCategory(categories)?.id ?? "")
-  const [note, setNote] = useState("")
-  const [answers, setAnswers] = useState<Record<SideKey, Answer>>({
-    paid: { kind: "one", id: viewerId },
-    owed: { kind: "everyone" },
-  })
-  // What each side's full editor holds, kept while a one-tap answer is picked instead.
-  const [edited, setEdited] = useState<Record<SideKey, Side | null>>({ paid: null, owed: null })
-  const [saving, setSaving] = useState(false)
-
+  const saved = editing?.expense
   const order = members.map((member) => member.id)
-  const roster = newExpenseRoster(order)
+  const [step, setStep] = useState(saved ? REVIEW : 0)
+  const [reached, setReached] = useState(saved ? REVIEW : 0)
+  const [total, setTotal] = useState<number | null>(saved?.total ?? null)
+  const [description, setDescription] = useState(saved?.description ?? "")
+  const [date, setDate] = useState(saved?.date ?? today)
+  const [categoryId, setCategoryId] = useState(
+    saved?.categoryId ?? defaultCategory(categories)?.id ?? "",
+  )
+  const [note, setNote] = useState(saved?.note ?? "")
+  const [paid, setPaid] = useState<Side>(saved?.paid ?? equalSide([viewerId]))
+  const [owed, setOwed] = useState<Side>(saved?.owed ?? equalSide(order))
+  // Whether each side's full editor is the answer: a saved side that no one-tap answer matches
+  // reopens in it, in the Split mode and inputs it was entered with.
+  const [inEditor, setInEditor] = useState<Record<SideKey, boolean>>(() => ({
+    paid: saved !== undefined && !oneTap("paid", saved.paid, order),
+    owed: saved !== undefined && !oneTap("owed", saved.owed, order),
+  }))
+  // What the editor held when a one-tap answer replaced it, so reopening it brings that back.
+  const [stashed, setStashed] = useState<Record<SideKey, Side | null>>({
+    paid: null,
+    owed: null,
+  })
+  const [saving, setSaving] = useState(false)
+  // Deleting takes a second tap; leaving Review disarms it.
+  const [deleteArmed, setDeleteArmed] = useState(false)
+
+  const roster = saved ? editExpenseRoster(order, order, saved) : newExpenseRoster(order)
   const who = people(viewerId, members)
   const isRefund = (total ?? 0) < 0
-  const sideOf = (key: SideKey): Side => {
-    const answer = answers[key]
-    if (answer.kind === "one") return equalSide([answer.id])
-    if (answer.kind === "everyone") return equalSide(order)
-    return edited[key] ?? equalSide(order)
-  }
-  const expense: NewExpense = {
-    description,
-    date,
-    categoryId,
-    total: total ?? 0,
-    note,
-    paid: sideOf("paid"),
-    owed: sideOf("owed"),
-  }
+  const expense: NewExpense = { description, date, categoryId, total: total ?? 0, note, paid, owed }
+  const sides = { paid, owed }
+  const setSide = (key: SideKey, side: Side) => (key === "paid" ? setPaid(side) : setOwed(side))
   const resolution = resolveExpense(expense, roster)
   const problems = resolution.ok ? [] : resolution.problems
   const stepValid = (index: number) =>
     !problems.some((problem) => STEP_FIELDS[index]?.includes(problem.field)) &&
     (index !== 0 || categoryId !== "")
   // The viewer first, then everyone else oldest Account first.
-  const ranked = [
+  const answers = [
     ...members.filter((member) => member.id === viewerId),
     ...members.filter((member) => member.id !== viewerId),
   ]
@@ -126,24 +148,32 @@ export function ExpenseFlow({
     return side.ok ? expenseSideWords(expense.total, side.shares, key, who) : side.problem
   }
 
-  function pick(key: SideKey, picked: Answer) {
-    setAnswers((was) => ({ ...was, [key]: picked }))
+  /** Picks a one-tap answer, keeping what the editor held in case it is reopened. */
+  function pick(key: SideKey, side: Side) {
+    if (inEditor[key]) setStashed((was) => ({ ...was, [key]: sides[key] }))
+    setInEditor((was) => ({ ...was, [key]: false }))
+    setSide(key, side)
   }
 
-  /** Opens a side's full editor, starting from the side as it stands. */
+  /** Opens a side's full editor, on what it held before or else the side as it stands. */
   function openEditor(key: SideKey) {
-    const current = sideOf(key)
-    setEdited((was) => ({ ...was, [key]: was[key] ?? current }))
-    pick(key, { kind: "editor" })
-  }
-
-  function editSide(key: SideKey, side: Side) {
-    setEdited((was) => ({ ...was, [key]: side }))
+    if (inEditor[key]) return
+    const held = stashed[key]
+    if (held) setSide(key, held)
+    setInEditor((was) => ({ ...was, [key]: true }))
   }
 
   function goTo(index: number) {
     setStep(index)
     setReached((was) => Math.max(was, index))
+    setDeleteArmed(false)
+  }
+
+  // Changing a saved Expense, every step returns to Review, and Review's way back leaves.
+  const leavesOnBack = step === 0 || (saved !== undefined && step === REVIEW)
+  function back() {
+    if (leavesOnBack) onCancel()
+    else goTo(saved ? REVIEW : step - 1)
   }
 
   /** On success the caller leaves the flow; a refusal (already reported) stays on Review. */
@@ -160,12 +190,12 @@ export function ExpenseFlow({
         <Button
           variant="ghost"
           size="icon"
-          aria-label={step === 0 ? "Cancel" : "Back"}
-          onClick={() => (step === 0 ? onCancel() : setStep(step - 1))}
+          aria-label={leavesOnBack ? "Cancel" : "Back"}
+          onClick={back}
         >
           <ArrowLeftIcon />
         </Button>
-        <h1 className="text-lg font-semibold">New Expense</h1>
+        <h1 className="text-lg font-semibold">{saved ? "Edit Expense" : "New Expense"}</h1>
       </div>
       <nav aria-label="Steps">
         <ol className="grid grid-cols-4 gap-1 text-center text-xs">
@@ -175,7 +205,7 @@ export function ExpenseFlow({
                 type="button"
                 disabled={index > reached}
                 aria-current={index === step ? "step" : undefined}
-                onClick={() => setStep(index)}
+                onClick={() => goTo(index)}
                 className={cn(
                   "w-full border-t-4 pt-1 disabled:text-muted-foreground",
                   index === step
@@ -247,59 +277,59 @@ export function ExpenseFlow({
 
       {step === 1 && (
         <Question title={isRefund ? "Who got the money back?" : "Who paid?"}>
-          {ranked.map((member) => (
-            <Choice
+          {answers.map((member) => (
+            <Answer
               key={member.id}
-              selected={answers.paid.kind === "one" && answers.paid.id === member.id}
-              onSelect={() => pick("paid", { kind: "one", id: member.id })}
+              selected={!inEditor.paid && only(paid, member.id)}
+              onSelect={() => pick("paid", equalSide([member.id]))}
             >
               {who.nameOf(member.id)} {isRefund ? "got it all back" : "paid it all"}
-            </Choice>
+            </Answer>
           ))}
-          <Choice selected={answers.paid.kind === "editor"} onSelect={() => openEditor("paid")}>
+          <Answer selected={inEditor.paid} onSelect={() => openEditor("paid")}>
             {isRefund ? "Several people got it back" : "Several people paid"}
-          </Choice>
+          </Answer>
         </Question>
       )}
 
       {step === 2 && (
         <Question title={isRefund ? "Who shares the Refund?" : "Who owes for it?"}>
-          <Choice
-            selected={answers.owed.kind === "everyone"}
-            onSelect={() => pick("owed", { kind: "everyone" })}
+          <Answer
+            selected={!inEditor.owed && everyone(owed, order)}
+            onSelect={() => pick("owed", equalSide(order))}
           >
             Everyone equally
-          </Choice>
-          {ranked.map((member) => (
-            <Choice
+          </Answer>
+          {answers.map((member) => (
+            <Answer
               key={member.id}
-              selected={answers.owed.kind === "one" && answers.owed.id === member.id}
-              onSelect={() => pick("owed", { kind: "one", id: member.id })}
+              selected={!inEditor.owed && only(owed, member.id)}
+              onSelect={() => pick("owed", equalSide([member.id]))}
             >
               Only {who.nameOf(member.id, "within")}
-            </Choice>
+            </Answer>
           ))}
-          <Choice selected={answers.owed.kind === "editor"} onSelect={() => openEditor("owed")}>
+          <Answer selected={inEditor.owed} onSelect={() => openEditor("owed")}>
             Split it differently
-          </Choice>
+          </Answer>
         </Question>
       )}
 
-      {(step === 1 || step === 2) && answers[step === 1 ? "paid" : "owed"].kind === "editor" && (
+      {(step === 1 || step === 2) && inEditor[step === 1 ? "paid" : "owed"] && (
         <SideEditor
           label={step === 1 ? "Paid side" : "Owed side"}
           total={expense.total}
-          side={expense[step === 1 ? "paid" : "owed"]}
+          side={sides[step === 1 ? "paid" : "owed"]}
           roster={roster}
-          rows={ranked.map((member) => member.id)}
+          rows={answers.map((member) => member.id)}
           who={who}
-          onChange={(side) => editSide(step === 1 ? "paid" : "owed", side)}
+          onChange={(side) => setSide(step === 1 ? "paid" : "owed", side)}
         />
       )}
 
-      {step === 3 && (
+      {step === REVIEW && (
         <div className="flex flex-col rounded-xl border px-3">
-          <ReviewLine label="What" onChange={() => setStep(0)}>
+          <ReviewLine label="What" onChange={() => goTo(0)}>
             <span className="font-medium">{description.trim() || "No description"}</span> ·{" "}
             <span>
               {format(total ?? 0)}
@@ -311,10 +341,10 @@ export function ExpenseFlow({
               {note.trim() !== "" && ` · ${note.trim()}`}
             </div>
           </ReviewLine>
-          <ReviewLine label="Paid" onChange={() => setStep(1)}>
+          <ReviewLine label="Paid" onChange={() => goTo(1)}>
             {sideLine("paid")}
           </ReviewLine>
-          <ReviewLine label="Owed" onChange={() => setStep(2)}>
+          <ReviewLine label="Owed" onChange={() => goTo(2)}>
             {sideLine("owed")}
           </ReviewLine>
           {problems.length > 0 && (
@@ -328,17 +358,22 @@ export function ExpenseFlow({
               ))}
             </ul>
           )}
+          {saved && (
+            <p className="border-t py-2 text-xs text-muted-foreground">
+              {authorshipWords(saved, who)}
+            </p>
+          )}
         </div>
       )}
 
-      {step < 3 ? (
+      {step < REVIEW ? (
         <Button
           size="lg"
           className="h-12"
           disabled={!stepValid(step)}
-          onClick={() => goTo(step + 1)}
+          onClick={() => goTo(saved ? REVIEW : step + 1)}
         >
-          Next
+          {saved ? "Done" : "Next"}
         </Button>
       ) : (
         <Button
@@ -347,7 +382,17 @@ export function ExpenseFlow({
           disabled={!resolution.ok || saving}
           onClick={() => void save()}
         >
-          <CheckIcon /> Add Expense
+          <CheckIcon /> {saved ? "Save changes" : "Add Expense"}
+        </Button>
+      )}
+      {editing && step === REVIEW && (
+        <Button
+          variant={deleteArmed ? "destructive" : "ghost"}
+          className={cn(!deleteArmed && "text-destructive")}
+          disabled={saving}
+          onClick={() => (deleteArmed ? editing.onDelete() : setDeleteArmed(true))}
+        >
+          <Trash2Icon /> {deleteArmed ? "Tap again to delete for good" : "Delete Expense"}
         </Button>
       )}
     </div>
@@ -363,7 +408,7 @@ function Question({ title, children }: { title: string; children: React.ReactNod
   )
 }
 
-function Choice({
+function Answer({
   selected,
   onSelect,
   children,

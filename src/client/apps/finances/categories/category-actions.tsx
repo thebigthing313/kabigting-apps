@@ -2,7 +2,7 @@ import { useNavigate } from "@tanstack/react-router"
 import { useId, useState } from "react"
 import { toast } from "sonner"
 import { selectClass } from "@/apps/finances/form-controls"
-import { NameDialog } from "@/apps/finances/name-dialog"
+import { NameDialog } from "@/components/name-dialog"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
