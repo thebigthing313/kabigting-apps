@@ -1,5 +1,24 @@
 # kabigting-apps
 
+## 0.5.0
+
+### Minor Changes
+
+- a725e53: Split: a Balances tab on Home, between Activity and Spending, gives every Member's Balance in words with a bar either side of zero, and lists a Former member while their Balance isn't zero. Below it, "One way to settle everyone up" suggests Payments that bring everyone to zero; tapping one opens Settle up already filled in, and nothing is stored until you record it.
+- 33998a9: Split: any Member can add, rename or archive a Category from Split's Home. An archived Category stays on its Expenses but is no longer offered on new ones.
+- d0e63b9: Split: an open Expense or Payment keeps your draft when someone else saves a change, says who changed it and when, and offers Load their version. One deleted while you edit it closes with a note that your changes weren't saved, deleting one that's already gone just counts as deleted, and losing access to Split takes you to Home. A save that fails offline stays put with everything kept and a Try again button, and a retry that had already reached the server counts as saved.
+- c91f57e: Split: tap any Expense to change or delete it, and see who added it and who last changed it, and when.
+- bcc9f0b: Split: someone who loses access to Split, or whose Account is removed, stays on as a Former member, with their Balance on Home and their shares on old Expenses. They are never added to a new Expense, but a Payment to or from them can still settle them up.
+- ca53cee: Split: the household's Splitwise history can be brought in once with `pnpm split:import`, checked against Splitwise's own Balances to the cent before anything is written. Imported Expenses and Payments say "Imported from Splitwise" and the date they were added there, in place of who added them, and open in the normal form.
+- 3b196eb: Split an Expense any way: several payers, exact dollars or percent on each side with a live tally, and Refunds.
+- 1e6f1fc: Split: Settle up from Split's Home to record a Payment from one Member to another, to settle up or as a loan. Payments count in every Balance and show in the Activity feed, where any Member can tap one to change or delete it.
+- Split: Home has Activity and Spending tabs. Spending shows a period's total and a bar per Category, largest first, for the household or only your share, over This month, Last month, Last 3 months, This year or All time. Refunds count against their Category and Payments are never spending. Tap a bar to list its Expenses.
+- 230ab01: Add the Split App for shared household expenses: add an Expense split equally in a few taps and see where everyone stands.
+
+### Patch Changes
+
+- 3a10cbc: Toasts now show above Finances' floating + button instead of covering it, so the + can be tapped straight after a save.
+
 ## 0.4.0
 
 ### Minor Changes
