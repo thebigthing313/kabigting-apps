@@ -8,6 +8,10 @@ import {
   Loader2Icon,
 } from "lucide-react"
 
+// Toasts stack above the floating + button (bottom 1rem, 3.5rem tall), never over it: a toast
+// there blocks the +, and a pointer resting on a toast stops its timer.
+const ABOVE_ADD_BUTTON = { bottom: "calc(5.5rem + env(safe-area-inset-bottom))" }
+
 const Toaster = ({ ...props }: ToasterProps) => {
   const { theme } = useTheme()
 
@@ -15,6 +19,8 @@ const Toaster = ({ ...props }: ToasterProps) => {
     <Sonner
       theme={theme}
       className="toaster group"
+      offset={ABOVE_ADD_BUTTON}
+      mobileOffset={ABOVE_ADD_BUTTON}
       icons={{
         success: <CircleCheckIcon className="size-4" />,
         info: <InfoIcon className="size-4" />,

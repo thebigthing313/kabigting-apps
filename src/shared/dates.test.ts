@@ -2,6 +2,9 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest"
 import {
   addDays,
   addMonthsClamped,
+  dateOfInstant,
+  formatInstantDate,
+  instantToDate,
   daysBetween,
   formatDisplayDate,
   formatMonth,
@@ -10,6 +13,8 @@ import {
   HOUSEHOLD_ZONE,
   monthInstantRange,
   monthDates,
+  formatInstantMonthDay,
+  formatInstantTime,
   monthOf,
   monthOfDate,
   nowInstant,
@@ -88,6 +93,58 @@ describe("monthOf", () => {
     const { start, end } = monthInstantRange("2026-11")
     expect(monthOf(start)).toBe("2026-11")
     expect(monthOf(end)).toBe("2026-12")
+  })
+})
+
+describe("dateOfInstant", () => {
+  test.each([
+    // Midnight UTC is still the evening before in New York, in winter and in summer.
+    ["2026-01-15T04:59:59Z", "2026-01-14"],
+    ["2026-01-15T05:00:00Z", "2026-01-15"],
+    ["2026-07-15T03:59:59Z", "2026-07-14"],
+    ["2026-07-15T04:00:00Z", "2026-07-15"],
+    // Across the spring and autumn DST changes.
+    ["2026-03-08T04:59:59Z", "2026-03-07"],
+    ["2026-03-09T03:59:59Z", "2026-03-08"],
+    ["2026-11-01T03:59:59Z", "2026-10-31"],
+    ["2026-11-02T04:59:59Z", "2026-11-01"],
+  ])("puts %s on household date %s", (instant, date) => {
+    expect(dateOfInstant(instant)).toBe(date)
+  })
+})
+
+describe("instantToDate", () => {
+  test("keeps the instant, whatever its offset", () => {
+    expect(instantToDate("2022-03-03T23:30:00-05:00").toISOString()).toBe(
+      "2022-03-04T04:30:00.000Z",
+    )
+  })
+})
+
+describe("formatInstantDate", () => {
+  test("gives the household date with its year", () => {
+    // 03:00 UTC on Mar 4 is still Mar 3 in New York.
+    expect(formatInstantDate("2022-03-04T03:00:00Z")).toBe("Mar 3, 2022")
+  })
+})
+
+describe("formatInstantMonthDay", () => {
+  test("gives the household's day, not UTC's", () => {
+    // 03:30 UTC on Oct 4 is still Oct 3 in New York.
+    expect(formatInstantMonthDay("2026-10-04T03:30:00.000Z")).toBe("Oct 3")
+    expect(formatInstantMonthDay("2026-10-04T04:30:00.000Z")).toBe("Oct 4")
+  })
+
+  test("in standard time too, five hours behind UTC", () => {
+    expect(formatInstantMonthDay("2026-01-15T04:59:00.000Z")).toBe("Jan 14")
+    expect(formatInstantMonthDay("2026-01-15T05:00:00.000Z")).toBe("Jan 15")
+  })
+})
+
+describe("formatInstantTime", () => {
+  test("gives the household's time of day, in daylight and standard time", () => {
+    expect(formatInstantTime("2026-10-04T03:30:00.000Z")).toBe("11:30 PM")
+    expect(formatInstantTime("2026-01-15T17:05:00.000Z")).toBe("12:05 PM")
   })
 })
 

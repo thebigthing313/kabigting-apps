@@ -2,6 +2,7 @@
 export const APPS = [
   { key: "finances", title: "Finances" },
   { key: "notes", title: "Notes" },
+  { key: "split", title: "Split" },
 ] as const
 
 export type AppKey = (typeof APPS)[number]["key"]

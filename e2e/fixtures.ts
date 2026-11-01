@@ -13,6 +13,15 @@ const accountsFile = z.object({
   member: z.object({ email: z.string(), password: z.string() }),
   guest: z.object({ email: z.string(), password: z.string() }),
   newcomers: z.record(z.string(), z.object({ email: z.string(), temporaryPassword: z.string() })),
+  split: z.record(
+    z.string(),
+    z.object({
+      email: z.string(),
+      password: z.string(),
+      name: z.string(),
+      partnerName: z.string(),
+    }),
+  ),
 })
 
 /** The Accounts `scripts/e2e-setup.ts` seeded for this run. */
@@ -29,12 +38,16 @@ let ipCounter = 0
 const runNames = new Map<string, string[]>()
 
 /**
- * A name part unique to this test: its project and the time. Every e2e run shares one database,
- * so the Wallets a test names with it are archived when the test ends. Otherwise every Finances
- * page would keep loading the Forecasts of every Wallet that earlier tests made.
+ * A name part unique to this test: its project, the time and its worker. Every e2e run shares one
+ * database, so the Wallets a test names with it are archived when the test ends. Otherwise every
+ * Finances page would keep loading the Forecasts of every Wallet that earlier tests made. Two
+ * workers can start in the same millisecond; the worker keeps them from sharing a name, and so
+ * from archiving each other's Wallets. Its fixed width keeps worker 1 from matching worker 12, and
+ * it has no regex characters, as some tests match names with a RegExp.
  */
 export function runName(testInfo: TestInfo): string {
-  const run = `${testInfo.project.name} ${Date.now()}`
+  const worker = String(testInfo.workerIndex).padStart(3, "0")
+  const run = `${testInfo.project.name} ${Date.now()} w${worker}`
   runNames.set(testInfo.testId, [...(runNames.get(testInfo.testId) ?? []), run])
   return run
 }

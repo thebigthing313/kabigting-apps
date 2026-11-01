@@ -105,7 +105,7 @@ describe("GET /api/access", () => {
     const { headers } = await server.signedInAccount({ role: "admin", apps: [] })
     const response = await server.app.request("/api/access", { headers })
     expect(response.status).toBe(200)
-    expect(await response.json()).toEqual({ apps: ["finances", "notes"] })
+    expect(await response.json()).toEqual({ apps: ["finances", "notes", "split"] })
   })
 
   test("is empty for a Guest without Apps", async () => {

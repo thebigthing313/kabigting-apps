@@ -1,6 +1,6 @@
 {
   "name": "kabigting-apps",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "private": true,
   "type": "module",
   "packageManager": "pnpm@11.22.0",
@@ -36,6 +36,8 @@
     "admin:reset": "node --env-file-if-exists=.env scripts/admin.ts reset",
     "admin:ban": "node --env-file-if-exists=.env scripts/admin.ts ban",
     "finances:import": "node --env-file-if-exists=.env scripts/finances-import/run.ts",
+    "split:fetch": "node --env-file-if-exists=.env scripts/split-fetch/fetch.ts",
+    "split:import": "node --env-file-if-exists=.env scripts/split-import/run.ts",
     "test:component": "vitest run --project component --project browser",
     "icons:generate": "pwa-assets-generator",
     "test:e2e": "pnpm build && playwright test",

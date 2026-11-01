@@ -1,0 +1,163 @@
+/** Wire schemas for the Split App's API. */
+import { z } from "zod"
+import { cents, id, instant, isoDate } from "../schemas/primitives.ts"
+
+/** An Account's id, as Better Auth makes it: an opaque string, not a UUID. */
+export const memberId = z.string().min(1).max(100)
+
+/** How one side of an Expense is divided: equally among those ticked, exact dollars, or percent. */
+export const SPLIT_MODES = ["equal", "exact", "percent"] as const
+export type SplitMode = (typeof SPLIT_MODES)[number]
+
+/**
+ * One side of an Expense as entered: its Split mode and the inputs of every mode, so switching
+ * modes keeps what was typed. Only the inputs of `mode` count.
+ */
+export const side = z.strictObject({
+  mode: z.enum(SPLIT_MODES),
+  /** Equal: the Members ticked. */
+  ticked: z
+    .array(memberId)
+    .max(100)
+    .refine((ids) => new Set(ids).size === ids.length, "Tick each Member once"),
+  /**
+   * Exact: cents per Member as typed, null while blank. Never negative, even on a Refund: the
+   * shares take the total's sign when resolved.
+   */
+  exact: z.record(memberId, cents.nullable()),
+  /** Percent: as typed, up to two decimals, adding up to exactly 100. */
+  percent: z.record(memberId, z.string().max(10)),
+})
+
+/** Member id → cents. Only nonzero shares are kept. */
+export const shares = z.record(memberId, cents)
+
+const description = z.string().max(200, "Keep the description under 200 characters")
+const note = z.string().max(2_000, "Keep the note under 2,000 characters")
+
+/**
+ * A new Expense under an id the client made. The caller is who added it. The server works out the
+ * Paid and Owed shares from each side itself, so a client can't save shares that don't add up.
+ */
+export const createExpense = z.strictObject({
+  id,
+  description,
+  date: isoDate,
+  categoryId: id,
+  /** Cents, never zero: positive for a cost, negative for a Refund (not an outflow Amount). */
+  total: cents,
+  note,
+  paid: side,
+  owed: side,
+})
+
+/**
+ * A saved Expense as it now stands, replacing all of it: both sides and every share. The caller is
+ * who changed it last.
+ */
+export const updateExpense = createExpense.omit({ id: true })
+
+export const expenseRow = z.object({
+  id,
+  description: z.string(),
+  date: isoDate,
+  categoryId: id,
+  total: cents,
+  note: z.string(),
+  paid: side,
+  owed: side,
+  /** The cents worked out at save: the truth for Balances. */
+  paidShares: shares,
+  owedShares: shares,
+  /** The Account that added it. */
+  addedBy: memberId,
+  addedAt: instant,
+  /** The Account that saved it last; who added it until someone changes it. */
+  changedBy: memberId,
+  changedAt: instant,
+  /**
+   * Written by the Splitwise import, which shows in place of who added it. The server always
+   * sends it; it is optional only so rows made on the client need not carry it.
+   */
+  imported: z.boolean().optional(),
+})
+
+export const expenseRows = z.object({ rows: z.array(expenseRow) })
+
+/**
+ * How an Account stands in Split: a Member; a Former member, whom Split's money names (a share, a
+ * side's active Split mode, a Payment) but who has lost App access or become a Removed Account; or
+ * an author, named only as who added or changed an entry, listed so their name still shows.
+ */
+export const STANDINGS = ["member", "former", "author"] as const
+export type Standing = (typeof STANDINGS)[number]
+
+/** An Account Split shows, by display name. `members` lists them oldest Account first. */
+export const member = z.object({ id: memberId, name: z.string(), standing: z.enum(STANDINGS) })
+export const members = z.object({ rows: z.array(member) })
+
+export const categoryRow = z.object({ id, name: z.string(), archived: z.boolean() })
+export const categoryRows = z.object({ rows: z.array(categoryRow) })
+
+/** A Category's name, trimmed; unique regardless of case, which the database enforces. */
+const categoryName = z.string().trim().min(1, "Enter a name").max(100)
+
+/** A new Category under an id the client made. It starts in use. */
+export const createCategory = z.strictObject({ id, name: categoryName })
+
+/** Renaming or archiving a Category, or both. There is no delete. */
+export const updateCategory = z
+  .strictObject({ name: categoryName, archived: z.boolean() })
+  .partial()
+  .refine((changes) => Object.keys(changes).length > 0, "Change at least one field")
+
+export type Side = z.infer<typeof side>
+export type Shares = z.infer<typeof shares>
+export type CreateExpense = z.infer<typeof createExpense>
+export type UpdateExpense = z.infer<typeof updateExpense>
+export type ExpenseRow = z.infer<typeof expenseRow>
+export type Member = z.infer<typeof member>
+export type CategoryRow = z.infer<typeof categoryRow>
+export type UpdateCategory = z.infer<typeof updateCategory>
+
+/**
+ * A new Payment under an id the client made: money one Member hands another, to settle up or as a
+ * loan. The caller is who added it. The Amount is checked with the Split rules, which name the
+ * field that blocks the save.
+ */
+export const createPayment = z.strictObject({
+  id,
+  date: isoDate,
+  fromId: memberId,
+  toId: memberId,
+  /** Cents, always positive: what `fromId` handed `toId`. */
+  amount: cents,
+  note,
+})
+
+/** A saved Payment as it now stands, replacing all of it. The caller is who changed it last. */
+export const updatePayment = createPayment.omit({ id: true })
+
+export const paymentRow = z.object({
+  id,
+  date: isoDate,
+  fromId: memberId,
+  toId: memberId,
+  amount: cents,
+  note: z.string(),
+  addedBy: memberId,
+  addedAt: instant,
+  changedBy: memberId,
+  changedAt: instant,
+  /**
+   * Written by the Splitwise import, which shows in place of who added it. The server always
+   * sends it; it is optional only so rows made on the client need not carry it.
+   */
+  imported: z.boolean().optional(),
+})
+
+export const paymentRows = z.object({ rows: z.array(paymentRow) })
+
+export type CreatePayment = z.infer<typeof createPayment>
+export type UpdatePayment = z.infer<typeof updatePayment>
+export type PaymentRow = z.infer<typeof paymentRow>

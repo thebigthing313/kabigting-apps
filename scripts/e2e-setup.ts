@@ -47,6 +47,12 @@ const accounts = {
   guest: { email: "guest@example.com", password: "e2e-guest-password" },
   // Fresh Accounts for the forced-change test, one per Playwright project.
   newcomers: {} as Record<string, { email: string; temporaryPassword: string }>,
+  // Split's Balances are the whole household's, so each Playwright project settles up between its
+  // own two Members, and the others' Expenses never move its viewer's Balance.
+  split: {} as Record<
+    string,
+    { email: string; password: string; name: string; partnerName: string }
+  >,
 }
 await settledAccount(accounts.member.email, "Member", accounts.member.password, ["finances"])
 await settledAccount(accounts.admin.email, "Admin", accounts.admin.password, [], "admin")
@@ -58,6 +64,22 @@ for (const project of ["chromium-desktop", "chromium-phone", "webkit-desktop", "
     { email, name: "Newcomer", apps: ["finances"] },
   )
   accounts.newcomers[project] = { email, temporaryPassword }
+}
+for (const project of ["chromium-desktop", "chromium-phone", "webkit-desktop", "webkit-phone"]) {
+  const viewer = {
+    email: `split-${project}@example.com`,
+    password: `e2e-split-${project}-password`,
+    name: `Splitter ${project}`,
+    partnerName: `Partner ${project}`,
+  }
+  await settledAccount(viewer.email, viewer.name, viewer.password, ["split"])
+  await settledAccount(
+    `split-partner-${project}@example.com`,
+    viewer.partnerName,
+    `e2e-split-partner-${project}-password`,
+    ["split"],
+  )
+  accounts.split[project] = viewer
 }
 await pool.end()
 
