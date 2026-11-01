@@ -22,6 +22,7 @@ blob-report
 *.laccdb
 exports/
 scripts/finances-extract.map.json
+scripts/split-import.map.json
 
 # editor and agent scratch
 .claude/worktrees/

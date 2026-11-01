@@ -1,5 +1,5 @@
 // How Split puts Balances and shares into words. The viewer is always "You", and comes first.
-import { formatInstantMonthDay } from "@shared/dates"
+import { formatInstantDate, formatInstantMonthDay } from "@shared/dates"
 import { format } from "@shared/money"
 import type { Shares } from "@shared/split/schemas"
 
@@ -107,14 +107,33 @@ export function magnitudes(shares: Shares): Shares {
   return Object.fromEntries(Object.entries(shares).map(([id, cents]) => [id, Math.abs(cents)]))
 }
 
-/** Who added an entry and when, and who changed it last and when. */
-export type Authorship = { addedBy: string; addedAt: string; changedBy: string; changedAt: string }
+/** Who added an entry and when, and who changed it last and when; whether the import wrote it. */
+export type Authorship = {
+  addedBy: string
+  addedAt: string
+  changedBy: string
+  changedAt: string
+  imported?: boolean | undefined
+}
 
 /**
  * Who added an entry and who changed it, by day in the household zone: "Added by Ana on Oct 3",
  * then " · changed by you on Oct 5" once it has been changed.
+ *
+ * An imported entry was added in Splitwise, by no one Split can name, possibly years ago: it reads
+ * "Imported from Splitwise · added Mar 3, 2022", then " · changed Mar 5, 2022" for a change made
+ * in Splitwise (the import records its Admin as the changer too, so no name is given), or
+ * " · changed by Ben on Oct 5" once a Member changes it here.
  */
 export function authorshipWords(entry: Authorship, who: People): string {
+  if (entry.imported) {
+    const added = `Imported from Splitwise · added ${formatInstantDate(entry.addedAt)}`
+    if (entry.changedAt === entry.addedAt) return added
+    if (entry.changedBy === entry.addedBy) {
+      return `${added} · changed ${formatInstantDate(entry.changedAt)}`
+    }
+    return `${added} · changed by ${who.nameOf(entry.changedBy, "within")} on ${formatInstantMonthDay(entry.changedAt)}`
+  }
   const added = `Added by ${who.nameOf(entry.addedBy, "within")} on ${formatInstantMonthDay(entry.addedAt)}`
   if (entry.changedAt === entry.addedAt) return added
   const by = who.nameOf(entry.changedBy, "within")

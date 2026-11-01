@@ -66,6 +66,12 @@ export const splitExpenses = pgTable(
       .notNull()
       .references(() => auth_user.id),
     changedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    /**
+     * Written by the Splitwise import, and shown as "Imported from Splitwise" in place of who
+     * added it. Who added and changed it are then the Admin who ran the import; when it was added
+     * and last changed are Splitwise's `created_at` and `updated_at`.
+     */
+    imported: boolean().notNull().default(false),
   },
   (table) => [
     check("split_expenses_total_not_zero", sql`${table.totalCents} <> 0`),
@@ -123,6 +129,12 @@ export const splitPayments = pgTable(
       .notNull()
       .references(() => auth_user.id),
     changedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    /**
+     * Written by the Splitwise import, and shown as "Imported from Splitwise" in place of who
+     * added it. Who added and changed it are then the Admin who ran the import; when it was added
+     * and last changed are Splitwise's `created_at` and `updated_at`.
+     */
+    imported: boolean().notNull().default(false),
   },
   (table) => [
     check("split_payments_amount_positive", sql`${table.amountCents} > 0`),

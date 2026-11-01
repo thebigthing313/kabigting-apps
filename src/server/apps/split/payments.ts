@@ -34,6 +34,7 @@ async function readPayments(db: Db | Tx, where?: SQL): Promise<PaymentRow[]> {
     addedAt: payment.addedAt.toISOString(),
     changedBy: payment.changedById,
     changedAt: payment.changedAt.toISOString(),
+    imported: payment.imported,
   }))
 }
 

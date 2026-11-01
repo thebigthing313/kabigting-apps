@@ -33,6 +33,16 @@ export function monthOf(instant: string): string {
   return format(new TZDate(Date.parse(instant), HOUSEHOLD_ZONE), "yyyy-MM")
 }
 
+/** The household calendar date (`YYYY-MM-DD`) an ISO-8601 instant falls on. */
+export function dateOfInstant(instant: string): string {
+  return format(new TZDate(Date.parse(instant), HOUSEHOLD_ZONE), "yyyy-MM-dd")
+}
+
+/** An ISO-8601 instant as a `Date`, for timestamp columns. */
+export function instantToDate(instant: string): Date {
+  return new Date(Date.parse(instant))
+}
+
 /** A moment given in milliseconds since the epoch, as an ISO-8601 UTC string. */
 export function instantAt(ms: number): string {
   return new Date(ms).toISOString()
@@ -127,6 +137,11 @@ export function weekdayName(date: string): string {
 /** The month and day an instant falls on in the household zone, e.g. "Mar 5". */
 export function formatInstantMonthDay(instant: string): string {
   return format(new TZDate(Date.parse(instant), HOUSEHOLD_ZONE), "MMM d")
+}
+
+/** The date an instant falls on in the household zone, with its year, e.g. "Mar 5, 2022". */
+export function formatInstantDate(instant: string): string {
+  return format(new TZDate(Date.parse(instant), HOUSEHOLD_ZONE), "MMM d, yyyy")
 }
 
 /** The time of day an instant falls at in the household zone, e.g. "4:05 PM". */

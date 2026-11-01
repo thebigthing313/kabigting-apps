@@ -61,6 +61,7 @@ async function readExpenses(db: Db | Tx, where?: SQL): Promise<ExpenseRow[]> {
     addedAt: expense.addedAt.toISOString(),
     changedBy: expense.changedById,
     changedAt: expense.changedAt.toISOString(),
+    imported: expense.imported,
   }))
 }
 

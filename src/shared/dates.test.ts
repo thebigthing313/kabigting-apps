@@ -2,6 +2,9 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest"
 import {
   addDays,
   addMonthsClamped,
+  dateOfInstant,
+  formatInstantDate,
+  instantToDate,
   daysBetween,
   formatDisplayDate,
   formatMonth,
@@ -90,6 +93,38 @@ describe("monthOf", () => {
     const { start, end } = monthInstantRange("2026-11")
     expect(monthOf(start)).toBe("2026-11")
     expect(monthOf(end)).toBe("2026-12")
+  })
+})
+
+describe("dateOfInstant", () => {
+  test.each([
+    // Midnight UTC is still the evening before in New York, in winter and in summer.
+    ["2026-01-15T04:59:59Z", "2026-01-14"],
+    ["2026-01-15T05:00:00Z", "2026-01-15"],
+    ["2026-07-15T03:59:59Z", "2026-07-14"],
+    ["2026-07-15T04:00:00Z", "2026-07-15"],
+    // Across the spring and autumn DST changes.
+    ["2026-03-08T04:59:59Z", "2026-03-07"],
+    ["2026-03-09T03:59:59Z", "2026-03-08"],
+    ["2026-11-01T03:59:59Z", "2026-10-31"],
+    ["2026-11-02T04:59:59Z", "2026-11-01"],
+  ])("puts %s on household date %s", (instant, date) => {
+    expect(dateOfInstant(instant)).toBe(date)
+  })
+})
+
+describe("instantToDate", () => {
+  test("keeps the instant, whatever its offset", () => {
+    expect(instantToDate("2022-03-03T23:30:00-05:00").toISOString()).toBe(
+      "2022-03-04T04:30:00.000Z",
+    )
+  })
+})
+
+describe("formatInstantDate", () => {
+  test("gives the household date with its year", () => {
+    // 03:00 UTC on Mar 4 is still Mar 3 in New York.
+    expect(formatInstantDate("2022-03-04T03:00:00Z")).toBe("Mar 3, 2022")
   })
 })
 
